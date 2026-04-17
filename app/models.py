@@ -19,6 +19,7 @@ class MineForMeResponse(BaseModel):
     tons_year: int
     prose: str
     subregion_id: str
+    user_coords: list[float] | None = None
     degraded: bool = False
 
 
