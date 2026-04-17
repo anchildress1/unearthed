@@ -9,42 +9,64 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 # Hand-written SQL for /mine-for-me — not Cortex Analyst.
-# Returns the top mine supplying plants in a given eGRID subregion.
+# CTEs clean MSHA embedded quotes and EIA comma-formatted numbers
+# so joins and filters operate on typed, pre-cleaned columns.
 MINE_FOR_SUBREGION_SQL = """
+WITH fr_clean AS (
+    SELECT
+        PLANT_ID,
+        PLANT_NAME,
+        YEAR,
+        FUEL_GROUP,
+        TRY_TO_NUMBER(COALMINE_MSHA_ID) AS COALMINE_MSHA_ID_NUM,
+        TRY_TO_NUMBER(REPLACE(QUANTITY, ',', ''), 18, 1) AS QUANTITY_NUM
+    FROM UNEARTHED_DB.RAW.EIA_923_FUEL_RECEIPTS
+),
+m_clean AS (
+    SELECT
+        TRY_TO_NUMBER(REPLACE(MINE_ID, '"', '')) AS MINE_ID_NUM,
+        TRIM(REPLACE(CURRENT_MINE_NAME, '"', '')) AS MINE_NAME,
+        TRIM(REPLACE(CURRENT_OPERATOR_NAME, '"', '')) AS MINE_OPERATOR,
+        TRIM(REPLACE(FIPS_CNTY_NM, '"', '')) AS MINE_COUNTY,
+        TRIM(REPLACE(STATE, '"', '')) AS MINE_STATE,
+        TRIM(REPLACE(CURRENT_MINE_TYPE, '"', '')) AS MINE_TYPE,
+        TRY_TO_DOUBLE(REPLACE(LATITUDE, '"', '')) AS MINE_LAT,
+        TRY_TO_DOUBLE(REPLACE(LONGITUDE, '"', '')) AS MINE_LON,
+        REPLACE(COAL_METAL_IND, '"', '') AS COAL_METAL_IND_CLEAN
+    FROM UNEARTHED_DB.RAW.MSHA_MINES
+)
 SELECT
-    m.MINE_ID,
-    TRIM(REPLACE(m.CURRENT_MINE_NAME, '"', '')) AS MINE_NAME,
-    TRIM(REPLACE(m.CURRENT_OPERATOR_NAME, '"', '')) AS MINE_OPERATOR,
-    TRIM(REPLACE(m.FIPS_CNTY_NM, '"', '')) AS MINE_COUNTY,
-    TRIM(REPLACE(m.STATE, '"', '')) AS MINE_STATE,
-    TRIM(REPLACE(m.CURRENT_MINE_TYPE, '"', '')) AS MINE_TYPE,
-    TRY_TO_DOUBLE(REPLACE(m.LATITUDE, '"', '')) AS MINE_LAT,
-    TRY_TO_DOUBLE(REPLACE(m.LONGITUDE, '"', '')) AS MINE_LON,
+    m.MINE_NAME,
+    m.MINE_OPERATOR,
+    m.MINE_COUNTY,
+    m.MINE_STATE,
+    m.MINE_TYPE,
+    m.MINE_LAT,
+    m.MINE_LON,
     p.PLANTNAME AS PLANT_NAME,
     p.UTILITYNAME AS PLANT_OPERATOR,
     p.LATITUDE AS PLANT_LAT,
     p.LONGITUDE AS PLANT_LON,
-    SUM(TRY_TO_NUMBER(REPLACE(fr.QUANTITY, ',', ''), 18, 1)) AS TOTAL_TONS,
+    SUM(fr.QUANTITY_NUM) AS TOTAL_TONS,
     MAX(fr.YEAR) AS TONS_YEAR
-FROM UNEARTHED_DB.RAW.EIA_923_FUEL_RECEIPTS fr
+FROM fr_clean fr
 JOIN UNEARTHED_DB.RAW.PLANT_SUBREGION_LOOKUP lk
     ON fr.PLANT_ID = lk.PLANT_CODE
 JOIN UNEARTHED_DB.RAW.EIA_860_PLANTS p
     ON fr.PLANT_ID = p.PLANTCODE
-JOIN UNEARTHED_DB.RAW.MSHA_MINES m
-    ON TRY_TO_NUMBER(fr.COALMINE_MSHA_ID) = TRY_TO_NUMBER(REPLACE(m.MINE_ID, '"', ''))
+JOIN m_clean m
+    ON fr.COALMINE_MSHA_ID_NUM = m.MINE_ID_NUM
 WHERE fr.FUEL_GROUP = 'Coal'
     AND lk.EGRID_SUBREGION = %(subregion_id)s
-    AND REPLACE(m.COAL_METAL_IND, '"', '') = 'C'
+    AND m.COAL_METAL_IND_CLEAN = 'C'
 GROUP BY
-    m.MINE_ID,
-    MINE_NAME,
-    MINE_OPERATOR,
-    MINE_COUNTY,
-    MINE_STATE,
-    MINE_TYPE,
-    MINE_LAT,
-    MINE_LON,
+    m.MINE_NAME,
+    m.MINE_OPERATOR,
+    m.MINE_COUNTY,
+    m.MINE_STATE,
+    m.MINE_TYPE,
+    m.MINE_LAT,
+    m.MINE_LON,
     p.PLANTNAME,
     p.UTILITYNAME,
     p.LATITUDE,
@@ -79,6 +101,10 @@ def _get_connection() -> snowflake.connector.SnowflakeConnection:
             encryption_algorithm=serialization.NoEncryption(),
         )
     else:
+        logger.warning(
+            "Using password auth — key-pair auth is required for production. "
+            "Set SNOWFLAKE_PRIVATE_KEY_PATH to use key-pair auth."
+        )
         connect_args["password"] = settings.snowflake_password
 
     return snowflake.connector.connect(**connect_args)
@@ -110,15 +136,19 @@ def query_mine_for_subregion(subregion_id: str) -> dict | None:
         conn.close()
 
 
-def query_cortex_analyst(question: str) -> dict:
-    """Pass a natural-language question to Cortex Analyst via REST."""
+def query_cortex_complete(question: str) -> dict:
+    """Answer a question using Snowflake Cortex COMPLETE (llama3-8b).
+
+    This is a COMPLETE-based fallback, not the Cortex Analyst REST API.
+    Cortex Analyst integration is planned but not yet implemented —
+    if Analyst is flaky by Sunday noon, this COMPLETE approach ships.
+    """
     semantic_model_path = Path(__file__).parent.parent / "assets" / "semantic_model.yaml"
     semantic_model = semantic_model_path.read_text()
 
     conn = _get_connection()
     try:
         cur = conn.cursor(snowflake.connector.DictCursor)
-        # Cortex Analyst via SQL function
         cur.execute(
             """
             SELECT SNOWFLAKE.CORTEX.COMPLETE(
@@ -140,7 +170,7 @@ def query_cortex_analyst(question: str) -> dict:
         response_text = row["RESPONSE"]
         return {"answer": response_text, "sql": None, "error": None}
     except Exception as exc:
-        logger.exception("Cortex Analyst query failed")
+        logger.exception("Cortex COMPLETE query failed")
         return {
             "answer": "",
             "sql": None,
