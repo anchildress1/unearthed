@@ -240,7 +240,7 @@ verified_queries:
       WHERE TRY_TO_NUMBER(REPLACE(MINE_ID, '"', '')) IN (
         SELECT TRY_TO_NUMBER(REPLACE(MINE_ID, '"', ''))
         FROM UNEARTHED_DB.RAW.MSHA_MINES
-        WHERE TRIM(REPLACE(CURRENT_MINE_NAME, '"', '')) ILIKE '%Bailey%'
+        WHERE TRIM(REPLACE(CURRENT_MINE_NAME, '"', '')) ILIKE 'Bailey%'
           AND REPLACE(COAL_METAL_IND, '"', '') = 'C'
       )
       AND CAL_YR >= 2020
@@ -255,7 +255,7 @@ verified_queries:
       FROM UNEARTHED_DB.RAW.EIA_923_FUEL_RECEIPTS fr
       JOIN UNEARTHED_DB.RAW.MSHA_MINES m
         ON fr.COALMINE_MSHA_ID = TRY_TO_NUMBER(REPLACE(m.MINE_ID, '"', ''))::VARCHAR
-      WHERE TRIM(REPLACE(m.CURRENT_OPERATOR_NAME, '"', '')) ILIKE '%Consol Pennsylvania%'
+      WHERE TRIM(REPLACE(m.CURRENT_OPERATOR_NAME, '"', '')) ILIKE 'Consol Pennsylvania%'
         AND fr.FUEL_GROUP = 'Coal'
         AND fr.YEAR = 2024
       GROUP BY fr.PLANT_NAME, fr.PLANT_STATE
@@ -270,7 +270,7 @@ verified_queries:
         TRIM(REPLACE(CURRENT_MINE_TYPE, '"', '')) AS mine_type,
         TRIM(REPLACE(CURRENT_OPERATOR_NAME, '"', '')) AS operator
       FROM UNEARTHED_DB.RAW.MSHA_MINES
-      WHERE TRIM(REPLACE(CURRENT_MINE_NAME, '"', '')) ILIKE '%Bailey%'
+      WHERE TRIM(REPLACE(CURRENT_MINE_NAME, '"', '')) ILIKE 'Bailey%'
         AND REPLACE(COAL_METAL_IND, '"', '') = 'C'
     verified_at: "2026-04-17"
 
@@ -302,5 +302,5 @@ verified_queries:
         AND p.CAL_YR = 2024
       GROUP BY TRIM(REPLACE(m.CURRENT_OPERATOR_NAME, '"', ''))
       ORDER BY total_production_tons DESC
-      LIMIT 10
+      LIMIT 1
     verified_at: "2026-04-17"

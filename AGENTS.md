@@ -133,7 +133,7 @@ Two distinct Cortex features in use — do not confuse them:
 ## 4. Gemini Rules
 
 - Use **Gemini Flash** tier to minimize cost and latency.
-- Prompt input must include: `{mine_name, operator, county, state, plant_name, plant_operator, tons_latest_year, tons_year, subregion_id}`.
+- Prompt input must include: `{mine_name, mine_operator, mine_county, mine_state, mine_type, plant_name, plant_operator, tons_latest_year, tons_year, subregion_id}`.
 - Output: 3-5 sentences. Names the mine, the plant, the operator, the tonnage. Grief-coded register. No cheerful hedging.
 - **Cache per-subregion** at the API layer. Same subregion within the same deployment = no second Gemini call.
 
@@ -199,7 +199,7 @@ Alternative (simpler, read-only): https://github.com/isaacwasserman/mcp-snowflak
 - Install: `npx -y @smithery/cli install mcp_snowflake_server --client claude`
 - Good for schema exploration and read queries during development
 
-Do not configure MCP write access without explicit approval. Read-only by default.
+The checked-in config (`snowflake-mcp-config.yaml`) is read-only by default. For ETL or one-time data loading, use a local untracked override — do not commit write-enabled configs.
 
 ## 10. Semantic Model (Cortex Analyst)
 

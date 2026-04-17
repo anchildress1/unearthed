@@ -1,7 +1,7 @@
 analyst_services: []
 
 other_services:
-  object_manager: True
+  object_manager: False
   query_manager: True
   semantic_manager: True
 
@@ -9,11 +9,11 @@ sql_statement_permissions:
   - Select: True
   - Describe: True
   - Use: True
-  - Create: True
-  - Alter: True
-  - Insert: True
-  - Update: True
-  - Delete: True
-  - Drop: True
-  - TruncateTable: True
+  - Create: False
+  - Alter: False
+  - Insert: False
+  - Update: False
+  - Delete: False
+  - Drop: False
+  - TruncateTable: False
   - Unknown: False
