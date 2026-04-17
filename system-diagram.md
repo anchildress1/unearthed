@@ -24,7 +24,7 @@ flowchart TB
     subgraph APP["RUNTIME (Cloud Run)"]
         direction LR
         BROWSER[Browser<br/>MapLibre + PixiJS]
-        API[Cloud Run API<br/>Python/Node<br/>1 endpoint: /mine-for-me]
+        API[Cloud Run API<br/>Python / FastAPI<br/>2 endpoints: /mine-for-me, /ask]
         GEMINI[Gemini API<br/>indictment prose]
     end
 

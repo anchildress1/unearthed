@@ -126,9 +126,9 @@ tables:
         expr: PLANT_STATE
         data_type: VARCHAR
       - name: coalmine_msha_id
-        description: MSHA mine ID of the source mine
-        expr: COALMINE_MSHA_ID
-        data_type: VARCHAR
+        description: MSHA mine ID of the source mine (cast to NUMBER to match MSHA_MINES.mine_id)
+        expr: TRY_TO_NUMBER(COALMINE_MSHA_ID)
+        data_type: NUMBER
       - name: coalmine_name
         description: Name of the source coal mine
         expr: COALMINE_NAME

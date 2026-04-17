@@ -172,7 +172,12 @@ Two distinct Cortex features in use — do not confuse them:
 - **Location outside US:** Graceful message + state picker. Never a dead end.
 - **No coal in user's subregion:** Show the mine supplying the nearest coal-burning plant in their eGRID subregion, or fall back to national median contract.
 
-## 7. File & Code Conventions
+## 7. Code Quality & Maintenance
+
+- **No backwards-compatibility hacks.** Do not rename unused variables to `_var`, re-export removed types, add `// removed` comments, or create shims for deleted functionality. If something is unused, delete it completely.
+- **No temporary solutions or quick fixes.** Every line of code merged must be production-intent. Do not add TODO-gated workarounds, feature flags for half-finished work, or "fix later" stubs. If a proper solution cannot be implemented now, scope the work down — do not ship a placeholder.
+
+## 8. File & Code Conventions
 
 - **Python:** Follow PEP 8. Type hints on all function signatures. Use `async def` only if genuinely async; sync is fine for Snowflake connector and Cortex Analyst REST calls.
 - **JavaScript:** Vanilla JS, no transpilation. ES modules. No TypeScript for this project (speed over safety for a weekend build).
@@ -180,7 +185,7 @@ Two distinct Cortex features in use — do not confuse them:
 - **Secrets:** Never committed. Use `.env` locally (gitignored), Secret Manager in Cloud Run.
 - **Static assets:** Checked into repo under an `assets/` directory. eGRID GeoJSON, hero images, fallback JSON, semantic model YAML.
 
-## 8. Snowflake MCP Server
+## 9. Snowflake MCP Server
 
 For local development with Claude Code, use the **official Snowflake MCP server** from Snowflake-Labs:
 
@@ -196,7 +201,7 @@ Alternative (simpler, read-only): https://github.com/isaacwasserman/mcp-snowflak
 
 Do not configure MCP write access without explicit approval. Read-only by default.
 
-## 9. Semantic Model (Cortex Analyst)
+## 10. Semantic Model (Cortex Analyst)
 
 The semantic model YAML must be checked into the repo and cover these supported question patterns:
 
@@ -206,4 +211,4 @@ The semantic model YAML must be checked into the repo and cover these supported 
 4. "What is the total tonnage for [subregion] in [year]?"
 5. "Who is the largest coal supplier in [state]?"
 
-Any question outside these patterns should be gracefully rejected with chip suggestions. The YAML covers the 4 base tables + 2 views. Keep it minimal — scope creep in the semantic model is the #1 timeline risk identified in the PRD.
+Any question outside these patterns should be gracefully rejected with chip suggestions. The YAML covers the 5 raw tables (MSHA_MINES, MSHA_QUARTERLY_PRODUCTION, EIA_923_FUEL_RECEIPTS, EIA_860_PLANTS, PLANT_SUBREGION_LOOKUP). MRT views are not included — they serve the `/mine-for-me` endpoint via hand-written SQL, not Cortex Analyst. Keep the semantic model minimal — scope creep is the #1 timeline risk identified in the PRD.
