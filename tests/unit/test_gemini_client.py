@@ -93,6 +93,12 @@ class TestGenerateProse:
         assert degraded is True
         assert "Bailey Mine" in prose
 
+    def test_empty_subregion_not_cached(self, sample_mine_data):
+        sample_mine_data["subregion_id"] = ""
+        with patch.object(gemini_client.settings, "gemini_api_key", ""):
+            gemini_client.generate_prose(sample_mine_data)
+        assert "" not in gemini_client._prose_cache
+
     def test_different_subregions_get_separate_cache_entries(self, sample_mine_data):
         gemini_client._prose_cache["REGION_A"] = "Prose A"
         gemini_client._prose_cache["REGION_B"] = "Prose B"
