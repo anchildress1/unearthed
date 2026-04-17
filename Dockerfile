@@ -7,7 +7,12 @@ WORKDIR /app
 COPY requirements.txt .
 RUN uv pip install --system --no-cache -r requirements.txt
 
+RUN addgroup --system app && adduser --system --ingroup app app
+
 COPY . .
+
+RUN chown -R app:app /app
+USER app
 
 EXPOSE 8080
 
