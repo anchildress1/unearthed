@@ -1,8 +1,8 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 
 class MineForMeRequest(BaseModel):
-    subregion_id: str
+    subregion_id: str = Field(min_length=1, max_length=10)
 
 
 class MineForMeResponse(BaseModel):
@@ -11,11 +11,11 @@ class MineForMeResponse(BaseModel):
     mine_county: str
     mine_state: str
     mine_type: str
-    mine_coords: list[float]
+    mine_coords: list[float] = Field(min_length=2, max_length=2)
     plant: str
     plant_operator: str
-    plant_coords: list[float]
-    tons: float
+    plant_coords: list[float] = Field(min_length=2, max_length=2)
+    tons: float = Field(ge=0)
     tons_year: int
     prose: str
     subregion_id: str
@@ -24,11 +24,13 @@ class MineForMeResponse(BaseModel):
 
 
 class AskRequest(BaseModel):
-    question: str
-    subregion_id: str | None = None
+    question: str = Field(min_length=1, max_length=500)
+    subregion_id: str | None = Field(default=None, min_length=1, max_length=10)
 
 
 class AskResponse(BaseModel):
     answer: str
     sql: str | None = None
     error: str | None = None
+    suggestions: list[str] | None = None
+    results: list[dict] | None = None

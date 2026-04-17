@@ -61,10 +61,6 @@ class TestAskValidation:
         resp = client.get("/ask")
         assert resp.status_code == 405
 
-    @patch(
-        "app.main.query_cortex_analyst",
-        return_value={"answer": "Empty question handled", "sql": None, "error": None},
-    )
-    def test_empty_question_accepted(self, mock_cortex, client):
+    def test_empty_question_returns_422(self, client):
         resp = client.post("/ask", json={"question": ""})
-        assert resp.status_code == 200
+        assert resp.status_code == 422

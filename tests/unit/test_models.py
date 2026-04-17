@@ -17,9 +17,9 @@ class TestMineForMeRequest:
         req = MineForMeRequest(subregion_id="srvc")
         assert req.subregion_id == "srvc"
 
-    def test_empty_subregion_accepted(self):
-        req = MineForMeRequest(subregion_id="")
-        assert req.subregion_id == ""
+    def test_empty_subregion_rejected(self):
+        with pytest.raises(ValidationError):
+            MineForMeRequest(subregion_id="")
 
     def test_missing_subregion_rejects(self):
         with pytest.raises(ValidationError):
@@ -85,14 +85,14 @@ class TestMineForMeResponse:
         )
         assert resp.tons == 0.0
 
-    def test_negative_tons_accepted(self, sample_mine_data):
+    def test_negative_tons_rejected(self, sample_mine_data):
         sample_mine_data["tons"] = -1.0
-        resp = MineForMeResponse(
-            **sample_mine_data,
-            prose="Negative.",
-            subregion_id="SRVC",
-        )
-        assert resp.tons == -1.0
+        with pytest.raises(ValidationError):
+            MineForMeResponse(
+                **sample_mine_data,
+                prose="Negative.",
+                subregion_id="SRVC",
+            )
 
 
 # --- AskRequest ---
@@ -111,9 +111,9 @@ class TestAskRequest:
         with pytest.raises(ValidationError):
             AskRequest()
 
-    def test_empty_question_accepted(self):
-        req = AskRequest(question="")
-        assert req.question == ""
+    def test_empty_question_rejected(self):
+        with pytest.raises(ValidationError):
+            AskRequest(question="")
 
 
 # --- AskResponse ---
@@ -133,3 +133,11 @@ class TestAskResponse:
         resp = AskResponse(answer="", error="Query failed")
         assert resp.error == "Query failed"
         assert resp.answer == ""
+
+    def test_suggestions_field(self):
+        resp = AskResponse(answer="", suggestions=["Try asking X", "Try asking Y"])
+        assert resp.suggestions == ["Try asking X", "Try asking Y"]
+
+    def test_results_field(self):
+        resp = AskResponse(answer="42", results=[{"TOTAL_TONS": 42}])
+        assert resp.results == [{"TOTAL_TONS": 42}]

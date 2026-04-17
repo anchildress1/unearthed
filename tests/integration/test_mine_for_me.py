@@ -63,7 +63,7 @@ class TestMineForMeSnowflakeFailure:
     @patch("app.main.load_fallback_data", return_value=None)
     @patch("app.main.query_mine_for_subregion", side_effect=Exception("Connection refused"))
     def test_snowflake_down_no_fallback_returns_unknown(self, mock_sf, mock_fb, client):
-        resp = client.post("/mine-for-me", json={"subregion_id": "UNKNOWN_REGION"})
+        resp = client.post("/mine-for-me", json={"subregion_id": "ZZZZ"})
         assert resp.status_code == 200
         data = resp.json()
         assert data["degraded"] is True
