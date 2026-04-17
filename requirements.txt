@@ -5,3 +5,8 @@ google-genai>=1.14,<2
 pydantic>=2,<3
 pydantic-settings>=2,<3
 cryptography>=44,<45
+
+# Test dependencies
+pytest>=8,<9
+httpx>=0.28,<1
+pytest-timeout>=2,<3

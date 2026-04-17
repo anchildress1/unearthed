@@ -60,7 +60,7 @@ def mine_for_me(req: MineForMeRequest):
             degraded=True,
         )
 
-    mine_data["subregion_id"] = req.subregion_id
+    mine_data = {**mine_data, "subregion_id": req.subregion_id}
     prose, gemini_degraded = generate_prose(mine_data)
     degraded = degraded or gemini_degraded
 
