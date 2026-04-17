@@ -83,7 +83,7 @@ Public federal data (MSHA Mines, MSHA Quarterly Production, EIA-923 Fuel Receipt
 
 **P0-2. Geolocation → eGRID subregion lookup.**
 - Browser geolocation API with permission prompt.
-- Local point-in-polygon against bundled eGRID subregion GeoJSON (~500 KB asset).
+- Local point-in-polygon against bundled eGRID subregion GeoJSON (~1 MB asset).
 - Manual state-picker fallback when permission is denied or geolocation fails.
 
 **Acceptance criteria:**
@@ -247,7 +247,7 @@ Public federal data (MSHA Mines, MSHA Quarterly Production, EIA-923 Fuel Receipt
 - **AI — emotional:** Google Gemini (Flash tier).
 - **AI — factual:** Snowflake Cortex — `CORTEX.COMPLETE` (llama3-8b default) inline in SQL for summary column; Cortex Analyst with hand-written semantic model YAML for NL Q&A.
 - **Deploy:** Cloud Run. Private key for Snowflake stored as Secret Manager secret.
-- **Assets:** Bundled GeoJSON (eGRID subregions, ~500 KB), 2 hero images (pre-1980 public domain), fallback per-subregion JSON, semantic model YAML checked into repo.
+- **Assets:** Bundled GeoJSON (eGRID subregions, ~1 MB), 2 hero images (pre-1980 public domain), fallback per-subregion JSON, semantic model YAML checked into repo.
 
 ## Data Sources (locked)
 

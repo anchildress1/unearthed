@@ -18,7 +18,7 @@ A live data product that shows any US resident which specific coal mine supplies
 - **AI - emotional:** Google Gemini (Flash tier)
 - **AI - factual:** Snowflake Cortex (COMPLETE for summaries, Analyst for NL Q&A)
 - **Deploy:** Google Cloud Run, secrets via Secret Manager
-- **Assets:** eGRID GeoJSON (~500 KB), 2 public-domain hero images, fallback JSON, semantic model YAML
+- **Assets:** eGRID GeoJSON (~1 MB), 2 public-domain hero images, fallback JSON, semantic model YAML
 
 ## Data Sources
 

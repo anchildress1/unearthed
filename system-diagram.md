@@ -7,7 +7,7 @@ flowchart TB
         EIA1[EIA-923 Fuel Receipts<br/>every coal shipment<br/>mine → plant → tons]
         EIA2[EIA-860 Plants<br/>plant locations, capacity, fuel]
         PREP[Local ETL:<br/>filter to coal, clean IDs,<br/>join MSHA_ID keys]
-        SNOW[(Snowflake<br/>4 tables + 2 views)]
+        SNOW[(Snowflake<br/>5 tables + 2 views + 1 summary)]
 
         MSHA1 --> PREP
         MSHA2 --> PREP
@@ -17,7 +17,7 @@ flowchart TB
     end
 
     subgraph STATIC["STATIC ASSETS (bundled with app)"]
-        GEO[eGRID subregion<br/>GeoJSON ~500KB]
+        GEO[eGRID subregion<br/>GeoJSON ~1MB]
         IMG[2 hero images<br/>surface + underground<br/>public domain]
     end
 

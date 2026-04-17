@@ -190,7 +190,7 @@ Two distinct Cortex features in use — do not confuse them:
 For local development with Claude Code, use the **official Snowflake MCP server** from Snowflake-Labs:
 
 - **Repo:** https://github.com/Snowflake-Labs/mcp
-- **Install:** `uvx snowflake-labs-mcp --service-config-file config.yaml`
+- **Install:** `uvx snowflake-labs-mcp --service-config-file snowflake-mcp-config.yaml`
 - **Capabilities:** Cortex Search, Cortex Analyst, SQL execution, object management
 - **Auth:** Key-pair, OAuth, SSO, or user/password via Snowflake Python Connector
 - **Transport:** stdio for local dev, streamable-http for container deployment
