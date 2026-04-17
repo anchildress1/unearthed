@@ -40,7 +40,7 @@ class TestMineForMePerformance:
 class TestAskPerformance:
     @pytest.mark.timeout(2)
     @patch(
-        "app.main.query_cortex_complete",
+        "app.main.query_cortex_analyst",
         return_value={"answer": "42", "sql": None, "error": None},
     )
     def test_ask_under_200ms_mocked(self, mock_cortex, client):
@@ -52,7 +52,7 @@ class TestAskPerformance:
         assert elapsed < 0.2, f"Response took {elapsed:.3f}s, expected < 0.2s"
 
     @pytest.mark.timeout(2)
-    @patch("app.main.query_cortex_complete", side_effect=Exception("Down"))
+    @patch("app.main.query_cortex_analyst", side_effect=Exception("Down"))
     def test_ask_error_under_200ms(self, mock_cortex, client):
         start = time.perf_counter()
         resp = client.post("/ask", json={"question": "test"})

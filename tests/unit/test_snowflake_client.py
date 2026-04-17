@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.snowflake_client import load_fallback_data, query_mine_for_subregion
+from app.snowflake_client import load_fallback_data, query_cortex_analyst, query_mine_for_subregion
 
 
 MOCK_ROW = {
@@ -115,3 +115,149 @@ class TestLoadFallbackData:
         result_upper = load_fallback_data("SRVC")
         result_lower = load_fallback_data("srvc")
         assert result_upper == result_lower
+
+
+ANALYST_RESPONSE = {
+    "message": {
+        "role": "analyst",
+        "content": [
+            {"type": "text", "text": "Total coal tonnage for SRVC is 5M tons."},
+            {"type": "sql", "statement": "SELECT SUM(QUANTITY) FROM ..."},
+        ],
+    }
+}
+
+
+class TestQueryCortexAnalyst:
+    def _mock_connection(self):
+        mock_conn = MagicMock()
+        mock_conn.rest.token = "fake-session-token"
+        return mock_conn
+
+    @patch("app.snowflake_client.requests.post")
+    @patch("app.snowflake_client._get_connection")
+    def test_returns_answer_and_sql(self, mock_get_conn, mock_post):
+        mock_get_conn.return_value = self._mock_connection()
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = ANALYST_RESPONSE
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        result = query_cortex_analyst("How much coal for SRVC?")
+
+        assert result["answer"] == "Total coal tonnage for SRVC is 5M tons."
+        assert result["sql"] == "SELECT SUM(QUANTITY) FROM ..."
+        assert result["error"] is None
+
+    @patch("app.snowflake_client.requests.post")
+    @patch("app.snowflake_client._get_connection")
+    def test_text_only_response_has_no_sql(self, mock_get_conn, mock_post):
+        mock_get_conn.return_value = self._mock_connection()
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "message": {
+                "role": "analyst",
+                "content": [{"type": "text", "text": "I cannot answer that."}],
+            }
+        }
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        result = query_cortex_analyst("What's the weather?")
+
+        assert result["answer"] == "I cannot answer that."
+        assert result["sql"] is None
+        assert result["error"] is None
+
+    @patch("app.snowflake_client.requests.post")
+    @patch("app.snowflake_client._get_connection")
+    def test_http_error_returns_error_dict(self, mock_get_conn, mock_post):
+        mock_get_conn.return_value = self._mock_connection()
+        mock_post.side_effect = Exception("Connection refused")
+
+        result = query_cortex_analyst("test question")
+
+        assert result["answer"] == ""
+        assert result["sql"] is None
+        assert "Connection refused" in result["error"]
+
+    @patch("app.snowflake_client.requests.post")
+    @patch("app.snowflake_client._get_connection")
+    def test_connection_closed_after_call(self, mock_get_conn, mock_post):
+        mock_conn = self._mock_connection()
+        mock_get_conn.return_value = mock_conn
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = ANALYST_RESPONSE
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        query_cortex_analyst("test")
+
+        mock_conn.close.assert_called_once()
+
+    @patch("app.snowflake_client.requests.post")
+    @patch("app.snowflake_client._get_connection")
+    def test_connection_closed_on_error(self, mock_get_conn, mock_post):
+        mock_conn = self._mock_connection()
+        mock_get_conn.return_value = mock_conn
+        mock_post.side_effect = Exception("fail")
+
+        query_cortex_analyst("test")
+
+        mock_conn.close.assert_called_once()
+
+    @patch("app.snowflake_client.requests.post")
+    @patch("app.snowflake_client._get_connection")
+    def test_posts_to_correct_url(self, mock_get_conn, mock_post):
+        mock_get_conn.return_value = self._mock_connection()
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = ANALYST_RESPONSE
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        with patch("app.snowflake_client.settings") as mock_settings:
+            mock_settings.snowflake_account = "OJIDCKD-MDC60154"
+            query_cortex_analyst("test")
+
+        call_url = mock_post.call_args[0][0]
+        assert "ojidckd-mdc60154.snowflakecomputing.com" in call_url
+        assert "/api/v2/cortex/analyst/message" in call_url
+
+    @patch("app.snowflake_client.requests.post")
+    @patch("app.snowflake_client._get_connection")
+    def test_sends_auth_header_with_token(self, mock_get_conn, mock_post):
+        mock_get_conn.return_value = self._mock_connection()
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = ANALYST_RESPONSE
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        query_cortex_analyst("test")
+
+        call_headers = mock_post.call_args[1]["headers"]
+        assert "Snowflake Token=" in call_headers["Authorization"]
+        assert "fake-session-token" in call_headers["Authorization"]
+
+    @patch("app.snowflake_client.requests.post")
+    @patch("app.snowflake_client._get_connection")
+    def test_multiple_text_blocks_joined(self, mock_get_conn, mock_post):
+        mock_get_conn.return_value = self._mock_connection()
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "message": {
+                "role": "analyst",
+                "content": [
+                    {"type": "text", "text": "Part one."},
+                    {"type": "text", "text": "Part two."},
+                    {"type": "sql", "statement": "SELECT 1"},
+                ],
+            }
+        }
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        result = query_cortex_analyst("test")
+
+        assert "Part one." in result["answer"]
+        assert "Part two." in result["answer"]
+        assert result["sql"] == "SELECT 1"

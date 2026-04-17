@@ -2,6 +2,7 @@ import json
 import logging
 from pathlib import Path
 
+import requests
 import snowflake.connector
 
 from app.config import settings
@@ -136,41 +137,54 @@ def query_mine_for_subregion(subregion_id: str) -> dict | None:
         conn.close()
 
 
-def query_cortex_complete(question: str) -> dict:
-    """Answer a question using Snowflake Cortex COMPLETE (llama3-8b).
+def query_cortex_analyst(question: str) -> dict:
+    """Answer a question using the Snowflake Cortex Analyst REST API.
 
-    This is a COMPLETE-based fallback, not the Cortex Analyst REST API.
-    Cortex Analyst integration is planned but not yet implemented —
-    if Analyst is flaky by Sunday noon, this COMPLETE approach ships.
+    Posts the question plus the semantic model to the Cortex Analyst
+    endpoint. Returns both the text answer and any generated SQL so
+    the frontend can display SQL for the PRD honesty path.
     """
     semantic_model_path = Path(__file__).parent.parent / "assets" / "semantic_model.yaml"
     semantic_model = semantic_model_path.read_text()
 
     conn = _get_connection()
     try:
-        cur = conn.cursor(snowflake.connector.DictCursor)
-        cur.execute(
-            """
-            SELECT SNOWFLAKE.CORTEX.COMPLETE(
-                'llama3-8b',
-                CONCAT(
-                    'You are a SQL analyst. Given this semantic model:\\n',
-                    %(semantic_model)s,
-                    '\\n\\nAnswer this question by generating SQL and explaining the result: ',
-                    %(question)s
-                )
-            ) AS RESPONSE
-            """,
-            {"semantic_model": semantic_model, "question": question},
-        )
-        row = cur.fetchone()
-        if not row:
-            return {"answer": "No response from Cortex.", "sql": None, "error": None}
+        token = conn.rest.token
+        account = settings.snowflake_account.lower()
+        url = f"https://{account}.snowflakecomputing.com/api/v2/cortex/analyst/message"
 
-        response_text = row["RESPONSE"]
-        return {"answer": response_text, "sql": None, "error": None}
+        resp = requests.post(
+            url,
+            headers={
+                "Authorization": f'Snowflake Token="{token}"',
+                "Content-Type": "application/json",
+            },
+            json={
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": question}],
+                    }
+                ],
+                "semantic_model": semantic_model,
+            },
+            timeout=30,
+        )
+        resp.raise_for_status()
+        body = resp.json()
+
+        answer_parts = []
+        sql = None
+        for item in body.get("message", {}).get("content", []):
+            if item.get("type") == "text":
+                answer_parts.append(item["text"])
+            elif item.get("type") == "sql":
+                sql = item.get("statement", "")
+
+        answer = "\n\n".join(answer_parts) if answer_parts else ""
+        return {"answer": answer, "sql": sql, "error": None}
     except Exception as exc:
-        logger.exception("Cortex COMPLETE query failed")
+        logger.exception("Cortex Analyst query failed")
         return {
             "answer": "",
             "sql": None,

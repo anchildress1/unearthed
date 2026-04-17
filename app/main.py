@@ -8,7 +8,7 @@ from app.gemini_client import generate_prose
 from app.models import AskRequest, AskResponse, MineForMeRequest, MineForMeResponse
 from app.snowflake_client import (
     load_fallback_data,
-    query_cortex_complete,
+    query_cortex_analyst,
     query_mine_for_subregion,
 )
 
@@ -89,9 +89,9 @@ def ask(req: AskRequest):
         question = f"{req.question} (for eGRID subregion {req.subregion_id})"
 
     try:
-        result = query_cortex_complete(question)
+        result = query_cortex_analyst(question)
     except Exception:
-        logger.exception("Cortex COMPLETE failed")
+        logger.exception("Cortex Analyst query failed")
         return AskResponse(
             answer="",
             error="The data assistant is temporarily unavailable. Try one of the suggested questions.",
