@@ -7,8 +7,8 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# In-memory cache: subregion_id -> prose. TTL = until next deploy.
-_prose_cache: dict[str, str] = {}
+# In-memory cache: subregion_id -> (prose, degraded). TTL = until next deploy.
+_prose_cache: dict[str, tuple[str, bool]] = {}
 
 _PROMPT_TEMPLATE: str = (
     Path(__file__).parent.parent / "assets" / "gemini_prompt.txt"
@@ -31,7 +31,7 @@ def generate_prose(mine_data: dict) -> tuple[str, bool]:
     subregion_id = mine_data.get("subregion_id", "")
 
     if subregion_id and subregion_id in _prose_cache:
-        return _prose_cache[subregion_id], False
+        return _prose_cache[subregion_id]
 
     prompt = _PROMPT_TEMPLATE.format(
         mine_name=mine_data["mine"],
@@ -50,7 +50,7 @@ def generate_prose(mine_data: dict) -> tuple[str, bool]:
         logger.warning("No GEMINI_API_KEY configured, using fallback template")
         prose = _fallback_prose(mine_data)
         if subregion_id:
-            _prose_cache[subregion_id] = prose
+            _prose_cache[subregion_id] = (prose, True)
         return prose, True
 
     try:
@@ -61,13 +61,13 @@ def generate_prose(mine_data: dict) -> tuple[str, bool]:
         )
         prose = response.text.strip()
         if subregion_id:
-            _prose_cache[subregion_id] = prose
+            _prose_cache[subregion_id] = (prose, False)
         return prose, False
     except Exception:
         logger.exception("Gemini call failed, using fallback template")
         prose = _fallback_prose(mine_data)
         if subregion_id:
-            _prose_cache[subregion_id] = prose
+            _prose_cache[subregion_id] = (prose, True)
         return prose, True
 
 

@@ -60,14 +60,21 @@ class TestGenerateProse:
         assert "Bailey Mine" in prose
 
     def test_cache_hit_returns_cached_prose(self, sample_mine_data):
-        gemini_client._prose_cache["CACHED"] = "Previously generated prose."
+        gemini_client._prose_cache["CACHED"] = ("Previously generated prose.", False)
         sample_mine_data["subregion_id"] = "CACHED"
         prose, degraded = gemini_client.generate_prose(sample_mine_data)
         assert prose == "Previously generated prose."
         assert degraded is False
 
+    def test_cache_hit_preserves_degraded_state(self, sample_mine_data):
+        gemini_client._prose_cache["DEG"] = ("Fallback prose.", True)
+        sample_mine_data["subregion_id"] = "DEG"
+        prose, degraded = gemini_client.generate_prose(sample_mine_data)
+        assert prose == "Fallback prose."
+        assert degraded is True
+
     def test_cache_hit_does_not_call_gemini(self, sample_mine_data):
-        gemini_client._prose_cache["CACHED2"] = "Cached."
+        gemini_client._prose_cache["CACHED2"] = ("Cached.", False)
         sample_mine_data["subregion_id"] = "CACHED2"
         with patch("app.gemini_client.genai") as mock_genai:
             gemini_client.generate_prose(sample_mine_data)
@@ -86,7 +93,7 @@ class TestGenerateProse:
 
         assert prose == "Generated prose about Bailey Mine."
         assert degraded is False
-        assert gemini_client._prose_cache["NEW_REGION"] == prose
+        assert gemini_client._prose_cache["NEW_REGION"] == (prose, False)
 
     def test_gemini_exception_falls_back(self, sample_mine_data):
         sample_mine_data["subregion_id"] = "FAIL_REGION"
@@ -103,7 +110,7 @@ class TestGenerateProse:
             prose, degraded = gemini_client.generate_prose(sample_mine_data)
         assert degraded is True
         assert "CACHE_DEGRADE" in gemini_client._prose_cache
-        assert gemini_client._prose_cache["CACHE_DEGRADE"] == prose
+        assert gemini_client._prose_cache["CACHE_DEGRADE"] == (prose, True)
 
     def test_gemini_exception_caches_fallback(self, sample_mine_data):
         sample_mine_data["subregion_id"] = "FAIL_CACHE"
@@ -112,7 +119,7 @@ class TestGenerateProse:
                 prose, degraded = gemini_client.generate_prose(sample_mine_data)
         assert degraded is True
         assert "FAIL_CACHE" in gemini_client._prose_cache
-        assert gemini_client._prose_cache["FAIL_CACHE"] == prose
+        assert gemini_client._prose_cache["FAIL_CACHE"] == (prose, True)
 
     def test_empty_subregion_not_cached(self, sample_mine_data):
         sample_mine_data["subregion_id"] = ""
@@ -121,8 +128,8 @@ class TestGenerateProse:
         assert "" not in gemini_client._prose_cache
 
     def test_different_subregions_get_separate_cache_entries(self, sample_mine_data):
-        gemini_client._prose_cache["REGION_A"] = "Prose A"
-        gemini_client._prose_cache["REGION_B"] = "Prose B"
+        gemini_client._prose_cache["REGION_A"] = ("Prose A", False)
+        gemini_client._prose_cache["REGION_B"] = ("Prose B", False)
 
         sample_mine_data["subregion_id"] = "REGION_A"
         prose_a, _ = gemini_client.generate_prose(sample_mine_data)
