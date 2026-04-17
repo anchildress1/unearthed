@@ -8,7 +8,7 @@ from app.gemini_client import generate_prose
 from app.models import AskRequest, AskResponse, MineForMeRequest, MineForMeResponse
 from app.snowflake_client import (
     load_fallback_data,
-    query_cortex_analyst,
+    query_cortex_complete,
     query_mine_for_subregion,
 )
 
@@ -30,12 +30,12 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 @app.post("/mine-for-me", response_model=MineForMeResponse)
 def mine_for_me(req: MineForMeRequest):
     degraded = False
+    mine_data = None
 
     try:
         mine_data = query_mine_for_subregion(req.subregion_id)
     except Exception:
         logger.exception("Snowflake query failed, trying fallback")
-        mine_data = load_fallback_data(req.subregion_id)
         degraded = True
 
     if not mine_data:
@@ -84,10 +84,14 @@ def mine_for_me(req: MineForMeRequest):
 
 @app.post("/ask", response_model=AskResponse)
 def ask(req: AskRequest):
+    question = req.question
+    if req.subregion_id:
+        question = f"{req.question} (for eGRID subregion {req.subregion_id})"
+
     try:
-        result = query_cortex_analyst(req.question)
+        result = query_cortex_complete(question)
     except Exception:
-        logger.exception("Cortex Analyst failed")
+        logger.exception("Cortex COMPLETE failed")
         return AskResponse(
             answer="",
             error="The data assistant is temporarily unavailable. Try one of the suggested questions.",
