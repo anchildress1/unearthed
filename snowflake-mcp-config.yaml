@@ -13,7 +13,7 @@ sql_statement_permissions:
   - Alter: True
   - Insert: True
   - Update: True
-  - Delete: False
-  - Drop: False
-  - TruncateTable: False
+  - Delete: True
+  - Drop: True
+  - TruncateTable: True
   - Unknown: False
