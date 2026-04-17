@@ -1,0 +1,19 @@
+{
+  "mine": "Kosse Strip",
+  "mine_operator": "Luminant Mining Company LLC",
+  "mine_county": "Limestone",
+  "mine_state": "TX",
+  "mine_type": "Surface",
+  "mine_coords": [
+    31.281111,
+    -96.494167
+  ],
+  "plant": "Oak Grove (TX)",
+  "plant_operator": "Luminant Generation Company LLC",
+  "plant_coords": [
+    "31.180300",
+    "-96.486600"
+  ],
+  "tons": 8832223.0,
+  "tons_year": 2024
+}

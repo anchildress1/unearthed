@@ -1,0 +1,19 @@
+{
+  "mine": "Lively Grove Mine",
+  "mine_operator": "Prairie State Generating Company LLC",
+  "mine_county": "Washington",
+  "mine_state": "IL",
+  "mine_type": "Underground",
+  "mine_coords": [
+    38.283056,
+    -89.654722
+  ],
+  "plant": "Prairie State Generating Station",
+  "plant_operator": "Prairie State Generating Co LLC",
+  "plant_coords": [
+    "38.279167",
+    "-89.666944"
+  ],
+  "tons": 6732027.0,
+  "tons_year": 2024
+}

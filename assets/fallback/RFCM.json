@@ -1,0 +1,19 @@
+{
+  "mine": "Black Thunder",
+  "mine_operator": "Thunder Basin Coal Company LLC",
+  "mine_county": "Campbell",
+  "mine_state": "WY",
+  "mine_type": "Surface",
+  "mine_coords": [
+    42.693611,
+    -105.266667
+  ],
+  "plant": "J H Campbell",
+  "plant_operator": "Consumers Energy Co - (MI)",
+  "plant_coords": [
+    "42.910296",
+    "-86.200740"
+  ],
+  "tons": 2251273.0,
+  "tons_year": 2024
+}

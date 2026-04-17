@@ -1,0 +1,19 @@
+{
+  "mine": "Rosebud Mine & Crusher/Conveyor",
+  "mine_operator": "Westmoreland Rosebud Mining LLC",
+  "mine_county": "Rosebud",
+  "mine_state": "MT",
+  "mine_type": "Surface",
+  "mine_coords": [
+    45.875,
+    -106.64
+  ],
+  "plant": "Colstrip",
+  "plant_operator": "Talen Montana LLC",
+  "plant_coords": [
+    "45.883100",
+    "-106.614000"
+  ],
+  "tons": 5732439.0,
+  "tons_year": 2024
+}

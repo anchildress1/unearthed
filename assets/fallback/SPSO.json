@@ -1,0 +1,19 @@
+{
+  "mine": "Belle Ayr Mine",
+  "mine_operator": "Eagle Specialty Materials LLC",
+  "mine_county": "Campbell",
+  "mine_state": "WY",
+  "mine_type": "Surface",
+  "mine_coords": [
+    44.1,
+    -105.383056
+  ],
+  "plant": "Welsh",
+  "plant_operator": "Southwestern Electric Power Co",
+  "plant_coords": [
+    "33.055220",
+    "-94.839993"
+  ],
+  "tons": 1494565.0,
+  "tons_year": 2024
+}
