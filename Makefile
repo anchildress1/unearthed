@@ -12,7 +12,7 @@ install-dev:
 
 # Run the FastAPI dev server with auto-reload
 dev:
-	uv run uvicorn app.main:app --reload --port 8000
+	uv run uvicorn app.main:app --reload --port 8001
 
 # Run the full test suite
 test:
