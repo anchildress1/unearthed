@@ -50,6 +50,13 @@ class TestSettings:
         assert s.snowflake_private_key_path == "/path/to/key.p8"
         assert s.snowflake_private_key_passphrase == "pass"
 
+    @patch.dict(os.environ, _CLEAN_ENV, clear=True)
+    def test_constructs_without_snowflake_vars(self):
+        s = Settings(gemini_api_key="AIza-fake", _env_file=None)
+        assert s.snowflake_account == ""
+        assert s.snowflake_user == ""
+        assert s.gemini_api_key == "AIza-fake"
+
     def test_gemini_api_key(self):
         s = Settings(
             snowflake_account="test",

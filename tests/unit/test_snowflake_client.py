@@ -119,6 +119,14 @@ class TestLoadFallbackData:
 
 class TestAuthPolicy:
     @patch("app.snowflake_client.settings")
+    def test_missing_account_raises(self, mock_settings):
+        mock_settings.snowflake_account = ""
+        mock_settings.snowflake_user = "user"
+
+        with pytest.raises(RuntimeError, match="SNOWFLAKE_ACCOUNT"):
+            _get_connection()
+
+    @patch("app.snowflake_client.settings")
     def test_no_auth_raises_runtime_error(self, mock_settings):
         mock_settings.snowflake_account = "test"
         mock_settings.snowflake_user = "user"
@@ -226,7 +234,7 @@ class TestQueryCortexAnalyst:
 
         assert result["answer"] == ""
         assert result["sql"] is None
-        assert "Connection refused" in result["error"]
+        assert "couldn't answer" in result["error"]
 
     @patch("app.snowflake_client.requests.post")
     @patch("app.snowflake_client._get_connection")

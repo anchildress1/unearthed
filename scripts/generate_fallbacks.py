@@ -6,7 +6,6 @@ Run once from repo root:
 
 import json
 import sys
-from decimal import Decimal
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -30,7 +29,7 @@ def main():
             data = query_mine_for_subregion(subregion)
             if data:
                 out = FALLBACK_DIR / f"{subregion}.json"
-                out.write_text(json.dumps(data, indent=2, default=str))
+                out.write_text(json.dumps(data, indent=2))
                 print(f"OK — {data['mine']}")
             else:
                 print("no data")

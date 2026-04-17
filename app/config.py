@@ -4,8 +4,8 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    snowflake_account: str
-    snowflake_user: str
+    snowflake_account: str = ""
+    snowflake_user: str = ""
     snowflake_password: str = ""
     snowflake_private_key_path: str = ""
     snowflake_private_key_passphrase: str = ""

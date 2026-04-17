@@ -78,6 +78,10 @@ LIMIT 1
 
 
 def _get_connection() -> snowflake.connector.SnowflakeConnection:
+    if not settings.snowflake_account or not settings.snowflake_user:
+        raise RuntimeError(
+            "SNOWFLAKE_ACCOUNT and SNOWFLAKE_USER must be set."
+        )
     connect_args = {
         "account": settings.snowflake_account,
         "user": settings.snowflake_user,
@@ -128,15 +132,20 @@ def query_mine_for_subregion(subregion_id: str) -> dict | None:
             "mine_county": row["MINE_COUNTY"],
             "mine_state": row["MINE_STATE"],
             "mine_type": row["MINE_TYPE"],
-            "mine_coords": [row["MINE_LAT"], row["MINE_LON"]],
+            "mine_coords": [float(row["MINE_LAT"]), float(row["MINE_LON"])],
             "plant": row["PLANT_NAME"],
             "plant_operator": row["PLANT_OPERATOR"],
-            "plant_coords": [row["PLANT_LAT"], row["PLANT_LON"]],
+            "plant_coords": [float(row["PLANT_LAT"]), float(row["PLANT_LON"])],
             "tons": float(row["TOTAL_TONS"]),
             "tons_year": int(row["TONS_YEAR"]),
         }
     finally:
         conn.close()
+
+
+_SEMANTIC_MODEL: str = (
+    Path(__file__).parent.parent / "assets" / "semantic_model.yaml"
+).read_text()
 
 
 def query_cortex_analyst(question: str) -> dict:
@@ -146,9 +155,6 @@ def query_cortex_analyst(question: str) -> dict:
     endpoint. Returns both the text answer and any generated SQL so
     the frontend can display SQL for the PRD honesty path.
     """
-    semantic_model_path = Path(__file__).parent.parent / "assets" / "semantic_model.yaml"
-    semantic_model = semantic_model_path.read_text()
-
     conn = _get_connection()
     try:
         token = conn.rest.token
@@ -168,7 +174,7 @@ def query_cortex_analyst(question: str) -> dict:
                         "content": [{"type": "text", "text": question}],
                     }
                 ],
-                "semantic_model": semantic_model,
+                "semantic_model": _SEMANTIC_MODEL,
             },
             timeout=30,
         )
@@ -185,12 +191,12 @@ def query_cortex_analyst(question: str) -> dict:
 
         answer = "\n\n".join(answer_parts) if answer_parts else ""
         return {"answer": answer, "sql": sql, "error": None}
-    except Exception as exc:
+    except Exception:
         logger.exception("Cortex Analyst query failed")
         return {
             "answer": "",
             "sql": None,
-            "error": f"Query failed: {exc}",
+            "error": "We couldn't answer that question right now. Please try again later.",
         }
     finally:
         conn.close()
