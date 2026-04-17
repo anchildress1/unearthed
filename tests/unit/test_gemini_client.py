@@ -41,6 +41,10 @@ class TestFallbackProse:
         prose = gemini_client._fallback_prose(sample_mine_data_surface)
         assert "surface" in prose
 
+    def test_fallback_contains_plant_operator(self, sample_mine_data):
+        prose = gemini_client._fallback_prose(sample_mine_data)
+        assert "South Carolina Public Service Authority" in prose
+
     def test_fallback_contains_subregion(self, sample_mine_data):
         sample_mine_data["subregion_id"] = "SRVC"
         prose = gemini_client._fallback_prose(sample_mine_data)
@@ -92,6 +96,23 @@ class TestGenerateProse:
 
         assert degraded is True
         assert "Bailey Mine" in prose
+
+    def test_no_api_key_caches_fallback(self, sample_mine_data):
+        sample_mine_data["subregion_id"] = "CACHE_DEGRADE"
+        with patch.object(gemini_client.settings, "gemini_api_key", ""):
+            prose, degraded = gemini_client.generate_prose(sample_mine_data)
+        assert degraded is True
+        assert "CACHE_DEGRADE" in gemini_client._prose_cache
+        assert gemini_client._prose_cache["CACHE_DEGRADE"] == prose
+
+    def test_gemini_exception_caches_fallback(self, sample_mine_data):
+        sample_mine_data["subregion_id"] = "FAIL_CACHE"
+        with patch.object(gemini_client.settings, "gemini_api_key", "fake-key"):
+            with patch("app.gemini_client.genai.Client", side_effect=Exception("boom")):
+                prose, degraded = gemini_client.generate_prose(sample_mine_data)
+        assert degraded is True
+        assert "FAIL_CACHE" in gemini_client._prose_cache
+        assert gemini_client._prose_cache["FAIL_CACHE"] == prose
 
     def test_empty_subregion_not_cached(self, sample_mine_data):
         sample_mine_data["subregion_id"] = ""

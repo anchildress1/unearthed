@@ -17,7 +17,8 @@ _PROMPT_TEMPLATE: str = (
 _FALLBACK_TEMPLATE = (
     "In {mine_county}, {mine_state}, the {mine_type} operation known as {mine_name} "
     "— operated by {mine_operator} — shipped {tons_latest_year} tons of coal to "
-    "{plant_name} in {tons_year}. The contract sustains the {subregion_id} grid."
+    "{plant_name}, operated by {plant_operator}, in {tons_year}. "
+    "The contract sustains the {subregion_id} grid."
 )
 
 
@@ -47,7 +48,10 @@ def generate_prose(mine_data: dict) -> tuple[str, bool]:
 
     if not settings.gemini_api_key:
         logger.warning("No GEMINI_API_KEY configured, using fallback template")
-        return _fallback_prose(mine_data), True
+        prose = _fallback_prose(mine_data)
+        if subregion_id:
+            _prose_cache[subregion_id] = prose
+        return prose, True
 
     try:
         client = genai.Client(api_key=settings.gemini_api_key)
@@ -61,7 +65,10 @@ def generate_prose(mine_data: dict) -> tuple[str, bool]:
         return prose, False
     except Exception:
         logger.exception("Gemini call failed, using fallback template")
-        return _fallback_prose(mine_data), True
+        prose = _fallback_prose(mine_data)
+        if subregion_id:
+            _prose_cache[subregion_id] = prose
+        return prose, True
 
 
 def _fallback_prose(mine_data: dict) -> str:
