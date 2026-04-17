@@ -73,11 +73,11 @@ Public federal data (MSHA Mines, MSHA Quarterly Production, EIA-923 Fuel Receipt
 **P0-1. Data pipeline into Snowflake.**
 - Four source datasets loaded: MSHA Mines (current), MSHA Quarterly Production (through 2024), EIA-923 Fuel Receipts (2024 annual, published 2025), EIA-860 Plants (2024 annual, published 2025).
 - Filtered to coal only. Keyed by MSHA Mine ID.
-- Two views: `v_mine_for_plant` (mine rankings per plant) and `v_mine_for_subregion` (aggregated mine rankings per eGRID subregion).
-- Materialized factual-summary column on `v_mine_for_subregion` populated by `SNOWFLAKE.CORTEX.COMPLETE` — a 2-3 sentence factual recap per top mine, generated inline in SQL at build time.
+- Two views: `V_MINE_FOR_PLANT` (mine rankings per plant) and `V_MINE_FOR_SUBREGION` (aggregated mine rankings per eGRID subregion).
+- Materialized factual-summary column on `V_MINE_FOR_SUBREGION` populated by `SNOWFLAKE.CORTEX.COMPLETE` — a 2-3 sentence factual recap per top mine, generated inline in SQL at build time.
 
 **Acceptance criteria:**
-- Given the four source files loaded, when I query `v_mine_for_subregion` for subregion `SRVC` (WV/VA), then I get back a ranked list of at least 5 source mines with operator names, coordinates, 2024 annual tonnage, and a Cortex-generated factual summary string.
+- Given the four source files loaded, when I query `V_MINE_FOR_SUBREGION` for subregion `SRVC` (WV/VA), then I get back a ranked list of at least 5 source mines with operator names, coordinates, 2024 annual tonnage, and a Cortex-generated factual summary string.
 - Query returns in under 2 seconds on an XS Snowflake warehouse.
 - Cortex COMPLETE summary column is populated for every row with no nulls.
 
@@ -92,7 +92,7 @@ Public federal data (MSHA Mines, MSHA Quarterly Production, EIA-923 Fuel Receipt
 - Given I am outside the US, when the page loads, then I see a graceful fallback message and can still use the state picker.
 
 **P0-3. Cloud Run API endpoint.**
-- Single endpoint: `POST /mine-for-me` with body `{subregion_id}`.
+- `POST /mine-for-me` with body `{subregion_id}`.
 - Executes the Snowflake query, calls Gemini for prose, returns JSON: `{mine, plant, tons, prose, user_coords, mine_coords, plant_coords}`.
 - FastAPI framework, Python 3.11+, matches the pattern from the "dragon smelter" project.
 
