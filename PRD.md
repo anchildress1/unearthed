@@ -121,7 +121,7 @@ Public federal data (MSHA Mines, MSHA Quarterly Production, EIA-923 Fuel Receipt
 - Given I'm on a low-end laptop, when particles render, then frame rate stays above 30 FPS (ParticleContainer sprite batching required).
 
 **P0-6. Gemini-generated indictment prose.**
-- Prompt input: `{mine_name, operator, county, state, plant_name, plant_operator, tons_latest_year, tons_year, subregion_id}`.
+- Prompt input: `{mine_name, mine_operator, mine_county, mine_state, mine_type, plant_name, plant_operator, tons_latest_year, tons_year, subregion_id}`.
 - Output: 3–5 sentences naming the mine, the plant, the operator, and the tonnage. Grief-coded register. No cheerful hedging.
 - Cached per-subregion at the API layer to minimize Gemini calls (TTL: until the next deploy).
 
@@ -138,7 +138,7 @@ Public federal data (MSHA Mines, MSHA Quarterly Production, EIA-923 Fuel Receipt
 - Given a Twitter or LinkedIn preview is generated, when the share URL is pasted, then the preview shows the mine name and a hook sentence.
 
 **P0-8. Cortex Analyst "Ask your grid" chat.**
-- Semantic model YAML defined over the 4 tables + 2 views. Restricted to safe, meaningful questions: mine production over time, plant-to-mine contracts, operator-level rollups, subregion-level totals.
+- Semantic model YAML defined over the 5 raw tables (MSHA_MINES, MSHA_QUARTERLY_PRODUCTION, EIA_923_FUEL_RECEIPTS, EIA_860_PLANTS, PLANT_SUBREGION_LOOKUP). MRT views serve `/mine-for-me` via hand-written SQL, not Analyst. Restricted to safe, meaningful questions: mine production over time, plant-to-mine contracts, operator-level rollups, subregion-level totals.
 - Frontend: a text input + 3-5 pre-built question chips appear below the indictment prose. Tapping a chip fires the question through Cortex Analyst; typing is also supported.
 - Chat transcript displays: the user's question, the generated SQL (collapsed by default, expandable), and the natural-language answer.
 - FastAPI endpoint `POST /ask` wraps the Snowflake Cortex Analyst REST call.

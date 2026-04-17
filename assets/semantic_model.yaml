@@ -254,7 +254,7 @@ verified_queries:
         SUM(TRY_TO_NUMBER(REPLACE(fr.QUANTITY, ',', ''), 18, 1)) AS total_tons
       FROM UNEARTHED_DB.RAW.EIA_923_FUEL_RECEIPTS fr
       JOIN UNEARTHED_DB.RAW.MSHA_MINES m
-        ON fr.COALMINE_MSHA_ID = TRY_TO_NUMBER(REPLACE(m.MINE_ID, '"', ''))::VARCHAR
+        ON TRY_TO_NUMBER(fr.COALMINE_MSHA_ID) = TRY_TO_NUMBER(REPLACE(m.MINE_ID, '"', ''))
       WHERE TRIM(REPLACE(m.CURRENT_OPERATOR_NAME, '"', '')) ILIKE 'Consol Pennsylvania%'
         AND fr.FUEL_GROUP = 'Coal'
         AND fr.YEAR = 2024
