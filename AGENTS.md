@@ -77,7 +77,8 @@ UNEARTHED_DB
 │   ├── MSHA_MINES
 │   ├── MSHA_QUARTERLY_PRODUCTION
 │   ├── EIA_923_FUEL_RECEIPTS
-│   └── EIA_860_PLANTS
+│   ├── EIA_860_PLANTS
+│   └── PLANT_SUBREGION_LOOKUP
 ├── INT          — cleaned, joined, filtered to coal
 │   └── (intermediate transforms)
 └── MRT          — consumption-ready views
