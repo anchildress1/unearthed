@@ -27,6 +27,7 @@ class TestSettings:
         assert s.snowflake_password == ""
         assert s.snowflake_private_key_path == ""
         assert s.gemini_api_key == ""
+        assert s.allow_password_auth is False
 
     def test_password_auth_config(self):
         s = Settings(

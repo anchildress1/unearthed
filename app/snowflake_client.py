@@ -101,12 +101,14 @@ def _get_connection() -> snowflake.connector.SnowflakeConnection:
             format=serialization.PrivateFormat.PKCS8,
             encryption_algorithm=serialization.NoEncryption(),
         )
-    else:
-        logger.warning(
-            "Using password auth — key-pair auth is required for production. "
-            "Set SNOWFLAKE_PRIVATE_KEY_PATH to use key-pair auth."
-        )
+    elif settings.allow_password_auth and settings.snowflake_password:
+        logger.warning("Using password auth — set SNOWFLAKE_PRIVATE_KEY_PATH for production.")
         connect_args["password"] = settings.snowflake_password
+    else:
+        raise RuntimeError(
+            "No auth method configured. Set SNOWFLAKE_PRIVATE_KEY_PATH for key-pair auth, "
+            "or set ALLOW_PASSWORD_AUTH=true with SNOWFLAKE_PASSWORD for local dev."
+        )
 
     return snowflake.connector.connect(**connect_args)
 

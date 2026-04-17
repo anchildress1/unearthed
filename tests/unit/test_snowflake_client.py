@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.snowflake_client import load_fallback_data, query_cortex_analyst, query_mine_for_subregion
+from app.snowflake_client import _get_connection, load_fallback_data, query_cortex_analyst, query_mine_for_subregion
 
 
 MOCK_ROW = {
@@ -115,6 +115,53 @@ class TestLoadFallbackData:
         result_upper = load_fallback_data("SRVC")
         result_lower = load_fallback_data("srvc")
         assert result_upper == result_lower
+
+
+class TestAuthPolicy:
+    @patch("app.snowflake_client.settings")
+    def test_no_auth_raises_runtime_error(self, mock_settings):
+        mock_settings.snowflake_account = "test"
+        mock_settings.snowflake_user = "user"
+        mock_settings.snowflake_role = "ROLE"
+        mock_settings.snowflake_warehouse = "WH"
+        mock_settings.snowflake_database = "DB"
+        mock_settings.snowflake_private_key_path = ""
+        mock_settings.snowflake_password = ""
+        mock_settings.allow_password_auth = False
+
+        with pytest.raises(RuntimeError, match="No auth method configured"):
+            _get_connection()
+
+    @patch("app.snowflake_client.settings")
+    def test_password_without_opt_in_raises(self, mock_settings):
+        mock_settings.snowflake_account = "test"
+        mock_settings.snowflake_user = "user"
+        mock_settings.snowflake_role = "ROLE"
+        mock_settings.snowflake_warehouse = "WH"
+        mock_settings.snowflake_database = "DB"
+        mock_settings.snowflake_private_key_path = ""
+        mock_settings.snowflake_password = "secret"
+        mock_settings.allow_password_auth = False
+
+        with pytest.raises(RuntimeError, match="No auth method configured"):
+            _get_connection()
+
+    @patch("app.snowflake_client.snowflake.connector.connect")
+    @patch("app.snowflake_client.settings")
+    def test_password_with_opt_in_connects(self, mock_settings, mock_connect):
+        mock_settings.snowflake_account = "test"
+        mock_settings.snowflake_user = "user"
+        mock_settings.snowflake_role = "ROLE"
+        mock_settings.snowflake_warehouse = "WH"
+        mock_settings.snowflake_database = "DB"
+        mock_settings.snowflake_private_key_path = ""
+        mock_settings.snowflake_password = "secret"
+        mock_settings.allow_password_auth = True
+
+        _get_connection()
+        mock_connect.assert_called_once()
+        call_kwargs = mock_connect.call_args[1]
+        assert call_kwargs["password"] == "secret"
 
 
 ANALYST_RESPONSE = {

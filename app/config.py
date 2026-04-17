@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     snowflake_database: str = "UNEARTHED_DB"
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.0-flash"
+    allow_password_auth: bool = False
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
