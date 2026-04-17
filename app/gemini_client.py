@@ -29,7 +29,7 @@ def generate_prose(mine_data: dict) -> tuple[str, bool]:
     """
     subregion_id = mine_data.get("subregion_id", "")
 
-    if subregion_id in _prose_cache:
+    if subregion_id and subregion_id in _prose_cache:
         return _prose_cache[subregion_id], False
 
     prompt = _PROMPT_TEMPLATE.format(
@@ -56,7 +56,8 @@ def generate_prose(mine_data: dict) -> tuple[str, bool]:
             contents=prompt,
         )
         prose = response.text.strip()
-        _prose_cache[subregion_id] = prose
+        if subregion_id:
+            _prose_cache[subregion_id] = prose
         return prose, False
     except Exception:
         logger.exception("Gemini call failed, using fallback template")
