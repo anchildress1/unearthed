@@ -1,0 +1,306 @@
+name: unearthed_coal_mines
+description: >
+  Federal coal mine and power plant data from MSHA and EIA.
+  Covers US coal mines, their quarterly production, fuel shipments to power plants,
+  and plant details including location and eGRID subregion.
+
+tables:
+  - name: MSHA_MINES
+    description: >
+      Registry of all US mines from MSHA. Filtered to coal (COAL_METAL_IND = "C").
+      Contains mine location, operator, status, and type.
+      Note: all string fields contain embedded double quotes that must be stripped with REPLACE(col, '"', '').
+    base_table:
+      database: UNEARTHED_DB
+      schema: RAW
+      table: MSHA_MINES
+    filters:
+      - sql_expression: REPLACE(COAL_METAL_IND, '"', '') = 'C'
+        description: Only coal mines
+    dimensions:
+      - name: mine_id
+        description: MSHA mine identifier (unique per mine)
+        expr: TRY_TO_NUMBER(REPLACE(MINE_ID, '"', ''))
+        data_type: NUMBER
+      - name: mine_name
+        description: Current name of the mine
+        expr: TRIM(REPLACE(CURRENT_MINE_NAME, '"', ''))
+        data_type: VARCHAR
+      - name: mine_operator
+        description: Current operator of the mine
+        expr: TRIM(REPLACE(CURRENT_OPERATOR_NAME, '"', ''))
+        data_type: VARCHAR
+      - name: mine_state
+        description: State where the mine is located
+        expr: TRIM(REPLACE(STATE, '"', ''))
+        data_type: VARCHAR
+      - name: mine_county
+        description: County where the mine is located
+        expr: TRIM(REPLACE(FIPS_CNTY_NM, '"', ''))
+        data_type: VARCHAR
+      - name: mine_type
+        description: >
+          Type of mine: Surface, Underground, or Facility.
+          Raw values are quoted strings.
+        expr: TRIM(REPLACE(CURRENT_MINE_TYPE, '"', ''))
+        data_type: VARCHAR
+      - name: mine_status
+        description: >
+          Current operating status: Active, Abandoned, etc.
+        expr: TRIM(REPLACE(CURRENT_MINE_STATUS, '"', ''))
+        data_type: VARCHAR
+      - name: mine_latitude
+        description: Latitude of the mine
+        expr: TRY_TO_DOUBLE(REPLACE(LATITUDE, '"', ''))
+        data_type: FLOAT
+      - name: mine_longitude
+        description: Longitude of the mine
+        expr: TRY_TO_DOUBLE(REPLACE(LONGITUDE, '"', ''))
+        data_type: FLOAT
+
+  - name: MSHA_QUARTERLY_PRODUCTION
+    description: >
+      Quarterly coal production data per mine from MSHA.
+      COAL_PRODUCTION is in short tons. CAL_YR and CAL_QTR identify the period.
+      Note: COAL_METAL_IND contains embedded double quotes.
+    base_table:
+      database: UNEARTHED_DB
+      schema: RAW
+      table: MSHA_QUARTERLY_PRODUCTION
+    filters:
+      - sql_expression: REPLACE(COAL_METAL_IND, '"', '') = 'C'
+        description: Only coal production records
+    dimensions:
+      - name: mine_id
+        description: MSHA mine identifier, joins to MSHA_MINES
+        expr: TRY_TO_NUMBER(REPLACE(MINE_ID, '"', ''))
+        data_type: NUMBER
+      - name: year
+        description: Calendar year
+        expr: CAL_YR
+        data_type: NUMBER
+      - name: quarter
+        description: Calendar quarter (1-4)
+        expr: CAL_QTR
+        data_type: NUMBER
+    measures:
+      - name: coal_production_tons
+        description: Coal production in short tons
+        expr: COAL_PRODUCTION
+        data_type: NUMBER
+        aggregation: sum
+      - name: avg_employee_count
+        description: Average number of employees
+        expr: AVG_EMPLOYEE_CNT
+        data_type: NUMBER
+        aggregation: avg
+      - name: hours_worked
+        description: Total hours worked
+        expr: HOURS_WORKED
+        data_type: NUMBER
+        aggregation: sum
+
+  - name: EIA_923_FUEL_RECEIPTS
+    description: >
+      Coal shipments from mines to power plants in 2024, from EIA Form 923.
+      QUANTITY is in short tons (stored as VARCHAR with commas, must be cleaned).
+      COALMINE_MSHA_ID joins to MSHA_MINES.MINE_ID. PLANT_ID joins to EIA_860_PLANTS.PLANTCODE.
+    base_table:
+      database: UNEARTHED_DB
+      schema: RAW
+      table: EIA_923_FUEL_RECEIPTS
+    filters:
+      - sql_expression: FUEL_GROUP = 'Coal'
+        description: Only coal fuel receipts
+    dimensions:
+      - name: plant_id
+        description: EIA plant identifier
+        expr: PLANT_ID
+        data_type: NUMBER
+      - name: plant_name
+        description: Name of the receiving power plant
+        expr: PLANT_NAME
+        data_type: VARCHAR
+      - name: plant_state
+        description: State of the receiving power plant
+        expr: PLANT_STATE
+        data_type: VARCHAR
+      - name: coalmine_msha_id
+        description: MSHA mine ID of the source mine (cast to NUMBER to match MSHA_MINES.mine_id)
+        expr: TRY_TO_NUMBER(COALMINE_MSHA_ID)
+        data_type: NUMBER
+      - name: coalmine_name
+        description: Name of the source coal mine
+        expr: COALMINE_NAME
+        data_type: VARCHAR
+      - name: supplier
+        description: Coal supplier/broker name
+        expr: SUPPLIER
+        data_type: VARCHAR
+      - name: year
+        description: Year of the shipment
+        expr: YEAR
+        data_type: NUMBER
+      - name: month
+        description: Month of the shipment
+        expr: MONTH
+        data_type: NUMBER
+    measures:
+      - name: quantity_tons
+        description: Quantity of coal shipped in short tons
+        expr: TRY_TO_NUMBER(REPLACE(QUANTITY, ',', ''), 18, 1)
+        data_type: NUMBER
+        aggregation: sum
+
+  - name: EIA_860_PLANTS
+    description: >
+      US power plant registry from EIA Form 860 (2024).
+      Contains plant location, operator, and grid details.
+      PLANTCODE joins to EIA_923_FUEL_RECEIPTS.PLANT_ID.
+    base_table:
+      database: UNEARTHED_DB
+      schema: RAW
+      table: EIA_860_PLANTS
+    dimensions:
+      - name: plant_code
+        description: EIA plant identifier
+        expr: PLANTCODE
+        data_type: NUMBER
+      - name: plant_name
+        description: Name of the power plant
+        expr: PLANTNAME
+        data_type: VARCHAR
+      - name: state
+        description: State where the plant is located
+        expr: STATE
+        data_type: VARCHAR
+      - name: county
+        description: County where the plant is located
+        expr: COUNTY
+        data_type: VARCHAR
+      - name: latitude
+        description: Plant latitude
+        expr: LATITUDE
+        data_type: FLOAT
+      - name: longitude
+        description: Plant longitude
+        expr: LONGITUDE
+        data_type: FLOAT
+
+  - name: PLANT_SUBREGION_LOOKUP
+    description: >
+      Mapping of EIA plant codes to EPA eGRID subregion IDs.
+      Derived from point-in-polygon of plant coordinates against eGRID subregion boundaries.
+    base_table:
+      database: UNEARTHED_DB
+      schema: RAW
+      table: PLANT_SUBREGION_LOOKUP
+    dimensions:
+      - name: plant_code
+        description: EIA plant identifier, joins to EIA_860_PLANTS.PLANTCODE
+        expr: PLANT_CODE
+        data_type: NUMBER
+      - name: egrid_subregion
+        description: EPA eGRID subregion code (e.g. SRVC, RFCW, MROW)
+        expr: EGRID_SUBREGION
+        data_type: VARCHAR
+
+relationships:
+  - left_table: EIA_923_FUEL_RECEIPTS
+    right_table: MSHA_MINES
+    join_type: left_outer
+    relationship_columns:
+      - left_column: coalmine_msha_id
+        right_column: mine_id
+  - left_table: EIA_923_FUEL_RECEIPTS
+    right_table: EIA_860_PLANTS
+    join_type: inner
+    relationship_columns:
+      - left_column: plant_id
+        right_column: plant_code
+  - left_table: EIA_860_PLANTS
+    right_table: PLANT_SUBREGION_LOOKUP
+    join_type: inner
+    relationship_columns:
+      - left_column: plant_code
+        right_column: plant_code
+  - left_table: MSHA_QUARTERLY_PRODUCTION
+    right_table: MSHA_MINES
+    join_type: inner
+    relationship_columns:
+      - left_column: mine_id
+        right_column: mine_id
+
+verified_queries:
+  - name: mine_production_since_year
+    question: "How much has Bailey Mine produced since 2020?"
+    sql: >
+      SELECT SUM(COAL_PRODUCTION) AS total_tons
+      FROM UNEARTHED_DB.RAW.MSHA_QUARTERLY_PRODUCTION
+      WHERE TRY_TO_NUMBER(REPLACE(MINE_ID, '"', '')) IN (
+        SELECT TRY_TO_NUMBER(REPLACE(MINE_ID, '"', ''))
+        FROM UNEARTHED_DB.RAW.MSHA_MINES
+        WHERE TRIM(REPLACE(CURRENT_MINE_NAME, '"', '')) ILIKE 'Bailey%'
+          AND REPLACE(COAL_METAL_IND, '"', '') = 'C'
+      )
+      AND CAL_YR >= 2020
+      AND REPLACE(COAL_METAL_IND, '"', '') = 'C'
+    verified_at: "2026-04-17"
+
+  - name: plants_buying_from_operator
+    question: "What other plants buy from Consol Pennsylvania Coal Company?"
+    sql: >
+      SELECT DISTINCT fr.PLANT_NAME, fr.PLANT_STATE,
+        SUM(TRY_TO_NUMBER(REPLACE(fr.QUANTITY, ',', ''), 18, 1)) AS total_tons
+      FROM UNEARTHED_DB.RAW.EIA_923_FUEL_RECEIPTS fr
+      JOIN UNEARTHED_DB.RAW.MSHA_MINES m
+        ON TRY_TO_NUMBER(fr.COALMINE_MSHA_ID) = TRY_TO_NUMBER(REPLACE(m.MINE_ID, '"', ''))
+      WHERE TRIM(REPLACE(m.CURRENT_OPERATOR_NAME, '"', '')) ILIKE 'Consol Pennsylvania%'
+        AND fr.FUEL_GROUP = 'Coal'
+        AND fr.YEAR = 2024
+      GROUP BY fr.PLANT_NAME, fr.PLANT_STATE
+      ORDER BY total_tons DESC
+    verified_at: "2026-04-17"
+
+  - name: is_mine_active
+    question: "Is Bailey Mine still active?"
+    sql: >
+      SELECT TRIM(REPLACE(CURRENT_MINE_NAME, '"', '')) AS mine_name,
+        TRIM(REPLACE(CURRENT_MINE_STATUS, '"', '')) AS mine_status,
+        TRIM(REPLACE(CURRENT_MINE_TYPE, '"', '')) AS mine_type,
+        TRIM(REPLACE(CURRENT_OPERATOR_NAME, '"', '')) AS operator
+      FROM UNEARTHED_DB.RAW.MSHA_MINES
+      WHERE TRIM(REPLACE(CURRENT_MINE_NAME, '"', '')) ILIKE 'Bailey%'
+        AND REPLACE(COAL_METAL_IND, '"', '') = 'C'
+    verified_at: "2026-04-17"
+
+  - name: total_tonnage_for_subregion
+    question: "What is the total coal tonnage for SRVC in 2024?"
+    sql: >
+      SELECT lk.EGRID_SUBREGION,
+        SUM(TRY_TO_NUMBER(REPLACE(fr.QUANTITY, ',', ''), 18, 1)) AS total_tons
+      FROM UNEARTHED_DB.RAW.EIA_923_FUEL_RECEIPTS fr
+      JOIN UNEARTHED_DB.RAW.PLANT_SUBREGION_LOOKUP lk
+        ON fr.PLANT_ID = lk.PLANT_CODE
+      WHERE fr.FUEL_GROUP = 'Coal'
+        AND fr.YEAR = 2024
+        AND lk.EGRID_SUBREGION = 'SRVC'
+      GROUP BY lk.EGRID_SUBREGION
+    verified_at: "2026-04-17"
+
+  - name: largest_supplier_in_state
+    question: "Who is the largest coal supplier in Wyoming?"
+    sql: >
+      SELECT TRIM(REPLACE(m.CURRENT_OPERATOR_NAME, '"', '')) AS operator,
+        SUM(COAL_PRODUCTION) AS total_production_tons
+      FROM UNEARTHED_DB.RAW.MSHA_QUARTERLY_PRODUCTION p
+      JOIN UNEARTHED_DB.RAW.MSHA_MINES m
+        ON TRY_TO_NUMBER(REPLACE(p.MINE_ID, '"', '')) = TRY_TO_NUMBER(REPLACE(m.MINE_ID, '"', ''))
+      WHERE TRIM(REPLACE(m.STATE, '"', '')) = 'WY'
+        AND REPLACE(m.COAL_METAL_IND, '"', '') = 'C'
+        AND REPLACE(p.COAL_METAL_IND, '"', '') = 'C'
+        AND p.CAL_YR = 2024
+      GROUP BY TRIM(REPLACE(m.CURRENT_OPERATOR_NAME, '"', ''))
+      ORDER BY total_production_tons DESC
+      LIMIT 1
+    verified_at: "2026-04-17"
