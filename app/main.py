@@ -1,6 +1,7 @@
 import logging
+import os
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -16,16 +17,34 @@ from app.snowflake_client import (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="unearthed", version="0.1.0")
+_enable_docs = os.getenv("ENABLE_DOCS", "").lower() in ("1", "true")
+
+app = FastAPI(
+    title="unearthed",
+    version="0.1.0",
+    docs_url="/docs" if _enable_docs else None,
+    redoc_url="/redoc" if _enable_docs else None,
+    openapi_url="/openapi.json" if _enable_docs else None,
+)
+
+_cors_origins = os.getenv("CORS_ORIGINS", "").split(",") if os.getenv("CORS_ORIGINS") else ["*"]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+DEFAULT_SUGGESTIONS = [
+    "How much has Bailey Mine produced since 2020?",
+    "What other plants buy from Consol Pennsylvania Coal Company?",
+    "Is Bailey Mine still active?",
+    "What is the total coal tonnage for SRVC in 2024?",
+    "Who is the largest coal supplier in Wyoming?",
+]
 
 
 @app.post("/mine-for-me", response_model=MineForMeResponse)
@@ -44,21 +63,9 @@ def mine_for_me(req: MineForMeRequest):
         degraded = True
 
     if not mine_data:
-        return MineForMeResponse(
-            mine="Unknown",
-            mine_operator="Unknown",
-            mine_county="Unknown",
-            mine_state="Unknown",
-            mine_type="Surface",
-            mine_coords=[0.0, 0.0],
-            plant="Unknown",
-            plant_operator="Unknown",
-            plant_coords=[0.0, 0.0],
-            tons=0,
-            tons_year=2024,
-            prose="No data available for this subregion.",
-            subregion_id=req.subregion_id,
-            degraded=True,
+        raise HTTPException(
+            status_code=404,
+            detail=f"No coal data available for subregion '{req.subregion_id}'.",
         )
 
     mine_data = {**mine_data, "subregion_id": req.subregion_id}
@@ -97,20 +104,28 @@ def ask(req: AskRequest):
             answer="",
             error="The data assistant is temporarily unavailable. "
             "Try one of the suggested questions.",
+            suggestions=DEFAULT_SUGGESTIONS,
         )
 
     results = None
+    error = result.get("error")
     sql = result.get("sql")
     if sql:
         try:
             results = execute_analyst_sql(sql)
         except Exception:
             logger.exception("Failed to execute Analyst SQL")
+            error = (
+                "We generated a query but could not execute it. "
+                "Please try rephrasing your question."
+            )
+
+    suggestions = result.get("suggestions") or DEFAULT_SUGGESTIONS
 
     return AskResponse(
         answer=result["answer"],
         sql=sql,
-        error=result.get("error"),
-        suggestions=result.get("suggestions"),
+        error=error,
+        suggestions=suggestions,
         results=results,
     )

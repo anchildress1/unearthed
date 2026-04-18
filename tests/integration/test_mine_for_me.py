@@ -27,9 +27,20 @@ class TestMineForMeEndpoint:
         resp = client.post("/mine-for-me", json={"subregion_id": "SRVC"})
         data = resp.json()
         required = [
-            "mine", "mine_operator", "mine_county", "mine_state", "mine_type",
-            "mine_coords", "plant", "plant_operator", "plant_coords",
-            "tons", "tons_year", "prose", "subregion_id", "degraded",
+            "mine",
+            "mine_operator",
+            "mine_county",
+            "mine_state",
+            "mine_type",
+            "mine_coords",
+            "plant",
+            "plant_operator",
+            "plant_coords",
+            "tons",
+            "tons_year",
+            "prose",
+            "subregion_id",
+            "degraded",
         ]
         for field in required:
             assert field in data, f"Missing field: {field}"
@@ -60,22 +71,15 @@ class TestMineForMeSnowflakeFailure:
 
     @patch("app.main.load_fallback_data", return_value=None)
     @patch("app.main.query_mine_for_subregion", side_effect=Exception("Connection refused"))
-    def test_snowflake_down_no_fallback_returns_unknown(self, mock_sf, mock_fb, client):
+    def test_snowflake_down_no_fallback_returns_404(self, mock_sf, mock_fb, client):
         resp = client.post("/mine-for-me", json={"subregion_id": "ZZZZ"})
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["degraded"] is True
-        assert data["mine"] == "Unknown"
-        assert data["tons"] == 0.0
+        assert resp.status_code == 404
 
     @patch("app.main.load_fallback_data", return_value=None)
     @patch("app.main.query_mine_for_subregion", return_value=None)
-    def test_no_data_for_subregion_returns_unknown(self, mock_sf, mock_fb, client):
+    def test_no_data_for_subregion_returns_404(self, mock_sf, mock_fb, client):
         resp = client.post("/mine-for-me", json={"subregion_id": "NOPE"})
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["degraded"] is True
-        assert data["mine"] == "Unknown"
+        assert resp.status_code == 404
 
 
 class TestMineForMeGeminiFailure:

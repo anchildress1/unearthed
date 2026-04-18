@@ -7,7 +7,8 @@ from app.config import Settings
 
 # Prevent .env from leaking into tests
 _CLEAN_ENV = {
-    k: v for k, v in os.environ.items()
+    k: v
+    for k, v in os.environ.items()
     if not k.startswith("SNOWFLAKE_") and not k.startswith("GEMINI_")
 }
 

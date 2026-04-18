@@ -4,26 +4,26 @@ from unittest.mock import patch
 
 
 class TestAskEndpoint:
+    @patch("app.main.execute_analyst_sql", return_value=[{"TOTAL": 42}])
     @patch(
         "app.main.query_cortex_analyst",
         return_value={"answer": "42 million tons", "sql": "SELECT ...", "error": None},
     )
-    def test_success_returns_answer(self, mock_cortex, client):
+    def test_success_returns_answer(self, mock_cortex, mock_exec, client):
         resp = client.post("/ask", json={"question": "How much coal?"})
         assert resp.status_code == 200
         data = resp.json()
         assert data["answer"] == "42 million tons"
         assert data["sql"] == "SELECT ..."
         assert data["error"] is None
+        assert data["suggestions"] is not None
 
     @patch(
         "app.main.query_cortex_analyst",
         return_value={"answer": "Result", "sql": None, "error": None},
     )
     def test_optional_subregion_passed(self, mock_cortex, client):
-        resp = client.post(
-            "/ask", json={"question": "How much?", "subregion_id": "SRVC"}
-        )
+        resp = client.post("/ask", json={"question": "How much?", "subregion_id": "SRVC"})
         assert resp.status_code == 200
 
     @patch(
@@ -59,10 +59,10 @@ class TestAskSuggestions:
         "app.main.query_cortex_analyst",
         return_value={"answer": "42", "sql": None, "error": None},
     )
-    def test_no_suggestions_returns_null(self, mock_cortex, client):
+    def test_no_analyst_suggestions_returns_defaults(self, mock_cortex, client):
         resp = client.post("/ask", json={"question": "How much coal?"})
         data = resp.json()
-        assert data["suggestions"] is None
+        assert len(data["suggestions"]) == 5
 
 
 class TestAskSqlExecution:
@@ -80,9 +80,7 @@ class TestAskSqlExecution:
         data = resp.json()
         assert data["results"] == [{"TOTAL": 5000000}]
         assert data["sql"] == "SELECT SUM(TOTAL_TONS) AS TOTAL FROM ..."
-        mock_exec.assert_called_once_with(
-            "SELECT SUM(TOTAL_TONS) AS TOTAL FROM ..."
-        )
+        mock_exec.assert_called_once_with("SELECT SUM(TOTAL_TONS) AS TOTAL FROM ...")
 
     @patch("app.main.execute_analyst_sql", side_effect=Exception("DB error"))
     @patch(
@@ -93,9 +91,7 @@ class TestAskSqlExecution:
             "error": None,
         },
     )
-    def test_sql_execution_failure_still_returns_answer(
-        self, mock_cortex, mock_exec, client
-    ):
+    def test_sql_execution_failure_still_returns_answer(self, mock_cortex, mock_exec, client):
         resp = client.post("/ask", json={"question": "Total?"})
         data = resp.json()
         assert data["answer"] == "5M tons"

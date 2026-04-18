@@ -28,13 +28,13 @@ class TestMineForMePerformance:
     @pytest.mark.timeout(2)
     @patch("app.main.load_fallback_data", return_value=None)
     @patch("app.main.query_mine_for_subregion", side_effect=Exception("Down"))
-    def test_degraded_mode_under_200ms(self, mock_sf, mock_fb, client):
+    def test_no_data_404_under_200ms(self, mock_sf, mock_fb, client):
         start = time.perf_counter()
         resp = client.post("/mine-for-me", json={"subregion_id": "SRVC"})
         elapsed = time.perf_counter() - start
 
-        assert resp.status_code == 200
-        assert elapsed < 0.2, f"Degraded response took {elapsed:.3f}s, expected < 0.2s"
+        assert resp.status_code == 404
+        assert elapsed < 0.2, f"404 response took {elapsed:.3f}s, expected < 0.2s"
 
 
 class TestAskPerformance:
