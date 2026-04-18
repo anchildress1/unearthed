@@ -215,5 +215,5 @@ export async function geocodeAddress(query) {
   }
   const results = await resp.json();
   if (!results.length) return null;
-  return { lat: parseFloat(results[0].lat), lon: parseFloat(results[0].lon) };
+  return { lat: Number.parseFloat(results[0].lat), lon: Number.parseFloat(results[0].lon) };
 }
