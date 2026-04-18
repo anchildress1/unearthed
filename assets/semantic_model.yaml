@@ -15,7 +15,8 @@ tables:
       schema: RAW
       table: MSHA_MINES
     filters:
-      - sql_expression: REPLACE(COAL_METAL_IND, '"', '') = 'C'
+      - name: coal_filter
+        expr: REPLACE(COAL_METAL_IND, '"', '') = 'C'
         description: Only coal mines
     dimensions:
       - name: mine_id
@@ -68,7 +69,8 @@ tables:
       schema: RAW
       table: MSHA_QUARTERLY_PRODUCTION
     filters:
-      - sql_expression: REPLACE(COAL_METAL_IND, '"', '') = 'C'
+      - name: coal_filter
+        expr: REPLACE(COAL_METAL_IND, '"', '') = 'C'
         description: Only coal production records
     dimensions:
       - name: mine_id
@@ -110,7 +112,8 @@ tables:
       schema: RAW
       table: EIA_923_FUEL_RECEIPTS
     filters:
-      - sql_expression: FUEL_GROUP = 'Coal'
+      - name: coal_filter
+        expr: FUEL_GROUP = 'Coal'
         description: Only coal fuel receipts
     dimensions:
       - name: plant_id
@@ -245,7 +248,6 @@ verified_queries:
       )
       AND CAL_YR >= 2020
       AND REPLACE(COAL_METAL_IND, '"', '') = 'C'
-    verified_at: "2026-04-17"
 
   - name: plants_buying_from_operator
     question: "What other plants buy from Consol Pennsylvania Coal Company?"
@@ -260,7 +262,6 @@ verified_queries:
         AND fr.YEAR = 2024
       GROUP BY fr.PLANT_NAME, fr.PLANT_STATE
       ORDER BY total_tons DESC
-    verified_at: "2026-04-17"
 
   - name: is_mine_active
     question: "Is Bailey Mine still active?"
@@ -272,7 +273,6 @@ verified_queries:
       FROM UNEARTHED_DB.RAW.MSHA_MINES
       WHERE TRIM(REPLACE(CURRENT_MINE_NAME, '"', '')) ILIKE 'Bailey%'
         AND REPLACE(COAL_METAL_IND, '"', '') = 'C'
-    verified_at: "2026-04-17"
 
   - name: total_tonnage_for_subregion
     question: "What is the total coal tonnage for SRVC in 2024?"
@@ -286,7 +286,6 @@ verified_queries:
         AND fr.YEAR = 2024
         AND lk.EGRID_SUBREGION = 'SRVC'
       GROUP BY lk.EGRID_SUBREGION
-    verified_at: "2026-04-17"
 
   - name: largest_supplier_in_state
     question: "Who is the largest coal supplier in Wyoming?"
@@ -303,4 +302,3 @@ verified_queries:
       GROUP BY TRIM(REPLACE(m.CURRENT_OPERATOR_NAME, '"', ''))
       ORDER BY total_production_tons DESC
       LIMIT 1
-    verified_at: "2026-04-17"

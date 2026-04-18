@@ -10,28 +10,64 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Query against the MRT view — all CTE cleanup lives in the view definition.
+# CTE: top mine from the MRT view, then join raw tables for plant details.
+# The view ranks mines per subregion but doesn't carry plant coordinates.
 MINE_FOR_SUBREGION_SQL = """
+WITH top_mine AS (
+    SELECT
+        MINE_ID,
+        MINE_NAME,
+        MINE_OPERATOR,
+        MINE_COUNTY,
+        MINE_STATE,
+        MINE_TYPE,
+        MINE_LATITUDE,
+        MINE_LONGITUDE,
+        TOTAL_TONS_TO_SUBREGION
+    FROM UNEARTHED_DB.MRT.V_MINE_FOR_SUBREGION
+    WHERE EGRID_SUBREGION = %(subregion_id)s
+        AND MINE_RANK = 1
+    LIMIT 1
+),
+top_plant AS (
+    SELECT
+        p.PLANTNAME AS PLANT_NAME,
+        p.UTILITYNAME AS PLANT_OPERATOR,
+        p.LATITUDE AS PLANT_LATITUDE,
+        p.LONGITUDE AS PLANT_LONGITUDE,
+        SUM(TRY_TO_NUMBER(REPLACE(fr.QUANTITY, ',', ''), 18, 1)) AS TONS
+    FROM UNEARTHED_DB.RAW.EIA_923_FUEL_RECEIPTS fr
+    JOIN UNEARTHED_DB.RAW.EIA_860_PLANTS p
+        ON fr.PLANT_ID = p.PLANTCODE
+    JOIN UNEARTHED_DB.RAW.PLANT_SUBREGION_LOOKUP lk
+        ON p.PLANTCODE = lk.PLANT_CODE
+    JOIN top_mine tm
+        ON TRY_TO_NUMBER(fr.COALMINE_MSHA_ID) = TRY_TO_NUMBER(tm.MINE_ID)
+    WHERE fr.FUEL_GROUP = 'Coal'
+        AND fr.YEAR = 2024
+        AND lk.EGRID_SUBREGION = %(subregion_id)s
+    GROUP BY p.PLANTNAME, p.UTILITYNAME, p.LATITUDE, p.LONGITUDE
+    ORDER BY TONS DESC
+    LIMIT 1
+)
 SELECT
-    MINE_NAME,
-    MINE_OPERATOR,
-    MINE_COUNTY,
-    MINE_STATE,
-    MINE_TYPE,
-    MINE_LAT,
-    MINE_LON,
-    PLANT_NAME,
-    PLANT_OPERATOR,
-    PLANT_LAT,
-    PLANT_LON,
-    TOTAL_TONS,
-    TONS_YEAR
-FROM UNEARTHED_DB.MRT.V_MINE_FOR_SUBREGION
-WHERE EGRID_SUBREGION = %(subregion_id)s
-    AND TONS_YEAR = 2024
-ORDER BY TOTAL_TONS DESC
-LIMIT 1
+    tm.MINE_NAME,
+    tm.MINE_OPERATOR,
+    tm.MINE_COUNTY,
+    tm.MINE_STATE,
+    tm.MINE_TYPE,
+    tm.MINE_LATITUDE,
+    tm.MINE_LONGITUDE,
+    tp.PLANT_NAME,
+    tp.PLANT_OPERATOR,
+    tp.PLANT_LATITUDE,
+    tp.PLANT_LONGITUDE,
+    tm.TOTAL_TONS_TO_SUBREGION AS TOTAL_TONS
+FROM top_mine tm
+LEFT JOIN top_plant tp ON 1 = 1
 """
+
+_MINE_TYPE_LABELS = {"U": "Underground", "S": "Surface", "F": "Facility"}
 
 
 def _get_connection(
@@ -80,22 +116,47 @@ def query_mine_for_subregion(subregion_id: str) -> dict | None:
     conn = _get_connection()
     try:
         cur = conn.cursor(snowflake.connector.DictCursor)
-        cur.execute(MINE_FOR_SUBREGION_SQL, {"subregion_id": subregion_id.upper()})
-        row = cur.fetchone()
+        try:
+            cur.execute(
+                MINE_FOR_SUBREGION_SQL,
+                {"subregion_id": subregion_id.upper()},
+            )
+            row = cur.fetchone()
+        finally:
+            cur.close()
         if not row:
             return None
+
+        # NULL coordinates or tonnage → fall back to cached JSON.
+        for field in (
+            "MINE_LATITUDE", "MINE_LONGITUDE",
+            "PLANT_LATITUDE", "PLANT_LONGITUDE",
+            "TOTAL_TONS",
+        ):
+            if row.get(field) is None:
+                logger.error("NULL %s for subregion %s", field, subregion_id)
+                return None
+
         return {
             "mine": row["MINE_NAME"],
             "mine_operator": row["MINE_OPERATOR"],
             "mine_county": row["MINE_COUNTY"],
             "mine_state": row["MINE_STATE"],
-            "mine_type": row["MINE_TYPE"],
-            "mine_coords": [float(row["MINE_LAT"]), float(row["MINE_LON"])],
+            "mine_type": _MINE_TYPE_LABELS.get(
+                row["MINE_TYPE"], row["MINE_TYPE"] or "Surface",
+            ),
+            "mine_coords": [
+                float(row["MINE_LATITUDE"]),
+                float(row["MINE_LONGITUDE"]),
+            ],
             "plant": row["PLANT_NAME"],
             "plant_operator": row["PLANT_OPERATOR"],
-            "plant_coords": [float(row["PLANT_LAT"]), float(row["PLANT_LON"])],
+            "plant_coords": [
+                float(row["PLANT_LATITUDE"]),
+                float(row["PLANT_LONGITUDE"]),
+            ],
             "tons": float(row["TOTAL_TONS"]),
-            "tons_year": int(row["TONS_YEAR"]),
+            "tons_year": 2024,
         }
     finally:
         conn.close()
@@ -134,7 +195,13 @@ def query_cortex_analyst(question: str) -> dict:
             },
             timeout=30,
         )
-        resp.raise_for_status()
+        if not resp.ok:
+            logger.error(
+                "Cortex Analyst HTTP %s: %s",
+                resp.status_code,
+                resp.text[:500],
+            )
+            resp.raise_for_status()
         body = resp.json()
 
         answer_parts = []

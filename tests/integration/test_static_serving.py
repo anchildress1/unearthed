@@ -119,10 +119,12 @@ class TestHtmlStructure:
         assert 'id="intro"' in self.html
 
     def test_has_map_section(self):
-        assert 'id="map-section"' in self.html
+        # Renamed to content-section (split layout: map + info panel side by side)
+        assert 'id="content-section"' in self.html
 
     def test_has_reveal_section(self):
-        assert 'id="reveal-section"' in self.html
+        # Info panel is the reveal content area in the new split layout
+        assert 'id="info-panel"' in self.html
 
     def test_has_locate_button(self):
         assert 'id="btn-locate"' in self.html

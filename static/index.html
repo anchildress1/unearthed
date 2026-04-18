@@ -33,14 +33,24 @@
         <button id="btn-locate" class="btn btn--primary" type="button">
           Find my mine
         </button>
-        <p class="geo-prompt__hint">Uses your location to find the nearest coal-burning power plant on your grid.</p>
+        <p id="geo-explanation" class="geo-prompt__hint">
+          We use your location to find the nearest coal-burning power plant on your grid —
+          nothing is stored or shared.
+        </p>
       </div>
 
-      <div id="geo-denied" class="geo-denied hidden">
-        <p class="geo-denied__label">Pick your state instead:</p>
-        <select id="state-picker" class="state-picker">
+      <div id="geo-denied" class="geo-denied hidden" role="region" aria-label="Location fallback">
+        <p class="geo-denied__label" tabindex="-1">Pick your state instead:</p>
+        <select id="state-picker" class="state-picker" aria-label="Select your state">
           <option value="">Select a state...</option>
         </select>
+        <div id="subregion-picker-group" class="subregion-picker-group hidden">
+          <label for="subregion-picker" class="subregion-picker__label">
+            Your state spans multiple grid regions. Which is closest to you?
+          </label>
+          <select id="subregion-picker" class="state-picker" aria-label="Select your grid subregion">
+          </select>
+        </div>
         <button id="btn-state-go" class="btn btn--primary" type="button" disabled>
           Show me
         </button>
@@ -59,69 +69,82 @@
     </div>
   </section>
 
-  <!-- ===== MAP REVEAL ===== -->
-  <section id="map-section" class="section hidden">
-    <div id="map-container" class="map-container"></div>
-    <div id="map-caption" class="map-caption hidden"></div>
-  </section>
-
-  <!-- ===== HERO / PARTICLE OVERLAY ===== -->
-  <section id="reveal-section" class="section hidden">
-    <div class="reveal__hero-wrapper">
-      <div id="hero-image" class="reveal__hero"></div>
-      <canvas id="particle-canvas" class="reveal__particle-canvas"></canvas>
+  <!-- ===== MAP + INFO PANEL (split layout) ===== -->
+  <!--
+    The map is the centerpiece and stays visible throughout.
+    During the cinematic reveal the info panel is hidden, so the map fills
+    the full viewport. After the cinematic, the info panel slides in alongside
+    the map (right column on desktop, below map on mobile).
+  -->
+  <section id="content-section" class="section hidden">
+    <!-- Dominant map area -->
+    <div id="map-wrapper" class="map-wrapper">
+      <div id="map-container" class="map-container"></div>
+      <div id="map-caption" class="map-caption hidden"></div>
     </div>
 
-    <div class="reveal__content">
-      <div id="ticker" class="ticker">
-        <span class="ticker__label">Tons extracted while you've been here:</span>
-        <span id="ticker-value" class="ticker__value">0.00</span>
+    <!-- Info panel — revealed after cinematic; scrollable right column -->
+    <div id="info-panel" class="info-panel hidden">
+      <!-- Compact hero image with coal-dust particle overlay.
+           pointer-events: none is set both in CSS and JS so the map underneath
+           remains fully interactive while particles play on top. -->
+      <div class="hero-wrapper">
+        <div id="hero-image" class="hero-bg"></div>
+        <canvas id="particle-canvas" class="particle-canvas"></canvas>
       </div>
 
-      <div id="prose" class="prose"></div>
+      <!-- Scrollable content -->
+      <div class="info-panel__scroll">
+        <div id="ticker" class="ticker">
+          <span class="ticker__label">Tons extracted while you've been here:</span>
+          <span id="ticker-value" class="ticker__value">0.00</span>
+        </div>
 
-      <div id="mine-details" class="mine-details">
-        <dl class="mine-details__list">
-          <dt>Mine</dt>
-          <dd id="detail-mine"></dd>
-          <dt>Operator</dt>
-          <dd id="detail-operator"></dd>
-          <dt>County</dt>
-          <dd id="detail-county"></dd>
-          <dt>Type</dt>
-          <dd id="detail-type"></dd>
-          <dt>Plant</dt>
-          <dd id="detail-plant"></dd>
-          <dt>Annual tonnage</dt>
-          <dd id="detail-tons"></dd>
-        </dl>
-      </div>
+        <div id="prose" class="prose"></div>
 
-      <!-- ===== CHAT (CORTEX ANALYST) ===== -->
-      <div id="chat-section" class="chat">
-        <h2 class="chat__heading">Ask your grid</h2>
-        <div id="chat-chips" class="chat__chips"></div>
-        <form id="chat-form" class="chat__form">
-          <input
-            id="chat-input"
-            class="chat__input"
-            type="text"
-            placeholder="Ask a question about this mine or your grid..."
-            maxlength="500"
-            autocomplete="off"
-            aria-label="Ask a question about this mine or your grid"
-          >
-          <button class="btn btn--chat" type="submit">Ask</button>
-        </form>
-        <div id="chat-transcript" class="chat__transcript"></div>
-      </div>
+        <div id="mine-details" class="mine-details">
+          <dl class="mine-details__list">
+            <dt>Mine</dt>
+            <dd id="detail-mine"></dd>
+            <dt>Operator</dt>
+            <dd id="detail-operator"></dd>
+            <dt>County</dt>
+            <dd id="detail-county"></dd>
+            <dt>Type</dt>
+            <dd id="detail-type"></dd>
+            <dt>Plant</dt>
+            <dd id="detail-plant"></dd>
+            <dt>Annual tonnage</dt>
+            <dd id="detail-tons"></dd>
+          </dl>
+        </div>
 
-      <!-- ===== SHARE ===== -->
-      <div class="share">
-        <button id="btn-share" class="btn btn--secondary" type="button">
-          Share this mine
-        </button>
-        <span id="share-copied" class="share__copied hidden">Link copied</span>
+        <!-- ===== CHAT (CORTEX ANALYST) ===== -->
+        <div id="chat-section" class="chat">
+          <h2 class="chat__heading">Ask your grid</h2>
+          <div id="chat-chips" class="chat__chips"></div>
+          <form id="chat-form" class="chat__form">
+            <input
+              id="chat-input"
+              class="chat__input"
+              type="text"
+              placeholder="Ask a question about this mine or your grid..."
+              maxlength="500"
+              autocomplete="off"
+              aria-label="Ask a question about this mine or your grid"
+            >
+            <button class="btn btn--chat" type="submit">Ask</button>
+          </form>
+          <div id="chat-transcript" class="chat__transcript"></div>
+        </div>
+
+        <!-- ===== SHARE ===== -->
+        <div class="share">
+          <button id="btn-share" class="btn btn--secondary" type="button">
+            Share this mine
+          </button>
+          <span id="share-copied" class="share__copied hidden">Link copied</span>
+        </div>
       </div>
     </div>
   </section>

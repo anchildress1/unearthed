@@ -32,6 +32,10 @@ export function createParticleOverlay(canvas) {
     autoDensity: true,
   });
 
+  // Prevent PixiJS from intercepting pointer events so the map stays interactive.
+  canvas.style.pointerEvents = "none";
+  app.stage.eventMode = "none";
+
   const particleContainer = new PIXI.ParticleContainer(MAX_PARTICLES, {
     position: true,
     alpha: true,
@@ -93,7 +97,7 @@ export function showHeroImage(heroEl, mineType) {
   const url = HERO_IMAGES[mineType] || HERO_IMAGES.Surface;
   heroEl.style.backgroundImage = `url('${url}')`;
   // Fade in even if image fails to load (dark bg still works for particles)
-  heroEl.classList.add("reveal__hero--visible");
+  heroEl.classList.add("hero-bg--visible");
 }
 
 /**

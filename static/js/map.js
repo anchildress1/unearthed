@@ -95,7 +95,7 @@ export function runRevealSequence(map, params) {
       bounds.extend(mineLonLat);
 
       map.fitBounds(bounds, {
-        padding: { top: 60, bottom: 60, left: 40, right: 40 },
+        padding: { top: 60, bottom: 60, left: 60, right: 60 },
         duration: STEP_DURATION_MS,
       });
 
@@ -136,7 +136,7 @@ function addMarker(map, lonLat, label, color) {
   new maplibregl.Marker({ element: el })
     .setLngLat(lonLat)
     .setPopup(
-      new maplibregl.Popup({ offset: 12, closeButton: false }).setText(label),
+      new maplibregl.Popup({ offset: 12, closeButton: false, closeOnClick: false }).setText(label),
     )
     .addTo(map)
     .togglePopup();

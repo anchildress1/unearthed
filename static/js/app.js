@@ -27,8 +27,8 @@ if (typeof maplibregl === "undefined" || typeof PIXI === "undefined") {
 
 // --- DOM References ---
 const introSection = document.getElementById("intro");
-const mapSection = document.getElementById("map-section");
-const revealSection = document.getElementById("reveal-section");
+const contentSection = document.getElementById("content-section");
+const infoPanel = document.getElementById("info-panel");
 
 const btnLocate = document.getElementById("btn-locate");
 const geoDenied = document.getElementById("geo-denied");
@@ -213,8 +213,8 @@ async function startReveal(subregionId, coords) {
       (data.mine_coords[1] + data.plant_coords[1]) / 2 - 1,
     ];
 
-    // Transition to map section
-    showSection(mapSection);
+    // Transition to content section (map fills viewport; info panel is hidden)
+    showSection(contentSection);
 
     mapInstance = createMap(mapContainer);
     await runRevealSequence(mapInstance, {
@@ -226,8 +226,8 @@ async function startReveal(subregionId, coords) {
       captionEl: mapCaption,
     });
 
-    // Transition to reveal section
-    showSection(revealSection);
+    // Reveal the info panel alongside the map
+    infoPanel.classList.remove("hidden");
 
     // Hero image + particles (particles are non-critical — catch failures)
     showHeroImage(heroImage, data.mine_type);
@@ -302,6 +302,8 @@ function cleanup() {
   // Clear chat transcript
   chatTranscript.replaceChildren();
   proseEl.classList.remove("prose--visible");
+  // Hide info panel so re-reveal starts with full-viewport map
+  infoPanel.classList.add("hidden");
 }
 
 // --- Share ---
@@ -347,10 +349,8 @@ function setupShare(subregionId) {
 function showSection(section) {
   introSection.classList.remove("section--active");
   introSection.classList.add("hidden");
-  mapSection.classList.remove("section--active");
-  mapSection.classList.add("hidden");
-  revealSection.classList.remove("section--active");
-  revealSection.classList.add("hidden");
+  contentSection.classList.remove("section--active");
+  contentSection.classList.add("hidden");
 
   section.classList.remove("hidden");
   section.classList.add("section--active");
