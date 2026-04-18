@@ -60,3 +60,50 @@ class TestAskPerformance:
 
         assert resp.status_code == 200
         assert elapsed < 0.2, f"Error response took {elapsed:.3f}s, expected < 0.2s"
+
+
+class TestValidationPerformance:
+    """Validation rejections should be fast — no external calls needed."""
+
+    @pytest.mark.timeout(2)
+    def test_mine_for_me_422_under_50ms(self, client):
+        start = time.perf_counter()
+        resp = client.post("/mine-for-me", json={"subregion_id": ""})
+        elapsed = time.perf_counter() - start
+
+        assert resp.status_code == 422
+        assert elapsed < 0.05, f"Validation took {elapsed:.3f}s, expected < 0.05s"
+
+    @pytest.mark.timeout(2)
+    def test_ask_422_under_50ms(self, client):
+        start = time.perf_counter()
+        resp = client.post("/ask", json={"question": ""})
+        elapsed = time.perf_counter() - start
+
+        assert resp.status_code == 422
+        assert elapsed < 0.05, f"Validation took {elapsed:.3f}s, expected < 0.05s"
+
+    @pytest.mark.timeout(2)
+    def test_method_not_allowed_under_50ms(self, client):
+        start = time.perf_counter()
+        resp = client.get("/mine-for-me")
+        elapsed = time.perf_counter() - start
+
+        assert resp.status_code == 405
+        assert elapsed < 0.05, f"405 took {elapsed:.3f}s, expected < 0.05s"
+
+
+class TestFallbackPerformance:
+    """Fallback-degraded path should complete quickly."""
+
+    @pytest.mark.timeout(2)
+    @patch("app.main.generate_prose", return_value=("Fallback.", True))
+    @patch("app.main.load_fallback_data", return_value=SAMPLE_MINE_DATA)
+    @patch("app.main.query_mine_for_subregion", side_effect=Exception("Down"))
+    def test_fallback_under_200ms(self, mock_sf, mock_fb, mock_gemini, client):
+        start = time.perf_counter()
+        resp = client.post("/mine-for-me", json={"subregion_id": "SRVC"})
+        elapsed = time.perf_counter() - start
+
+        assert resp.status_code == 200
+        assert elapsed < 0.2, f"Fallback took {elapsed:.3f}s, expected < 0.2s"
