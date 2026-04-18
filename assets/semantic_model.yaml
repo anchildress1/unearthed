@@ -15,7 +15,7 @@ tables:
       schema: RAW
       table: MSHA_MINES
     filters:
-      - name: coal_filter
+      - name: coal_mines_only
         expr: REPLACE(COAL_METAL_IND, '"', '') = 'C'
         description: Only coal mines
     dimensions:
@@ -69,7 +69,7 @@ tables:
       schema: RAW
       table: MSHA_QUARTERLY_PRODUCTION
     filters:
-      - name: coal_filter
+      - name: coal_production_only
         expr: REPLACE(COAL_METAL_IND, '"', '') = 'C'
         description: Only coal production records
     dimensions:
@@ -88,19 +88,16 @@ tables:
     measures:
       - name: coal_production_tons
         description: Coal production in short tons
-        expr: COAL_PRODUCTION
+        expr: SUM(COAL_PRODUCTION)
         data_type: NUMBER
-        aggregation: sum
       - name: avg_employee_count
         description: Average number of employees
-        expr: AVG_EMPLOYEE_CNT
+        expr: AVG(AVG_EMPLOYEE_CNT)
         data_type: NUMBER
-        aggregation: avg
       - name: hours_worked
         description: Total hours worked
-        expr: HOURS_WORKED
+        expr: SUM(HOURS_WORKED)
         data_type: NUMBER
-        aggregation: sum
 
   - name: EIA_923_FUEL_RECEIPTS
     description: >
@@ -112,7 +109,7 @@ tables:
       schema: RAW
       table: EIA_923_FUEL_RECEIPTS
     filters:
-      - name: coal_filter
+      - name: coal_fuel_only
         expr: FUEL_GROUP = 'Coal'
         description: Only coal fuel receipts
     dimensions:
@@ -151,9 +148,8 @@ tables:
     measures:
       - name: quantity_tons
         description: Quantity of coal shipped in short tons
-        expr: TRY_TO_NUMBER(REPLACE(QUANTITY, ',', ''), 18, 1)
+        expr: SUM(TRY_TO_NUMBER(REPLACE(QUANTITY, ',', ''), 18, 1))
         data_type: NUMBER
-        aggregation: sum
 
   - name: EIA_860_PLANTS
     description: >

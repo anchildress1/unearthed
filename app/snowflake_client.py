@@ -129,8 +129,10 @@ def query_mine_for_subregion(subregion_id: str) -> dict | None:
 
         # NULL coordinates or tonnage → fall back to cached JSON.
         for field in (
-            "MINE_LATITUDE", "MINE_LONGITUDE",
-            "PLANT_LATITUDE", "PLANT_LONGITUDE",
+            "MINE_LATITUDE",
+            "MINE_LONGITUDE",
+            "PLANT_LATITUDE",
+            "PLANT_LONGITUDE",
             "TOTAL_TONS",
         ):
             if row.get(field) is None:
@@ -143,7 +145,8 @@ def query_mine_for_subregion(subregion_id: str) -> dict | None:
             "mine_county": row["MINE_COUNTY"],
             "mine_state": row["MINE_STATE"],
             "mine_type": _MINE_TYPE_LABELS.get(
-                row["MINE_TYPE"], row["MINE_TYPE"] or "Surface",
+                row["MINE_TYPE"],
+                row["MINE_TYPE"] or "Surface",
             ),
             "mine_coords": [
                 float(row["MINE_LATITUDE"]),

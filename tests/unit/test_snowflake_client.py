@@ -17,15 +17,14 @@ MOCK_ROW = {
     "MINE_OPERATOR": "Consol Pennsylvania Coal Company LLC",
     "MINE_COUNTY": "Greene",
     "MINE_STATE": "PA",
-    "MINE_TYPE": "Underground",
-    "MINE_LAT": 39.9175,
-    "MINE_LON": -80.471944,
+    "MINE_TYPE": "U",
+    "MINE_LATITUDE": 39.9175,
+    "MINE_LONGITUDE": -80.471944,
     "PLANT_NAME": "Cross",
-    "PLANT_OPERATOR": "South Carolina PSA",
-    "PLANT_LAT": 33.371506,
-    "PLANT_LON": -80.113235,
-    "TOTAL_TONS": 1247001,
-    "TONS_YEAR": 2024,
+    "PLANT_OPERATOR": "South Carolina Public Service Authority",
+    "PLANT_LATITUDE": "33.371506",
+    "PLANT_LONGITUDE": "-80.113235",
+    "TOTAL_TONS": "3811733.0",
 }
 
 
@@ -49,9 +48,9 @@ class TestQueryMineForSubregion:
         assert result["mine_type"] == "Underground"
         assert result["mine_coords"] == [39.9175, -80.471944]
         assert result["plant"] == "Cross"
-        assert result["plant_operator"] == "South Carolina PSA"
+        assert result["plant_operator"] == "South Carolina Public Service Authority"
         assert result["plant_coords"] == [33.371506, -80.113235]
-        assert result["tons"] == 1247001.0
+        assert result["tons"] == 3811733.0
         assert result["tons_year"] == 2024
 
     @patch("app.snowflake_client._get_connection")
@@ -88,7 +87,7 @@ class TestQueryMineForSubregion:
 
     @patch("app.snowflake_client._get_connection")
     def test_tons_converted_to_float(self, mock_get_conn):
-        row = {**MOCK_ROW, "TOTAL_TONS": 5000000}
+        row = {**MOCK_ROW, "TOTAL_TONS": "5000000.0"}
         mock_get_conn.return_value = self._mock_connection([row])
         result = query_mine_for_subregion("SRVC")
         assert isinstance(result["tons"], float)
