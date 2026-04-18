@@ -133,7 +133,7 @@ SECONDS_IN_YEAR = 365.25 * 24 * 60 * 60
 
 @pytest.fixture(scope="module")
 def geojson():
-    path = Path(__file__).parent.parent.parent / "assets" / "egrid_subregions.geojson"
+    path = Path(__file__).parent.parent.parent / "static" / "data" / "egrid_subregions.geojson"
     return json.loads(path.read_text())
 
 
