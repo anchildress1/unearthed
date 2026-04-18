@@ -12,18 +12,45 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.snowflake_client import query_mine_for_subregion
 
+# Every subregion that has coal data and MUST produce a fallback file.
+# NEWE has no coal-fired plants and is intentionally excluded.
 SUBREGIONS = [
-    "AKGD", "AZNM", "CAMX", "ERCT", "FRCC", "MROE", "MROW", "NEWE",
-    "NWPP", "RFCE", "RFCM", "RFCW", "RMPA", "SPNO", "SPSO", "SRMV",
-    "SRMW", "SRSO", "SRTV", "SRVC",
+    "AKGD",
+    "AZNM",
+    "CAMX",
+    "ERCT",
+    "FRCC",
+    "MROE",
+    "MROW",
+    "NWPP",
+    "RFCE",
+    "RFCM",
+    "RFCW",
+    "RMPA",
+    "SPNO",
+    "SPSO",
+    "SRMV",
+    "SRMW",
+    "SRSO",
+    "SRTV",
+    "SRVC",
 ]
 
 FALLBACK_DIR = Path(__file__).parent.parent / "assets" / "fallback"
 
 
 REQUIRED_FIELDS = [
-    "mine", "mine_operator", "mine_county", "mine_state", "mine_type",
-    "mine_coords", "plant", "plant_operator", "plant_coords", "tons", "tons_year",
+    "mine",
+    "mine_operator",
+    "mine_county",
+    "mine_state",
+    "mine_type",
+    "mine_coords",
+    "plant",
+    "plant_operator",
+    "plant_coords",
+    "tons",
+    "tons_year",
 ]
 
 
@@ -57,7 +84,8 @@ def main() -> int:
             continue
 
         if not data:
-            print("no data (skipped)")
+            errors.append(f"{subregion}: no data returned — expected a result")
+            print("FAIL: no data (expected)")
             continue
 
         validation_errors = _validate(data, subregion)
