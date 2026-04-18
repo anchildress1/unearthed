@@ -1,0 +1,19 @@
+{
+  "mine": "Black Thunder",
+  "mine_operator": "Thunder Basin Coal Company LLC",
+  "mine_county": "Campbell",
+  "mine_state": "WY",
+  "mine_type": "Surface",
+  "mine_coords": [
+    42.693611,
+    -105.266667
+  ],
+  "plant": "Jeffrey Energy Center",
+  "plant_operator": "Evergy Kansas Central, Inc",
+  "plant_coords": [
+    39.286453,
+    -96.117231
+  ],
+  "tons": 3531106.0,
+  "tons_year": 2024
+}

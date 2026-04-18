@@ -1,0 +1,19 @@
+{
+  "mine": "Dry Fork Mine",
+  "mine_operator": "Western Fuels-Wyoming Inc",
+  "mine_county": "Campbell",
+  "mine_state": "WY",
+  "mine_type": "Surface",
+  "mine_coords": [
+    44.650278,
+    -105.734722
+  ],
+  "plant": "Laramie River Station",
+  "plant_operator": "Basin Electric Power Coop",
+  "plant_coords": [
+    42.108889,
+    -104.8825
+  ],
+  "tons": 2089519.0,
+  "tons_year": 2024
+}

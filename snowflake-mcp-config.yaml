@@ -16,4 +16,6 @@ sql_statement_permissions:
   - Delete: False
   - Drop: False
   - TruncateTable: False
+  - Grant: False
+  - Command: False
   - Unknown: False

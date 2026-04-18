@@ -1,0 +1,19 @@
+{
+  "mine": "Navajo Mine",
+  "mine_operator": "Bisti Fuels Company LLC",
+  "mine_county": "San Juan",
+  "mine_state": "NM",
+  "mine_type": "Surface",
+  "mine_coords": [
+    36.525,
+    -108.541944
+  ],
+  "plant": "Four Corners",
+  "plant_operator": "Arizona Public Service Co",
+  "plant_coords": [
+    36.69,
+    -108.4814
+  ],
+  "tons": 3068386.0,
+  "tons_year": 2024
+}

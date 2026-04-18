@@ -1,0 +1,19 @@
+{
+  "mine": "Rawhide Mine",
+  "mine_operator": "Peabody Caballo Mining, LLC",
+  "mine_county": "Campbell",
+  "mine_state": "WY",
+  "mine_type": "Surface",
+  "mine_coords": [
+    44.21,
+    -105.32
+  ],
+  "plant": "Martin Lake",
+  "plant_operator": "Luminant Generation Company LLC",
+  "plant_coords": [
+    32.2606,
+    -94.5706
+  ],
+  "tons": 6554961.0,
+  "tons_year": 2024
+}

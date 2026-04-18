@@ -1,0 +1,19 @@
+{
+  "mine": "Robindale Energy - Mine 33",
+  "mine_operator": "Robindale Energy Services, Inc.",
+  "mine_county": "Cambria",
+  "mine_state": "PA",
+  "mine_type": "Surface",
+  "mine_coords": [
+    40.471389,
+    -78.696944
+  ],
+  "plant": "Seward (PA)",
+  "plant_operator": "Seward Generating LLC",
+  "plant_coords": [
+    40.40625,
+    -79.03366
+  ],
+  "tons": 1909779.0,
+  "tons_year": 2024
+}

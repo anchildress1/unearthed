@@ -21,8 +21,11 @@ The backend exposes exactly two FastAPI endpoints:
 
 | Endpoint | Method | Input | Output |
 |---|---|---|---|
-| `/mine-for-me` | POST | `{subregion_id}` | `{mine, plant, tons, prose, user_coords, mine_coords, plant_coords, degraded?}` |
-| `/ask` | POST | `{question, subregion_id?}` | `{answer, sql?, error?}` |
+| `/mine-for-me` | POST | `{subregion_id}` (regex: `[A-Za-z0-9]{2,10}`) | `{mine, plant, tons, prose, mine_coords, plant_coords, degraded}` or 404 |
+| `/ask` | POST | `{question, subregion_id?}` | `{answer, sql?, error?, suggestions?, results?}` |
+
+Subregion IDs are validated with `^[A-Za-z0-9]{2,10}$` — rejects path traversal, special chars.
+Unknown subregions return **404**, not placeholder data.
 
 Do not add endpoints without updating the PRD.
 
@@ -36,10 +39,13 @@ Do not add endpoints without updating the PRD.
 
 ### Backend
 
-- Python 3.11+ / FastAPI. Match the "dragon smelter" project pattern.
-- Snowflake connector: `snowflake-connector-python` with key-pair auth. Private key stored as Cloud Run secret.
-- Gemini calls cached per-subregion at the API layer (TTL: until next deploy). Do not call Gemini twice for the same subregion in the same deployment.
-- Cortex Analyst: pass-through to Snowflake REST API via `/ask` endpoint.
+- Python 3.12 / FastAPI. Dependencies managed via `pyproject.toml` + `uv`.
+- Snowflake connector: `snowflake-connector-python` with key-pair auth (preferred) or password auth (opt-in via `ALLOW_PASSWORD_AUTH=true` for local dev). Private key stored as Cloud Run secret.
+- Two Snowflake roles: `UNEARTHED_APP_ROLE` (general queries), `UNEARTHED_READONLY_ROLE` (Analyst SQL execution — SELECT-only grants).
+- Gemini calls cached per-subregion at the API layer as `(prose, degraded)` tuples (TTL: until next deploy). Do not call Gemini twice for the same subregion in the same deployment.
+- Cortex Analyst: REST API via `/ask` endpoint. Generated SQL is validated (SELECT-only, no multi-statement, no DML/DDL keywords) and executed under the read-only role with a 500-row cap and 10-second statement timeout.
+- Default suggestions (from 5 verified queries) are always returned in `/ask` responses.
+- Docs/OpenAPI disabled by default (set `ENABLE_DOCS=true` for local dev). CORS origins configurable via `CORS_ORIGINS` env var.
 
 ### Degraded Mode
 
@@ -47,9 +53,11 @@ Both external dependencies (Snowflake, Gemini) have fallbacks:
 
 | Dependency Down | Fallback |
 |---|---|
-| Snowflake | Return cached static JSON per-subregion with `degraded: true` |
+| Snowflake | Return cached static JSON per-subregion (19 files) with `degraded: true` |
+| Snowflake + no fallback | Return **404** (no fake placeholder data) |
 | Gemini | Return pre-rendered template with data interpolated, `degraded: true` |
-| Cortex Analyst | Display fallback message, reveal page continues normally |
+| Cortex Analyst | Display fallback message with default suggestions, reveal page continues normally |
+| Analyst SQL execution | Set `error` field with explicit message; answer text still returned |
 
 Never let a single API failure break the reveal page.
 
@@ -119,10 +127,13 @@ Two distinct Cortex features in use — do not confuse them:
 
 ### Security
 
-- **Key-pair auth** for Snowflake connector (not user/password). Private key stored as Cloud Run Secret Manager secret.
+- **Key-pair auth** preferred for Snowflake (password auth requires explicit `ALLOW_PASSWORD_AUTH=true`). Private key stored as Cloud Run Secret Manager secret.
 - **Never hardcode credentials** in source code, environment files, or SQL scripts.
+- **Two roles:** `UNEARTHED_APP_ROLE` for data queries, `UNEARTHED_READONLY_ROLE` (SELECT-only grants on MRT schema) for executing Analyst-generated SQL.
+- **SQL validation:** Analyst SQL is regex-validated before execution — must start with SELECT/WITH, no semicolons (multi-statement), no DML/DDL keywords. Defense-in-depth on top of the read-only role.
+- **Input validation:** Subregion IDs validated with `^[A-Za-z0-9]{2,10}$` to prevent path traversal. Fallback file paths resolved and verified under `assets/fallback/`.
 - **XS warehouse only.** The free trial has $400 of credits. Do not burn them on oversized warehouses.
-- Do not use `ACCOUNTADMIN` role for application queries. Create and use a scoped application role.
+- Do not use `ACCOUNTADMIN` role for application queries.
 
 ### Performance
 
@@ -180,11 +191,13 @@ Two distinct Cortex features in use — do not confuse them:
 
 ## 8. File & Code Conventions
 
-- **Python:** Follow PEP 8. Type hints on all function signatures. Use `async def` only if genuinely async; sync is fine for Snowflake connector and Cortex Analyst REST calls.
+- **Python:** Python 3.12. Follow PEP 8 enforced by `ruff`. Type hints on all function signatures. Use `async def` only if genuinely async; sync is fine for Snowflake connector and Cortex Analyst REST calls.
+- **Dependencies:** `pyproject.toml` with `uv`. Dev deps in `[dependency-groups]`. Run `uv sync` to install, `make lint` / `make fmt` for ruff, `make test` for pytest.
 - **JavaScript:** Vanilla JS, no transpilation. ES modules. No TypeScript for this project (speed over safety for a weekend build).
 - **SQL:** Uppercase keywords, lowercase only inside string literals. One statement per file when possible. Comment the "why," not the "what."
 - **Secrets:** Never committed. Use `.env` locally (gitignored), Secret Manager in Cloud Run.
-- **Static assets:** Checked into repo under an `assets/` directory. eGRID GeoJSON, hero images, fallback JSON, semantic model YAML.
+- **Static assets:** Checked into repo under an `assets/` directory. eGRID GeoJSON, hero images, fallback JSON (19 subregions), semantic model YAML.
+- **Docker:** Non-root user, `.dockerignore` excludes secrets/tests/dev files. Deps installed via `uv sync --frozen --no-dev` from `pyproject.toml` + `uv.lock`.
 
 ## 9. Snowflake MCP Server
 
