@@ -11,8 +11,8 @@
   "plant": "Weston",
   "plant_operator": "Wisconsin Public Service Corp",
   "plant_coords": [
-    "44.860600",
-    "-89.655300"
+    44.8606,
+    -89.6553
   ],
   "tons": 1520878.0,
   "tons_year": 2024

@@ -11,8 +11,8 @@
   "plant": "Argus Cogen Plant",
   "plant_operator": "Searles Valley Minerals Operations Inc.",
   "plant_coords": [
-    "35.765000",
-    "-117.383300"
+    35.765,
+    -117.3833
   ],
   "tons": 338979.0,
   "tons_year": 2024

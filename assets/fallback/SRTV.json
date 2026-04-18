@@ -11,8 +11,8 @@
   "plant": "Mill Creek (KY)",
   "plant_operator": "Louisville Gas & Electric Co",
   "plant_coords": [
-    "38.052500",
-    "-85.910300"
+    38.0525,
+    -85.9103
   ],
   "tons": 1898235.0,
   "tons_year": 2024

@@ -59,10 +59,12 @@ def _validate(data: dict, subregion: str) -> list[str]:
     for field in REQUIRED_FIELDS:
         if field not in data:
             errors.append(f"{subregion}: missing field '{field}'")
-    if not isinstance(data.get("mine_coords"), list) or len(data.get("mine_coords", [])) != 2:
-        errors.append(f"{subregion}: mine_coords must be a 2-element list")
-    if not isinstance(data.get("plant_coords"), list) or len(data.get("plant_coords", [])) != 2:
-        errors.append(f"{subregion}: plant_coords must be a 2-element list")
+    for coord_field in ("mine_coords", "plant_coords"):
+        val = data.get(coord_field, [])
+        if not isinstance(val, list) or len(val) != 2:
+            errors.append(f"{subregion}: {coord_field} must be a 2-element list")
+        elif not all(isinstance(x, (int, float)) for x in val):
+            errors.append(f"{subregion}: {coord_field} elements must be numeric, got {val}")
     if data.get("tons", -1) < 0:
         errors.append(f"{subregion}: tons must be non-negative")
     return errors

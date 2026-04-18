@@ -1,10 +1,10 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, StrictStr, field_validator
 
 _SUBREGION_PATTERN = r"^[A-Za-z0-9]{2,10}$"
 
 
 class MineForMeRequest(BaseModel):
-    subregion_id: str = Field(pattern=_SUBREGION_PATTERN)
+    subregion_id: StrictStr = Field(pattern=_SUBREGION_PATTERN)
 
 
 class MineForMeResponse(BaseModel):
@@ -38,8 +38,8 @@ class MineForMeResponse(BaseModel):
 
 
 class AskRequest(BaseModel):
-    question: str = Field(min_length=1, max_length=500)
-    subregion_id: str | None = Field(
+    question: StrictStr = Field(min_length=1, max_length=500)
+    subregion_id: StrictStr | None = Field(
         default=None,
         pattern=_SUBREGION_PATTERN,
     )
