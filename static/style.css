@@ -152,17 +152,6 @@ a:hover {
   color: var(--color-text-muted);
 }
 
-.subregion-picker-group {
-  margin-bottom: 1rem;
-}
-
-.subregion-picker__label {
-  display: block;
-  font-size: 0.85rem;
-  color: var(--color-text-muted);
-  margin: 0.75rem 0 0.5rem;
-}
-
 .state-picker {
   font-family: var(--font-sans);
   font-size: 1rem;

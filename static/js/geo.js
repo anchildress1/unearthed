@@ -207,9 +207,7 @@ export async function geocodeAddress(query) {
   url.searchParams.set("countrycodes", "us");
   url.searchParams.set("limit", "1");
 
-  const resp = await fetch(url.toString(), {
-    headers: { "User-Agent": "unearthed/1.0 (coal-mine-finder)" },
-  });
+  const resp = await fetch(url.toString());
   if (!resp.ok) {
     throw new Error("Geocoding service unavailable");
   }

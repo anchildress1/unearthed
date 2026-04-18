@@ -31,8 +31,7 @@ Do not add endpoints without updating the PRD.
 
 ### Frontend
 
-- Vanilla JS (no framework). MapLibre GL JS for the map. PixiJS for the particle overlay.
-- Stacked-canvas approach: MapLibre and PixiJS each own their own canvas, layered via CSS z-index.
+- Vanilla JS (no framework). MapLibre GL JS for the map.
 - Chat UI for Cortex Analyst: plain HTML form + chip buttons + transcript div. No component library.
 - Geolocation: Browser API with permission prompt. Point-in-polygon against bundled eGRID GeoJSON runs client-side.
 - State-picker dropdown as fallback when geolocation is denied or user is outside US.
@@ -156,12 +155,6 @@ Two distinct Cortex features in use — do not confuse them:
 - Zoom sequence: user location -> power plant -> source mine. Arc line drawn between all three points.
 - Sequence must complete within **8 seconds** from payload receipt to final zoom.
 - All three pins and labels must be readable on mobile (>= 375px wide) without horizontal scroll.
-
-### Particles (PixiJS)
-
-- Use **ParticleContainer** with sprite batching. Required to maintain >= 30 FPS on low-end laptops.
-- Tonnage ticker: `annual_tons / seconds_in_year`, displayed to two decimal places.
-- Particles begin within **500ms** of hero image fade-in.
 
 ### Hero Images
 
