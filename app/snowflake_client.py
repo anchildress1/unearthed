@@ -35,12 +35,11 @@ LIMIT 1
 
 
 def _get_connection(
-    *, role: str | None = None,
+    *,
+    role: str | None = None,
 ) -> snowflake.connector.SnowflakeConnection:
     if not settings.snowflake_account or not settings.snowflake_user:
-        raise RuntimeError(
-            "SNOWFLAKE_ACCOUNT and SNOWFLAKE_USER must be set."
-        )
+        raise RuntimeError("SNOWFLAKE_ACCOUNT and SNOWFLAKE_USER must be set.")
     connect_args = {
         "account": settings.snowflake_account,
         "user": settings.snowflake_user,
@@ -102,9 +101,7 @@ def query_mine_for_subregion(subregion_id: str) -> dict | None:
         conn.close()
 
 
-_SEMANTIC_MODEL: str = (
-    Path(__file__).parent.parent / "assets" / "semantic_model.yaml"
-).read_text()
+_SEMANTIC_MODEL: str = (Path(__file__).parent.parent / "assets" / "semantic_model.yaml").read_text()
 
 
 def query_cortex_analyst(question: str) -> dict:
@@ -203,16 +200,22 @@ def execute_analyst_sql(sql: str) -> list[dict]:
     conn = _get_connection(role=settings.snowflake_readonly_role)
     try:
         cur = conn.cursor(snowflake.connector.DictCursor)
+        cur.execute("ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = 10")
         cur.execute(sql)
-        return [dict(row) for row in cur.fetchall()]
+        return [dict(row) for row in cur.fetchmany(500)]
     finally:
         conn.close()
 
 
+_FALLBACK_DIR = (Path(__file__).parent.parent / "assets" / "fallback").resolve()
+
+
 def load_fallback_data(subregion_id: str) -> dict | None:
     """Load cached fallback JSON for a subregion when Snowflake is down."""
-    fallback_dir = Path(__file__).parent.parent / "assets" / "fallback"
-    fallback_file = fallback_dir / f"{subregion_id.upper()}.json"
+    fallback_file = (_FALLBACK_DIR / f"{subregion_id.upper()}.json").resolve()
+    if not str(fallback_file).startswith(str(_FALLBACK_DIR)):
+        logger.warning("Path traversal attempt blocked: %s", subregion_id)
+        return None
     if fallback_file.exists():
         return json.loads(fallback_file.read_text())
     return None

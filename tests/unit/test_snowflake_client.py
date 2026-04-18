@@ -367,16 +367,14 @@ class TestQueryCortexAnalyst:
 class TestExecuteAnalystSql:
     def _mock_connection(self, rows):
         mock_cursor = MagicMock()
-        mock_cursor.fetchall.return_value = rows
+        mock_cursor.fetchmany.return_value = rows
         mock_conn = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
         return mock_conn
 
     @patch("app.snowflake_client._get_connection")
     def test_select_executes(self, mock_get_conn):
-        mock_get_conn.return_value = self._mock_connection(
-            [{"TOTAL_TONS": 5000000}]
-        )
+        mock_get_conn.return_value = self._mock_connection([{"TOTAL_TONS": 5000000}])
         results = execute_analyst_sql("SELECT SUM(TOTAL_TONS) AS TOTAL_TONS FROM ...")
         assert results == [{"TOTAL_TONS": 5000000}]
 
@@ -384,9 +382,7 @@ class TestExecuteAnalystSql:
     def test_uses_readonly_role(self, mock_get_conn):
         mock_get_conn.return_value = self._mock_connection([])
         execute_analyst_sql("SELECT 1")
-        mock_get_conn.assert_called_once_with(
-            role="UNEARTHED_READONLY_ROLE"
-        )
+        mock_get_conn.assert_called_once_with(role="UNEARTHED_READONLY_ROLE")
 
     @patch("app.snowflake_client._get_connection")
     def test_select_case_insensitive(self, mock_get_conn):
@@ -397,9 +393,7 @@ class TestExecuteAnalystSql:
     @patch("app.snowflake_client._get_connection")
     def test_with_cte_allowed(self, mock_get_conn):
         mock_get_conn.return_value = self._mock_connection([{"X": 1}])
-        results = execute_analyst_sql(
-            "WITH cte AS (SELECT 1 AS X) SELECT * FROM cte"
-        )
+        results = execute_analyst_sql("WITH cte AS (SELECT 1 AS X) SELECT * FROM cte")
         assert results == [{"X": 1}]
 
     @patch("app.snowflake_client._get_connection")
