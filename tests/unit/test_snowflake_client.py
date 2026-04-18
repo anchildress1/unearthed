@@ -123,7 +123,10 @@ class TestLoadFallbackData:
         """Corrupt fallback JSON should return None, not crash."""
         corrupt_file = tmp_path / "CORRUPT.json"
         corrupt_file.write_text("{invalid json content")
-        with patch("app.snowflake_client._FALLBACK_DIR", tmp_path.resolve()):
+        with patch(
+            "app.snowflake_client._VALID_FALLBACK_IDS",
+            {"CORRUPT": corrupt_file},
+        ):
             result = load_fallback_data("CORRUPT")
         assert result is None
 

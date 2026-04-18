@@ -208,20 +208,18 @@ def execute_analyst_sql(sql: str) -> list[dict]:
 
 
 _FALLBACK_DIR = (Path(__file__).parent.parent / "assets" / "fallback").resolve()
-_SUBREGION_RE = re.compile(r"^[A-Za-z0-9]{2,10}$")
+
+# Pre-load the set of valid fallback subregion IDs from filenames on disk.
+# This allowlist prevents any user-controlled data from reaching file paths.
+_VALID_FALLBACK_IDS: dict[str, Path] = {
+    f.stem: f for f in _FALLBACK_DIR.glob("*.json") if f.is_file()
+}
 
 
 def load_fallback_data(subregion_id: str) -> dict | None:
     """Load cached fallback JSON for a subregion when Snowflake is down."""
-    safe_id = subregion_id.upper()
-    if not _SUBREGION_RE.match(safe_id):
-        logger.warning("Invalid subregion ID rejected: %s", subregion_id)
-        return None
-    # safe_id is now guaranteed alphanumeric — no path traversal possible
-    fallback_file = (_FALLBACK_DIR / f"{safe_id}.json").resolve()
-    if not fallback_file.is_relative_to(_FALLBACK_DIR):
-        return None
-    if not fallback_file.exists():
+    fallback_file = _VALID_FALLBACK_IDS.get(subregion_id.upper())
+    if fallback_file is None:
         return None
     try:
         return json.loads(fallback_file.read_text())
