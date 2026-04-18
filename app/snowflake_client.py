@@ -12,8 +12,14 @@ logger = logging.getLogger(__name__)
 
 # CTE: top mine from the MRT view, then join raw tables for plant details.
 # The view ranks mines per subregion but doesn't carry plant coordinates.
+# latest_year resolves dynamically so we never chase a hardcoded year.
 MINE_FOR_SUBREGION_SQL = """
-WITH top_mine AS (
+WITH latest_year AS (
+    SELECT MAX(fr.YEAR) AS YEAR
+    FROM UNEARTHED_DB.RAW.EIA_923_FUEL_RECEIPTS fr
+    WHERE fr.FUEL_GROUP = 'Coal'
+),
+top_mine AS (
     SELECT
         MINE_ID,
         MINE_NAME,
@@ -44,7 +50,7 @@ top_plant AS (
     JOIN top_mine tm
         ON TRY_TO_NUMBER(fr.COALMINE_MSHA_ID) = TRY_TO_NUMBER(tm.MINE_ID)
     WHERE fr.FUEL_GROUP = 'Coal'
-        AND fr.YEAR = 2024
+        AND fr.YEAR = (SELECT YEAR FROM latest_year)
         AND lk.EGRID_SUBREGION = %(subregion_id)s
     GROUP BY p.PLANTNAME, p.UTILITYNAME, p.LATITUDE, p.LONGITUDE
     QUALIFY ROW_NUMBER() OVER (ORDER BY TONS DESC) = 1
@@ -61,9 +67,11 @@ SELECT
     tp.PLANT_OPERATOR,
     tp.PLANT_LATITUDE,
     tp.PLANT_LONGITUDE,
-    tm.TOTAL_TONS_TO_SUBREGION AS TOTAL_TONS
+    tm.TOTAL_TONS_TO_SUBREGION AS TOTAL_TONS,
+    ly.YEAR AS DATA_YEAR
 FROM top_mine tm
 LEFT JOIN top_plant tp ON 1 = 1
+CROSS JOIN latest_year ly
 """
 
 _MINE_TYPE_LABELS = {"U": "Underground", "S": "Surface", "F": "Facility"}
@@ -143,10 +151,7 @@ def query_mine_for_subregion(subregion_id: str) -> dict | None:
             "mine_operator": row["MINE_OPERATOR"],
             "mine_county": row["MINE_COUNTY"],
             "mine_state": row["MINE_STATE"],
-            "mine_type": _MINE_TYPE_LABELS.get(
-                row["MINE_TYPE"],
-                row["MINE_TYPE"] or "Surface",
-            ),
+            "mine_type": _MINE_TYPE_LABELS.get(row["MINE_TYPE"] or "", "Surface"),
             "mine_coords": [
                 float(row["MINE_LATITUDE"]),
                 float(row["MINE_LONGITUDE"]),
@@ -158,7 +163,7 @@ def query_mine_for_subregion(subregion_id: str) -> dict | None:
                 float(row["PLANT_LONGITUDE"]),
             ],
             "tons": float(row["TOTAL_TONS"]),
-            "tons_year": 2024,
+            "tons_year": int(row["DATA_YEAR"]),
         }
     finally:
         conn.close()

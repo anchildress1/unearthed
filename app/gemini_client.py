@@ -13,10 +13,10 @@ _prose_cache: dict[str, tuple[str, bool]] = {}
 _PROMPT_TEMPLATE: str = (Path(__file__).parent.parent / "assets" / "gemini_prompt.txt").read_text()
 
 _FALLBACK_TEMPLATE = (
-    "In {mine_county}, {mine_state}, the {mine_type} operation known as {mine_name} "
-    "— operated by {mine_operator} — shipped {tons_latest_year} tons of coal to "
-    "{plant_name}, operated by {plant_operator}, in {tons_year}. "
-    "The contract sustains the {subregion_id} grid."
+    "{mine_county}, {mine_state} is being stripped by {mine_operator}. "
+    "{mine_name} — a {mine_type} operation — is feeding {tons_latest_year} tons of coal to "
+    "{plant_name}, run by {plant_operator}. "
+    "Your {subregion_id} grid demands this."
 )
 
 
