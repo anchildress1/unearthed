@@ -134,13 +134,14 @@ def query_mine_for_subregion(subregion_id: str) -> dict | None:
         if not row:
             return None
 
-        # NULL coordinates or tonnage → fall back to cached JSON.
+        # NULL coordinates, tonnage, or year → fall back to cached JSON.
         for field in (
             "MINE_LATITUDE",
             "MINE_LONGITUDE",
             "PLANT_LATITUDE",
             "PLANT_LONGITUDE",
             "TOTAL_TONS",
+            "DATA_YEAR",
         ):
             if row.get(field) is None:
                 logger.error("NULL %s for subregion %s", field, subregion_id)
