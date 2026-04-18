@@ -237,16 +237,17 @@ class TestLoadFallbackData:
         """OSError (permission denied) must be caught and return None."""
         restricted_file = tmp_path / "NOPERM.json"
         restricted_file.write_text('{"mine": "Test"}')
-        restricted_file.chmod(0o000)
-        try:
-            with patch(
-                "app.snowflake_client._VALID_FALLBACK_IDS",
-                {"NOPERM": restricted_file},
+        with patch(
+            "app.snowflake_client._VALID_FALLBACK_IDS",
+            {"NOPERM": restricted_file},
+        ):
+            with patch.object(
+                type(restricted_file),
+                "read_text",
+                side_effect=OSError("Permission denied"),
             ):
                 result = load_fallback_data("NOPERM")
-            assert result is None
-        finally:
-            restricted_file.chmod(0o644)
+        assert result is None
 
     def test_fallback_has_required_structure(self):
         """Loaded fallback data must have mine, plant, coords, and tons keys."""

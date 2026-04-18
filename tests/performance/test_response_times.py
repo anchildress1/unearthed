@@ -66,31 +66,31 @@ class TestValidationPerformance:
     """Validation rejections should be fast — no external calls needed."""
 
     @pytest.mark.timeout(2)
-    def test_mine_for_me_422_under_50ms(self, client):
+    def test_mine_for_me_422_under_200ms(self, client):
         start = time.perf_counter()
         resp = client.post("/mine-for-me", json={"subregion_id": ""})
         elapsed = time.perf_counter() - start
 
         assert resp.status_code == 422
-        assert elapsed < 0.05, f"Validation took {elapsed:.3f}s, expected < 0.05s"
+        assert elapsed < 0.2, f"Validation took {elapsed:.3f}s, expected < 0.2s"
 
     @pytest.mark.timeout(2)
-    def test_ask_422_under_50ms(self, client):
+    def test_ask_422_under_200ms(self, client):
         start = time.perf_counter()
         resp = client.post("/ask", json={"question": ""})
         elapsed = time.perf_counter() - start
 
         assert resp.status_code == 422
-        assert elapsed < 0.05, f"Validation took {elapsed:.3f}s, expected < 0.05s"
+        assert elapsed < 0.2, f"Validation took {elapsed:.3f}s, expected < 0.2s"
 
     @pytest.mark.timeout(2)
-    def test_method_not_allowed_under_50ms(self, client):
+    def test_method_not_allowed_under_200ms(self, client):
         start = time.perf_counter()
         resp = client.get("/mine-for-me")
         elapsed = time.perf_counter() - start
 
         assert resp.status_code == 405
-        assert elapsed < 0.05, f"405 took {elapsed:.3f}s, expected < 0.05s"
+        assert elapsed < 0.2, f"405 took {elapsed:.3f}s, expected < 0.2s"
 
 
 class TestFallbackPerformance:

@@ -132,11 +132,10 @@ class TestResponseHeaders:
     @patch("app.main.generate_prose", return_value=("Prose.", False))
     @patch("app.main.query_mine_for_subregion", return_value=SAMPLE_MINE_DATA)
     def test_mine_for_me_no_cache_header(self, mock_sf, mock_gemini, client):
-        """API responses should not include cache-control by default from FastAPI."""
+        """API JSON responses should not include cache-control by default."""
         resp = client.post("/mine-for-me", json={"subregion_id": "SRVC"})
         assert resp.status_code == 200
-        # FastAPI doesn't set cache-control on JSON responses by default
-        assert "text/html" not in resp.headers.get("content-type", "")
+        assert "cache-control" not in resp.headers
 
     @patch(
         "app.main.query_cortex_analyst",
