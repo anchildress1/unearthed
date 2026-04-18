@@ -347,17 +347,16 @@ class TestAppJsContent:
     def test_stores_ticker_stop(self):
         assert "tickerStop" in self.src
 
-    def test_stores_pixi_app(self):
-        assert "pixiApp" in self.src
+    def test_stores_overlay_app(self):
+        assert "overlayApp" in self.src
 
     def test_removes_share_handler_on_re_reveal(self):
         assert "removeEventListener" in self.src
 
     def test_checks_cdn_dependencies(self):
         assert "maplibregl" in self.src
-        assert "PIXI" in self.src
 
-    def test_pixi_failure_caught(self):
+    def test_overlay_failure_caught(self):
         assert "Particle overlay unavailable" in self.src
 
     def test_clipboard_failure_handled(self):

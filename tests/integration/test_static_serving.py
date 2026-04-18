@@ -32,10 +32,6 @@ class TestIndexRoute:
         resp = client.get("/")
         assert b"maplibre-gl" in resp.content
 
-    def test_index_contains_pixijs_cdn(self, client):
-        resp = client.get("/")
-        assert b"pixi" in resp.content
-
 
 class TestStaticFiles:
     """Static CSS and JS files are served correctly."""

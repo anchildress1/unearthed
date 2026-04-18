@@ -170,7 +170,6 @@ export function createParticleOverlay(canvas) {
   rafId = requestAnimationFrame(tick);
 
   return {
-    // Match the PIXI.Application.destroy(removeView) signature used in app.js
     destroy(_removeView) {
       if (rafId !== null) {
         cancelAnimationFrame(rafId);

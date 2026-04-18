@@ -19,7 +19,7 @@ import { createMap, runRevealSequence } from "./map.js";
 import { createParticleOverlay, showHeroImage, startTicker } from "./particles.js";
 
 // --- CDN dependency check ---
-if (typeof maplibregl === "undefined" || typeof PIXI === "undefined") {
+if (typeof maplibregl === "undefined") {
   const msg = "Required libraries failed to load. Please check your network connection and reload.";
   document.body.textContent = msg;
   throw new Error(msg);
@@ -63,7 +63,7 @@ const shareCopied = document.getElementById("share-copied");
 
 // --- Cleanup state for re-reveal safety ---
 let tickerStop = null;
-let pixiApp = null;
+let overlayApp = null;
 let mapInstance = null;
 let shareHandler = null;
 let geojsonData = null;
@@ -232,9 +232,9 @@ async function startReveal(subregionId, coords) {
     // Hero image + particles (particles are non-critical — catch failures)
     showHeroImage(heroImage, data.mine_type);
     try {
-      pixiApp = createParticleOverlay(particleCanvas);
-    } catch (pixiErr) {
-      console.warn("Particle overlay unavailable:", pixiErr.message);
+      overlayApp = createParticleOverlay(particleCanvas);
+    } catch (overlayErr) {
+      console.warn("Particle overlay unavailable:", overlayErr.message);
     }
     tickerStop = startTicker(tickerValue, data.tons);
 
@@ -287,9 +287,9 @@ function cleanup() {
     tickerStop();
     tickerStop = null;
   }
-  if (pixiApp) {
-    pixiApp.destroy(false);
-    pixiApp = null;
+  if (overlayApp) {
+    overlayApp.destroy(false);
+    overlayApp = null;
   }
   if (mapInstance) {
     mapInstance._stopFlowAnimation?.();
