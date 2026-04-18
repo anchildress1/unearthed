@@ -3,6 +3,7 @@ import os
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.gemini_client import generate_prose
@@ -36,7 +37,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/")
+def index():
+    return FileResponse("static/index.html")
+
+
 app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/assets", StaticFiles(directory="assets"), name="assets")
 
 DEFAULT_SUGGESTIONS = [
     "How much has Bailey Mine produced since 2020?",
