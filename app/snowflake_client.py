@@ -218,20 +218,33 @@ def query_cortex_analyst(question: str) -> dict:
             resp.raise_for_status()
         body = resp.json()
 
-        answer_parts = []
+        content = body.get("message", {}).get("content", [])
+        has_sql = any(item.get("type") == "sql" for item in content)
+
+        # When SQL is present, text items are the analyst's internal restatement
+        # of the question ("This is our interpretation…"), not the answer.
+        # The answer comes from executing the SQL and rendering the results.
+        # When there is no SQL (out-of-scope, error), text items ARE the answer.
+        interpretation_parts: list[str] = []
+        answer_parts: list[str] = []
         sql = None
         suggestions = None
-        for item in body.get("message", {}).get("content", []):
+        for item in content:
             if item.get("type") == "text":
-                answer_parts.append(item["text"])
+                if has_sql:
+                    interpretation_parts.append(item["text"])
+                else:
+                    answer_parts.append(item["text"])
             elif item.get("type") == "sql":
                 sql = item.get("statement", "")
             elif item.get("type") == "suggestions":
                 suggestions = item.get("suggestions", [])
 
         answer = "\n\n".join(answer_parts) if answer_parts else ""
+        interpretation = "\n\n".join(interpretation_parts) if interpretation_parts else None
         return {
             "answer": answer,
+            "interpretation": interpretation,
             "sql": sql,
             "suggestions": suggestions,
             "error": None,
@@ -240,6 +253,7 @@ def query_cortex_analyst(question: str) -> dict:
         logger.exception("Cortex Analyst query failed")
         return {
             "answer": "",
+            "interpretation": None,
             "sql": None,
             "error": "We couldn't answer that question right now. Please try again later.",
         }

@@ -156,6 +156,15 @@ function createExchangeEl(question) {
 
 /**
  * Render the answer, SQL, and results into an exchange element.
+ *
+ * Priority order:
+ *  1. SQL results (table) → primary answer; interpretation shown as secondary label.
+ *     If results is an empty array, show "No data found" instead of falling through.
+ *  2. answer text (out-of-scope explanation, SQL execution failure message)
+ *  3. interpretation fallback — reachable when Cortex returns only an interpretation
+ *     with no answer text and no SQL results (e.g. ambiguous questions that did not
+ *     generate executable SQL).
+ *
  * @param {HTMLElement} exchange
  * @param {Object} data - AskResponse
  * @param {string} subregionId
@@ -174,10 +183,35 @@ function renderAnswer(exchange, data, subregionId, transcript, form, input) {
     exchange.appendChild(errorEl);
   }
 
-  if (data.answer) {
+  if (data.results !== null && data.results !== undefined) {
+    if (data.results.length === 0) {
+      // Valid query, zero rows — do not fall through to interpretation.
+      const emptyEl = document.createElement("div");
+      emptyEl.className = "chat__answer";
+      emptyEl.textContent = "No data found for this query.";
+      exchange.appendChild(emptyEl);
+    } else {
+      // Real data is the answer. Interpretation is a dim label, not the headline.
+      if (data.interpretation) {
+        const interpEl = document.createElement("div");
+        interpEl.className = "chat__interpretation";
+        interpEl.setAttribute("aria-label", "Query interpretation");
+        interpEl.textContent = data.interpretation;
+        exchange.appendChild(interpEl);
+      }
+      exchange.appendChild(renderResultsTable(data.results));
+    }
+  } else if (data.answer) {
     const answerEl = document.createElement("div");
     answerEl.className = "chat__answer";
     answerEl.textContent = data.answer;
+    exchange.appendChild(answerEl);
+  } else if (data.interpretation) {
+    // No SQL results and no answer text: show the interpretation as the response
+    // (e.g. ambiguous questions where Cortex returned only a restatement).
+    const answerEl = document.createElement("div");
+    answerEl.className = "chat__answer";
+    answerEl.textContent = data.interpretation;
     exchange.appendChild(answerEl);
   }
 
@@ -197,10 +231,6 @@ function renderAnswer(exchange, data, subregionId, transcript, form, input) {
       const isHidden = sqlEl.classList.toggle("hidden");
       toggle.textContent = isHidden ? "Show SQL" : "Hide SQL";
     });
-  }
-
-  if (data.results && data.results.length > 0) {
-    exchange.appendChild(renderResultsTable(data.results));
   }
 
   if (data.suggestions && data.suggestions.length > 0) {

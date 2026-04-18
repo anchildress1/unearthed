@@ -11,7 +11,7 @@ class TestAskEdgeCases:
     def test_unicode_question_accepted(self, client):
         with patch(
             "app.main.query_cortex_analyst",
-            return_value={"answer": "42", "sql": None, "error": None},
+            return_value={"answer": "42", "interpretation": None, "sql": None, "error": None},
         ):
             resp = client.post("/ask", json={"question": "How much coal in 日本語?"})
         assert resp.status_code == 200
@@ -19,7 +19,7 @@ class TestAskEdgeCases:
     def test_emoji_question_accepted(self, client):
         with patch(
             "app.main.query_cortex_analyst",
-            return_value={"answer": "42", "sql": None, "error": None},
+            return_value={"answer": "42", "interpretation": None, "sql": None, "error": None},
         ):
             resp = client.post("/ask", json={"question": "How much coal? 🪨⛏️"})
         assert resp.status_code == 200
@@ -27,7 +27,7 @@ class TestAskEdgeCases:
     def test_max_length_question_accepted(self, client):
         with patch(
             "app.main.query_cortex_analyst",
-            return_value={"answer": "42", "sql": None, "error": None},
+            return_value={"answer": "42", "interpretation": None, "sql": None, "error": None},
         ):
             question = "x" * 500
             resp = client.post("/ask", json={"question": question})
@@ -41,7 +41,7 @@ class TestAskEdgeCases:
     def test_sql_injection_in_question_safe(self, client):
         with patch(
             "app.main.query_cortex_analyst",
-            return_value={"answer": "safe", "sql": None, "error": None},
+            return_value={"answer": "safe", "interpretation": None, "sql": None, "error": None},
         ):
             resp = client.post("/ask", json={"question": "'; DROP TABLE mines; --"})
         assert resp.status_code == 200
@@ -51,6 +51,7 @@ class TestAskEdgeCases:
             "app.main.query_cortex_analyst",
             return_value={
                 "answer": "<script>alert(1)</script>",
+                "interpretation": None,
                 "sql": None,
                 "error": None,
             },
@@ -137,7 +138,7 @@ class TestResponsePayloadBounds:
 
     @patch(
         "app.main.query_cortex_analyst",
-        return_value={"answer": "42", "sql": None, "error": None},
+        return_value={"answer": "42", "interpretation": None, "sql": None, "error": None},
     )
     def test_ask_response_under_10kb(self, mock_cortex, client):
         resp = client.post("/ask", json={"question": "How much coal?"})
