@@ -407,11 +407,9 @@ class TestExecuteAnalystSql:
         results = execute_analyst_sql("WITH cte AS (SELECT 1 AS X) SELECT * FROM cte")
         assert results == [{"X": 1}]
 
-    @patch("app.snowflake_client._get_connection")
-    def test_trailing_semicolon_allowed(self, mock_get_conn):
-        mock_get_conn.return_value = self._mock_connection([{"X": 1}])
-        results = execute_analyst_sql("SELECT 1 AS X;")
-        assert results == [{"X": 1}]
+    def test_trailing_semicolon_rejected(self):
+        with pytest.raises(ValueError, match="read-only"):
+            execute_analyst_sql("SELECT 1 AS X;")
 
     def test_drop_rejected(self):
         with pytest.raises(ValueError, match="read-only"):

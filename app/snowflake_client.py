@@ -176,12 +176,12 @@ _DANGEROUS_KEYWORDS = re.compile(
 
 def _is_safe_sql(sql: str) -> bool:
     """Check that SQL is a single read-only SELECT (or WITH/CTE)."""
-    stripped = sql.strip().rstrip(";").strip()
+    stripped = sql.strip()
     if not stripped:
         return False
-    if not _SAFE_SQL_START.match(stripped):
-        return False
     if ";" in stripped:
+        return False
+    if not _SAFE_SQL_START.match(stripped):
         return False
     if _DANGEROUS_KEYWORDS.search(stripped):
         return False
