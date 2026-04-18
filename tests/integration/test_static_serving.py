@@ -32,10 +32,6 @@ class TestIndexRoute:
         resp = client.get("/")
         assert b"maplibre-gl" in resp.content
 
-    def test_index_contains_pixijs_cdn(self, client):
-        resp = client.get("/")
-        assert b"pixi" in resp.content
-
 
 class TestStaticFiles:
     """Static CSS and JS files are served correctly."""
@@ -119,10 +115,12 @@ class TestHtmlStructure:
         assert 'id="intro"' in self.html
 
     def test_has_map_section(self):
-        assert 'id="map-section"' in self.html
+        # Renamed to content-section (split layout: map + info panel side by side)
+        assert 'id="content-section"' in self.html
 
     def test_has_reveal_section(self):
-        assert 'id="reveal-section"' in self.html
+        # Info panel is the reveal content area in the new split layout
+        assert 'id="info-panel"' in self.html
 
     def test_has_locate_button(self):
         assert 'id="btn-locate"' in self.html
@@ -132,9 +130,6 @@ class TestHtmlStructure:
 
     def test_has_map_container(self):
         assert 'id="map-container"' in self.html
-
-    def test_has_particle_canvas(self):
-        assert 'id="particle-canvas"' in self.html
 
     def test_has_ticker(self):
         assert 'id="ticker-value"' in self.html

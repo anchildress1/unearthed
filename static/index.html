@@ -17,9 +17,6 @@
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 
-  <!-- PixiJS -->
-  <script src="https://unpkg.com/pixi.js@7.4.2/dist/pixi.min.js"></script>
-
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -30,21 +27,37 @@
       <p class="intro__subtitle">Find the coal mine under contract to your power plant.</p>
 
       <div id="geo-prompt" class="geo-prompt">
-        <button id="btn-locate" class="btn btn--primary" type="button">
-          Find my mine
+        <form id="address-form" class="address-form">
+          <input
+            id="address-input"
+            class="address-input"
+            type="text"
+            placeholder="Enter address or zip code"
+            aria-label="Enter an address or zip code to find your mine"
+            autocomplete="off"
+            maxlength="200"
+          >
+          <button class="btn btn--primary" type="submit">Find my mine</button>
+        </form>
+        <div class="geo-or"><span>or</span></div>
+        <button id="btn-locate" class="btn btn--secondary" type="button">
+          Use my location
         </button>
-        <p class="geo-prompt__hint">Uses your location to find the nearest coal-burning power plant on your grid.</p>
+        <p id="geo-explanation" class="geo-prompt__hint">
+          We find the nearest coal-burning power plant on your grid —
+          nothing is stored or shared.
+        </p>
       </div>
 
-      <div id="geo-denied" class="geo-denied hidden">
-        <p class="geo-denied__label">Pick your state instead:</p>
-        <select id="state-picker" class="state-picker">
+      <section id="geo-denied" class="geo-denied hidden" aria-label="Location fallback">
+        <p class="geo-denied__label" tabindex="-1">Pick your state instead:</p>
+        <select id="state-picker" class="state-picker" aria-label="Select your state">
           <option value="">Select a state...</option>
         </select>
         <button id="btn-state-go" class="btn btn--primary" type="button" disabled>
           Show me
         </button>
-      </div>
+      </section>
 
       <div id="geo-outside-us" class="geo-outside-us hidden">
         <p>US grid data only. Use the state picker to see what a US resident sees.</p>
@@ -59,69 +72,100 @@
     </div>
   </section>
 
-  <!-- ===== MAP REVEAL ===== -->
-  <section id="map-section" class="section hidden">
-    <div id="map-container" class="map-container"></div>
-    <div id="map-caption" class="map-caption hidden"></div>
-  </section>
-
-  <!-- ===== HERO / PARTICLE OVERLAY ===== -->
-  <section id="reveal-section" class="section hidden">
-    <div class="reveal__hero-wrapper">
-      <div id="hero-image" class="reveal__hero"></div>
-      <canvas id="particle-canvas" class="reveal__particle-canvas"></canvas>
+  <!-- ===== MAP + INFO PANEL (split layout) ===== -->
+  <!--
+    The map is the centerpiece and stays visible throughout.
+    During the cinematic reveal the info panel is hidden, so the map fills
+    the full viewport. After the cinematic, the info panel slides in alongside
+    the map (right column on desktop, below map on mobile).
+  -->
+  <section id="content-section" class="section hidden">
+    <!-- Dominant map area -->
+    <div id="map-wrapper" class="map-wrapper">
+      <div id="map-container" class="map-container"></div>
+      <div id="map-caption" class="map-caption hidden"></div>
     </div>
 
-    <div class="reveal__content">
-      <div id="ticker" class="ticker">
-        <span class="ticker__label">Tons extracted while you've been here:</span>
-        <span id="ticker-value" class="ticker__value">0.00</span>
+    <!-- Info panel — revealed after cinematic; scrollable right column -->
+    <div id="info-panel" class="info-panel hidden">
+      <!-- Compact location change bar — always at top of info panel -->
+      <div class="reloc-bar">
+        <button id="btn-change-location" class="btn btn--reloc" type="button">Change location</button>
       </div>
-
-      <div id="prose" class="prose"></div>
-
-      <div id="mine-details" class="mine-details">
-        <dl class="mine-details__list">
-          <dt>Mine</dt>
-          <dd id="detail-mine"></dd>
-          <dt>Operator</dt>
-          <dd id="detail-operator"></dd>
-          <dt>County</dt>
-          <dd id="detail-county"></dd>
-          <dt>Type</dt>
-          <dd id="detail-type"></dd>
-          <dt>Plant</dt>
-          <dd id="detail-plant"></dd>
-          <dt>Annual tonnage</dt>
-          <dd id="detail-tons"></dd>
-        </dl>
-      </div>
-
-      <!-- ===== CHAT (CORTEX ANALYST) ===== -->
-      <div id="chat-section" class="chat">
-        <h2 class="chat__heading">Ask your grid</h2>
-        <div id="chat-chips" class="chat__chips"></div>
-        <form id="chat-form" class="chat__form">
+      <!-- Inline location form — shown when btn-change-location is clicked -->
+      <div id="reloc-form" class="reloc-form hidden">
+        <form id="reloc-address-form" class="address-form address-form--compact">
           <input
-            id="chat-input"
-            class="chat__input"
+            id="reloc-address-input"
+            class="address-input"
             type="text"
-            placeholder="Ask a question about this mine or your grid..."
-            maxlength="500"
+            placeholder="Address or zip code"
+            aria-label="Enter a new address or zip code"
             autocomplete="off"
-            aria-label="Ask a question about this mine or your grid"
+            maxlength="200"
           >
-          <button class="btn btn--chat" type="submit">Ask</button>
+          <button class="btn btn--primary btn--sm" type="submit">Go</button>
         </form>
-        <div id="chat-transcript" class="chat__transcript"></div>
+        <div class="geo-or geo-or--sm"><span>or</span></div>
+        <button id="reloc-btn-locate" class="btn btn--secondary btn--sm" type="button">Use my location</button>
+        <p id="reloc-error" class="reloc-error hidden"></p>
+      </div>
+      <div class="hero-wrapper">
+        <div id="hero-image" class="hero-bg"></div>
       </div>
 
-      <!-- ===== SHARE ===== -->
-      <div class="share">
-        <button id="btn-share" class="btn btn--secondary" type="button">
-          Share this mine
-        </button>
-        <span id="share-copied" class="share__copied hidden">Link copied</span>
+      <!-- Scrollable content -->
+      <div class="info-panel__scroll">
+        <div id="ticker" class="ticker">
+          <span class="ticker__label">Tons extracted while you've been here:</span>
+          <span id="ticker-value" class="ticker__value">0.00</span>
+        </div>
+
+        <div id="prose" class="prose"></div>
+
+        <div id="mine-details" class="mine-details">
+          <dl class="mine-details__list">
+            <dt>Mine</dt>
+            <dd id="detail-mine"></dd>
+            <dt>Operator</dt>
+            <dd id="detail-operator"></dd>
+            <dt>County</dt>
+            <dd id="detail-county"></dd>
+            <dt>Type</dt>
+            <dd id="detail-type"></dd>
+            <dt>Plant</dt>
+            <dd id="detail-plant"></dd>
+            <dt>Annual tonnage</dt>
+            <dd id="detail-tons"></dd>
+          </dl>
+        </div>
+
+        <!-- ===== CHAT (CORTEX ANALYST) ===== -->
+        <div id="chat-section" class="chat">
+          <h2 class="chat__heading">Ask your grid</h2>
+          <div id="chat-chips" class="chat__chips"></div>
+          <form id="chat-form" class="chat__form">
+            <input
+              id="chat-input"
+              class="chat__input"
+              type="text"
+              placeholder="Ask a question about this mine or your grid..."
+              maxlength="500"
+              autocomplete="off"
+              aria-label="Ask a question about this mine or your grid"
+            >
+            <button class="btn btn--chat" type="submit">Ask</button>
+          </form>
+          <div id="chat-transcript" class="chat__transcript"></div>
+        </div>
+
+        <!-- ===== SHARE ===== -->
+        <div class="share">
+          <button id="btn-share" class="btn btn--secondary" type="button">
+            Share this mine
+          </button>
+          <span id="share-copied" class="share__copied hidden">Link copied</span>
+        </div>
       </div>
     </div>
   </section>

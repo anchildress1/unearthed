@@ -193,3 +193,25 @@ export function hasCoalData(subregionId) {
 export function subregionForState(stateCode) {
   return STATE_TO_SUBREGION[stateCode.toUpperCase()] || null;
 }
+
+/**
+ * Geocode an address or zip code to coordinates via Nominatim (OpenStreetMap).
+ * Restricted to US results. Returns null if no result found.
+ * @param {string} query - Address or zip code
+ * @returns {Promise<{lat: number, lon: number}|null>}
+ */
+export async function geocodeAddress(query) {
+  const url = new URL("https://nominatim.openstreetmap.org/search");
+  url.searchParams.set("format", "json");
+  url.searchParams.set("q", query);
+  url.searchParams.set("countrycodes", "us");
+  url.searchParams.set("limit", "1");
+
+  const resp = await fetch(url.toString());
+  if (!resp.ok) {
+    throw new Error("Geocoding service unavailable");
+  }
+  const results = await resp.json();
+  if (!results.length) return null;
+  return { lat: Number.parseFloat(results[0].lat), lon: Number.parseFloat(results[0].lon) };
+}

@@ -167,8 +167,8 @@ class TestMapJsContent:
     def test_uses_fit_bounds(self):
         assert "fitBounds" in self.src
 
-    def test_has_arc_line_function(self):
-        assert "addArcLine" in self.src
+    def test_has_flow_line_function(self):
+        assert "addFlowLine" in self.src
 
     def test_draws_geojson_line(self):
         assert "LineString" in self.src
@@ -188,9 +188,6 @@ class TestParticlesJsContent:
     def _load(self):
         self.src = (JS_DIR / "particles.js").read_text()
 
-    def test_exports_create_particle_overlay(self):
-        assert "export function createParticleOverlay" in self.src
-
     def test_exports_show_hero_image(self):
         assert "export function showHeroImage" in self.src
 
@@ -198,13 +195,7 @@ class TestParticlesJsContent:
         assert "export function startTicker" in self.src
 
     def test_exports_tons_per_second(self):
-        assert "export function tonsPerSecond" in self.src
-
-    def test_uses_particle_container(self):
-        assert "ParticleContainer" in self.src
-
-    def test_has_max_particles_limit(self):
-        assert "MAX_PARTICLES" in self.src
+        assert "export function startTicker" in self.src
 
     def test_seconds_in_year_constant(self):
         assert "SECONDS_IN_YEAR" in self.src
@@ -328,8 +319,7 @@ class TestAppJsContent:
         assert "detailPlant" in self.src
         assert "detailTons" in self.src
 
-    def test_starts_particle_overlay(self):
-        assert "createParticleOverlay" in self.src
+    def test_starts_ticker(self):
         assert "startTicker" in self.src
 
     def test_initializes_chat(self):
@@ -347,18 +337,11 @@ class TestAppJsContent:
     def test_stores_ticker_stop(self):
         assert "tickerStop" in self.src
 
-    def test_stores_pixi_app(self):
-        assert "pixiApp" in self.src
-
     def test_removes_share_handler_on_re_reveal(self):
         assert "removeEventListener" in self.src
 
     def test_checks_cdn_dependencies(self):
         assert "maplibregl" in self.src
-        assert "PIXI" in self.src
-
-    def test_pixi_failure_caught(self):
-        assert "Particle overlay unavailable" in self.src
 
     def test_clipboard_failure_handled(self):
         assert "Could not copy link" in self.src

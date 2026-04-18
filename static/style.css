@@ -212,10 +212,35 @@ a:hover {
   max-width: 400px;
 }
 
-/* ===== MAP ===== */
+/* ===== CONTENT SECTION: SPLIT LAYOUT (MAP + INFO PANEL) ===== */
+/*
+ * The map is the centerpiece and stays visible the entire time.
+ * During the cinematic the #info-panel is display:none, so the map fills
+ * the full viewport (flex: 1 on .map-wrapper expands to fill the row).
+ * After the cinematic, JS removes the `hidden` class from #info-panel and
+ * the panel appears as a right column while the map flexes into the rest.
+ */
+#content-section.section--active {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  justify-content: flex-start;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Map wrapper: takes all remaining horizontal space */
+.map-wrapper {
+  flex: 1 1 0;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Map canvas must fill its wrapper, not the viewport */
 .map-container {
   width: 100%;
-  height: 100vh;
+  height: 100%;
 }
 
 .map-caption {
@@ -231,28 +256,32 @@ a:hover {
   z-index: 10;
   text-align: center;
   max-width: 90%;
+  pointer-events: none;
 }
 
-#map-section {
+/* Info panel: fixed-width right column, scrollable */
+.info-panel {
+  flex: 0 0 460px;
+  width: 460px;
+  max-width: 45vw;
+  min-width: 300px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--color-bg);
+  border-left: 1px solid var(--color-border);
+}
+
+/* Compact hero image at the top of the info panel */
+.hero-wrapper {
   position: relative;
-}
-
-/* ===== REVEAL / HERO ===== */
-#reveal-section.section--active {
-  display: block;
-  min-height: auto;
-}
-
-.reveal__hero-wrapper {
-  position: relative;
-  width: 100%;
-  height: 60vh;
-  min-height: 300px;
+  height: 180px;
   overflow: hidden;
   background: #0d0d0d;
+  flex-shrink: 0;
 }
 
-.reveal__hero {
+.hero-bg {
   position: absolute;
   inset: 0;
   background-size: cover;
@@ -261,22 +290,15 @@ a:hover {
   transition: opacity 1.5s ease;
 }
 
-.reveal__hero--visible {
+.hero-bg--visible {
   opacity: 0.6;
 }
 
-.reveal__particle-canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-
-.reveal__content {
-  padding: 3rem 2rem 4rem;
-  max-width: 720px;
-  margin: 0 auto;
+/* Scrollable content area inside the info panel */
+.info-panel__scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.5rem 1.5rem 3rem;
 }
 
 /* ===== TICKER ===== */
@@ -522,10 +544,139 @@ a:hover {
   border-top: 1px solid var(--color-border);
 }
 
+/* ===== ADDRESS FORM (HOME PAGE) ===== */
+.address-form {
+  display: flex;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 480px;
+  margin-bottom: 0;
+}
+
+.address-input {
+  flex: 1;
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--color-bg-input);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  min-width: 0;
+}
+
+.address-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.address-input::placeholder {
+  color: var(--color-text-muted);
+}
+
+/* ===== OR DIVIDER ===== */
+.geo-or {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.9rem 0;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  width: 100%;
+  max-width: 480px;
+}
+
+.geo-or::before,
+.geo-or::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--color-border);
+}
+
+/* ===== RELOC BAR (MAP PAGE — TOP OF INFO PANEL) ===== */
+.reloc-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0.4rem 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-card);
+  flex-shrink: 0;
+}
+
+.btn--reloc {
+  font-size: 0.78rem;
+  padding: 0.3rem 0.75rem;
+  border-color: var(--color-border);
+  color: var(--color-text-muted);
+}
+
+.btn--reloc:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+/* ===== RELOC INLINE FORM ===== */
+.reloc-form {
+  padding: 0.75rem 1rem;
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.address-form--compact {
+  max-width: none;
+}
+
+.geo-or--sm {
+  max-width: none;
+  margin: 0.5rem 0;
+}
+
+.btn--sm {
+  font-size: 0.85rem;
+  padding: 0.5rem 1rem;
+}
+
+.reloc-error {
+  margin-top: 0.6rem;
+  padding: 0.4rem 0.75rem;
+  background: rgba(196, 90, 90, 0.1);
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius);
+  color: var(--color-error);
+  font-size: 0.82rem;
+}
+
 /* ===== RESPONSIVE ===== */
-@media (max-width: 600px) {
-  .reveal__content {
-    padding: 2rem 1rem 3rem;
+@media (max-width: 768px) {
+  /* Stack vertically: map on top, info panel below */
+  #content-section.section--active {
+    flex-direction: column;
+    height: auto;
+    min-height: 100vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  .map-wrapper {
+    flex: 0 0 50vh;
+    height: 50vh;
+    min-height: 280px;
+  }
+
+  .info-panel {
+    flex: 1 1 auto;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    border-left: none;
+    border-top: 1px solid var(--color-border);
+  }
+
+  .info-panel__scroll {
+    padding: 1rem 1rem 3rem;
   }
 
   .mine-details__list {

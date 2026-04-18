@@ -2,13 +2,14 @@
  * Main entry point for the unearthed frontend.
  *
  * Flow: parse share URL -> geolocation (or state picker) -> API call
- *       -> map reveal -> particle overlay + ticker -> prose -> chat
+ *       -> map reveal -> ticker -> prose -> chat
  */
 
 import { fetchMineForMe } from "./api.js";
 import { initChat } from "./chat.js";
 import {
   findSubregion,
+  geocodeAddress,
   hasCoalData,
   loadSubregionGeoJSON,
   requestLocation,
@@ -16,10 +17,10 @@ import {
   subregionForState,
 } from "./geo.js";
 import { createMap, runRevealSequence } from "./map.js";
-import { createParticleOverlay, showHeroImage, startTicker } from "./particles.js";
+import { showHeroImage, startTicker } from "./particles.js";
 
 // --- CDN dependency check ---
-if (typeof maplibregl === "undefined" || typeof PIXI === "undefined") {
+if (typeof maplibregl === "undefined") {
   const msg = "Required libraries failed to load. Please check your network connection and reload.";
   document.body.textContent = msg;
   throw new Error(msg);
@@ -27,8 +28,8 @@ if (typeof maplibregl === "undefined" || typeof PIXI === "undefined") {
 
 // --- DOM References ---
 const introSection = document.getElementById("intro");
-const mapSection = document.getElementById("map-section");
-const revealSection = document.getElementById("reveal-section");
+const contentSection = document.getElementById("content-section");
+const infoPanel = document.getElementById("info-panel");
 
 const btnLocate = document.getElementById("btn-locate");
 const geoDenied = document.getElementById("geo-denied");
@@ -41,8 +42,17 @@ const errorMessage = document.getElementById("error-message");
 const mapContainer = document.getElementById("map-container");
 const mapCaption = document.getElementById("map-caption");
 
+const addressForm = document.getElementById("address-form");
+const addressInput = document.getElementById("address-input");
+
+const btnChangeLocation = document.getElementById("btn-change-location");
+const relocForm = document.getElementById("reloc-form");
+const relocAddressForm = document.getElementById("reloc-address-form");
+const relocAddressInput = document.getElementById("reloc-address-input");
+const relocBtnLocate = document.getElementById("reloc-btn-locate");
+const relocError = document.getElementById("reloc-error");
+
 const heroImage = document.getElementById("hero-image");
-const particleCanvas = document.getElementById("particle-canvas");
 const tickerValue = document.getElementById("ticker-value");
 const proseEl = document.getElementById("prose");
 
@@ -63,7 +73,6 @@ const shareCopied = document.getElementById("share-copied");
 
 // --- Cleanup state for re-reveal safety ---
 let tickerStop = null;
-let pixiApp = null;
 let mapInstance = null;
 let shareHandler = null;
 let geojsonData = null;
@@ -99,10 +108,9 @@ btnLocate.addEventListener("click", async () => {
     const coords = await requestLocation();
 
     if (!coords) {
-      // Geolocation denied or unavailable
+      // Geolocation denied or unavailable — address form stays visible
       showLoading(false);
       btnLocate.disabled = false;
-      document.getElementById("geo-prompt").classList.add("hidden");
       geoDenied.classList.remove("hidden");
       return;
     }
@@ -117,10 +125,9 @@ btnLocate.addEventListener("click", async () => {
     const subregion = findSubregion(coords.lat, coords.lon, geojsonData);
 
     if (!subregion) {
-      // Outside US
+      // Outside US — address form stays visible as alternative
       showLoading(false);
       btnLocate.disabled = false;
-      document.getElementById("geo-prompt").classList.add("hidden");
       geoOutsideUs.classList.remove("hidden");
       geoDenied.classList.remove("hidden");
       return;
@@ -134,7 +141,6 @@ btnLocate.addEventListener("click", async () => {
         `Your grid subregion (${subregion}) has no active coal supply chain in our data. ` +
           "Try the state picker to explore a coal-heavy region.",
       );
-      document.getElementById("geo-prompt").classList.add("hidden");
       geoDenied.classList.remove("hidden");
       return;
     }
@@ -201,6 +207,11 @@ async function startReveal(subregionId, coords) {
   showLoading(true);
   hideError();
 
+  // Close reloc form if a re-reveal was triggered from the map page
+  relocForm.classList.add("hidden");
+  relocAddressInput.value = "";
+  showRelocError(null);
+
   // Clean up any previous reveal resources
   cleanup();
 
@@ -213,8 +224,8 @@ async function startReveal(subregionId, coords) {
       (data.mine_coords[1] + data.plant_coords[1]) / 2 - 1,
     ];
 
-    // Transition to map section
-    showSection(mapSection);
+    // Transition to content section (map fills viewport; info panel is hidden)
+    showSection(contentSection);
 
     mapInstance = createMap(mapContainer);
     await runRevealSequence(mapInstance, {
@@ -226,16 +237,11 @@ async function startReveal(subregionId, coords) {
       captionEl: mapCaption,
     });
 
-    // Transition to reveal section
-    showSection(revealSection);
+    // Reveal the info panel alongside the map
+    infoPanel.classList.remove("hidden");
 
-    // Hero image + particles (particles are non-critical — catch failures)
+    // Hero image
     showHeroImage(heroImage, data.mine_type);
-    try {
-      pixiApp = createParticleOverlay(particleCanvas);
-    } catch (pixiErr) {
-      console.warn("Particle overlay unavailable:", pixiErr.message);
-    }
     tickerStop = startTicker(tickerValue, data.tons);
 
     // Prose (fade in)
@@ -287,11 +293,8 @@ function cleanup() {
     tickerStop();
     tickerStop = null;
   }
-  if (pixiApp) {
-    pixiApp.destroy(false);
-    pixiApp = null;
-  }
   if (mapInstance) {
+    mapInstance._stopFlowAnimation?.();
     mapInstance.remove();
     mapInstance = null;
   }
@@ -302,6 +305,8 @@ function cleanup() {
   // Clear chat transcript
   chatTranscript.replaceChildren();
   proseEl.classList.remove("prose--visible");
+  // Hide info panel so re-reveal starts with full-viewport map
+  infoPanel.classList.add("hidden");
 }
 
 // --- Share ---
@@ -347,10 +352,8 @@ function setupShare(subregionId) {
 function showSection(section) {
   introSection.classList.remove("section--active");
   introSection.classList.add("hidden");
-  mapSection.classList.remove("section--active");
-  mapSection.classList.add("hidden");
-  revealSection.classList.remove("section--active");
-  revealSection.classList.add("hidden");
+  contentSection.classList.remove("section--active");
+  contentSection.classList.add("hidden");
 
   section.classList.remove("hidden");
   section.classList.add("section--active");
@@ -384,6 +387,152 @@ function showError(message) {
 
 function hideError() {
   errorMessage.classList.add("hidden");
+}
+
+// --- Address Form (Home Page) ---
+addressForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const query = addressInput.value.trim();
+  if (!query) return;
+
+  showLoading(true);
+  hideError();
+
+  try {
+    if (!geojsonData) {
+      geojsonData = await loadSubregionGeoJSON();
+    }
+
+    const coords = await geocodeAddress(query);
+    if (!coords) {
+      showLoading(false);
+      showError("Could not find that location. Try a full address or zip code.");
+      return;
+    }
+
+    const subregion = findSubregion(coords.lat, coords.lon, geojsonData);
+    if (!subregion) {
+      showLoading(false);
+      showError("That location is outside the US grid coverage area. Try the state picker.");
+      geoDenied.classList.remove("hidden");
+      return;
+    }
+
+    if (!hasCoalData(subregion)) {
+      showLoading(false);
+      showError(
+        `Your grid subregion (${subregion}) has no active coal supply chain in our data. ` +
+          "Try the state picker to explore a coal-heavy region.",
+      );
+      geoDenied.classList.remove("hidden");
+      return;
+    }
+
+    await startReveal(subregion, [coords.lat, coords.lon]);
+  } catch (err) {
+    showLoading(false);
+    showError(err.message || "Something went wrong. Please try again.");
+  }
+});
+
+// --- Redo Location (Map Page) ---
+btnChangeLocation.addEventListener("click", () => {
+  const isHidden = relocForm.classList.toggle("hidden");
+  if (!isHidden) relocAddressInput.focus();
+});
+
+relocAddressForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const query = relocAddressInput.value.trim();
+  if (!query) return;
+
+  setRelocLoading(true);
+  showRelocError(null);
+
+  try {
+    if (!geojsonData) {
+      geojsonData = await loadSubregionGeoJSON();
+    }
+
+    const coords = await geocodeAddress(query);
+    if (!coords) {
+      setRelocLoading(false);
+      showRelocError("Could not find that location. Try a full address or zip code.");
+      return;
+    }
+
+    const subregion = findSubregion(coords.lat, coords.lon, geojsonData);
+    if (!subregion) {
+      setRelocLoading(false);
+      showRelocError("That location is outside the US grid coverage area.");
+      return;
+    }
+
+    if (!hasCoalData(subregion)) {
+      setRelocLoading(false);
+      showRelocError(`Subregion ${subregion} has no coal data. Try a different location.`);
+      return;
+    }
+
+    setRelocLoading(false);
+    await startReveal(subregion, [coords.lat, coords.lon]);
+  } catch (err) {
+    setRelocLoading(false);
+    showRelocError(err.message || "Something went wrong. Please try again.");
+  }
+});
+
+relocBtnLocate.addEventListener("click", async () => {
+  setRelocLoading(true);
+  showRelocError(null);
+
+  try {
+    const coords = await requestLocation();
+    if (!coords) {
+      setRelocLoading(false);
+      showRelocError("Location access denied. Try entering an address instead.");
+      return;
+    }
+
+    if (!geojsonData) {
+      geojsonData = await loadSubregionGeoJSON();
+    }
+
+    const subregion = findSubregion(coords.lat, coords.lon, geojsonData);
+    if (!subregion) {
+      setRelocLoading(false);
+      showRelocError("Your location is outside the US grid coverage area.");
+      return;
+    }
+
+    if (!hasCoalData(subregion)) {
+      setRelocLoading(false);
+      showRelocError(`Subregion ${subregion} has no coal data. Try entering an address.`);
+      return;
+    }
+
+    setRelocLoading(false);
+    await startReveal(subregion, [coords.lat, coords.lon]);
+  } catch (err) {
+    setRelocLoading(false);
+    showRelocError(err.message || "Something went wrong. Please try again.");
+  }
+});
+
+function setRelocLoading(loading) {
+  const submitBtn = relocAddressForm.querySelector('button[type="submit"]');
+  submitBtn.disabled = loading;
+  submitBtn.textContent = loading ? "..." : "Go";
+  relocBtnLocate.disabled = loading;
+}
+
+function showRelocError(message) {
+  if (message) {
+    relocError.textContent = message;
+    relocError.classList.remove("hidden");
+  } else {
+    relocError.classList.add("hidden");
+  }
 }
 
 function stateLabel(code) {

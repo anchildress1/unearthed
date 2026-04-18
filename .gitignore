@@ -25,3 +25,7 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+# Tool caches
+.ruff_cache/
+.playwright-mcp/

@@ -1,6 +1,7 @@
 """Unit tests for Snowflake client: query result mapping, fallback loading."""
 
 from unittest.mock import MagicMock, patch
+from urllib.parse import urlparse
 
 import pytest
 
@@ -17,15 +18,14 @@ MOCK_ROW = {
     "MINE_OPERATOR": "Consol Pennsylvania Coal Company LLC",
     "MINE_COUNTY": "Greene",
     "MINE_STATE": "PA",
-    "MINE_TYPE": "Underground",
-    "MINE_LAT": 39.9175,
-    "MINE_LON": -80.471944,
+    "MINE_TYPE": "U",
+    "MINE_LATITUDE": 39.9175,
+    "MINE_LONGITUDE": -80.471944,
     "PLANT_NAME": "Cross",
-    "PLANT_OPERATOR": "South Carolina PSA",
-    "PLANT_LAT": 33.371506,
-    "PLANT_LON": -80.113235,
-    "TOTAL_TONS": 1247001,
-    "TONS_YEAR": 2024,
+    "PLANT_OPERATOR": "South Carolina Public Service Authority",
+    "PLANT_LATITUDE": "33.371506",
+    "PLANT_LONGITUDE": "-80.113235",
+    "TOTAL_TONS": "3811733.0",
 }
 
 
@@ -49,9 +49,9 @@ class TestQueryMineForSubregion:
         assert result["mine_type"] == "Underground"
         assert result["mine_coords"] == [39.9175, -80.471944]
         assert result["plant"] == "Cross"
-        assert result["plant_operator"] == "South Carolina PSA"
+        assert result["plant_operator"] == "South Carolina Public Service Authority"
         assert result["plant_coords"] == [33.371506, -80.113235]
-        assert result["tons"] == 1247001.0
+        assert result["tons"] == pytest.approx(3811733.0)
         assert result["tons_year"] == 2024
 
     @patch("app.snowflake_client._get_connection")
@@ -88,7 +88,7 @@ class TestQueryMineForSubregion:
 
     @patch("app.snowflake_client._get_connection")
     def test_tons_converted_to_float(self, mock_get_conn):
-        row = {**MOCK_ROW, "TOTAL_TONS": 5000000}
+        row = {**MOCK_ROW, "TOTAL_TONS": "5000000.0"}
         mock_get_conn.return_value = self._mock_connection([row])
         result = query_mine_for_subregion("SRVC")
         assert isinstance(result["tons"], float)
@@ -289,8 +289,9 @@ class TestQueryCortexAnalyst:
             query_cortex_analyst("test")
 
         call_url = mock_post.call_args[0][0]
-        assert "ojidckd-mdc60154.snowflakecomputing.com" in call_url
-        assert "/api/v2/cortex/analyst/message" in call_url
+        parsed = urlparse(call_url)
+        assert parsed.hostname == "ojidckd-mdc60154.snowflakecomputing.com"
+        assert parsed.path == "/api/v2/cortex/analyst/message"
 
     @patch("app.snowflake_client.requests.post")
     @patch("app.snowflake_client._get_connection")
@@ -407,9 +408,13 @@ class TestExecuteAnalystSql:
         results = execute_analyst_sql("WITH cte AS (SELECT 1 AS X) SELECT * FROM cte")
         assert results == [{"X": 1}]
 
-    def test_trailing_semicolon_rejected(self):
-        with pytest.raises(ValueError, match="read-only"):
-            execute_analyst_sql("SELECT 1 AS X;")
+    @patch("app.snowflake_client._get_connection")
+    def test_trailing_semicolon_stripped_and_executed(self, mock_get_conn):
+        # Cortex Analyst always appends a trailing semicolon.
+        # execute_analyst_sql must strip it and execute the clean statement.
+        mock_get_conn.return_value = self._mock_connection([{"X": 1}])
+        results = execute_analyst_sql("SELECT 1 AS X;")
+        assert results == [{"X": 1}]
 
     def test_drop_rejected(self):
         with pytest.raises(ValueError, match="read-only"):

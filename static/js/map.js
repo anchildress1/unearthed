@@ -3,14 +3,33 @@
  *
  * Sequence: user location -> power plant -> source mine.
  * Arc line drawn between all three points. Total time <= 8 seconds.
+ *
+ * Flow animation: static dasharray with linearly advancing dashoffset —
+ * steady conveyor-belt feel. Two layers (glow + dashes), one pulse circle.
+ * All layers are native MapLibre WebGL — they pan/zoom with the map.
  */
 
+// Basemap style evaluation — considered green topology alternatives:
+// - Stamen Terrain / Stadia Maps: requires paid API key as of 2024 (Stadia acquired Stamen tiles)
+// - OpenTopoMap: free XYZ raster tiles only; no vector style JSON; classic paper-toned look
+//   incompatible with this dark aesthetic; loses crisp vector zoom; can't be used as MapLibre style
+// - MapTiler terrain/outdoor styles: all require paid API key
+// Verdict: no suitable free green topology MapLibre style without paid access.
+// Keeping Carto dark-matter for aesthetic coherence with the coal/mining theme.
 const MAPTILER_STYLE =
   "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
 
 const STEP_DURATION_MS = 1700;
 const PAUSE_BETWEEN_MS = 200;
 const MAP_LOAD_TIMEOUT_MS = 15000;
+
+// Dash pattern: 4 units on, 3 units off = 7-unit repeat.
+const DASH_LEN = 4;
+const GAP_LEN = 3;
+
+// Flow speed in dasharray units per second.
+// 9 units/sec → one full 7-unit cycle every ~0.78s — steady conveyor pace.
+const FLOW_SPEED = 9;
 
 /**
  * Initialize a MapLibre GL map in the given container.
@@ -30,6 +49,8 @@ export function createMap(container) {
 /**
  * Run the cinematic reveal sequence: user -> plant -> mine.
  * Rejects if the map doesn't load within MAP_LOAD_TIMEOUT_MS.
+ *
+ * Attaches a stop function to map._stopFlowAnimation — call before map.remove().
  *
  * @param {maplibregl.Map} map
  * @param {Object} params
@@ -85,8 +106,10 @@ export function runRevealSequence(map, params) {
       map.flyTo({ center: mineLonLat, zoom: 8, duration: STEP_DURATION_MS });
       await delay(stepDelay);
 
-      // Step 4: Draw arc and zoom out to show all three
-      addArcLine(map, [userLonLat, plantLonLat, mineLonLat]);
+      // Step 4: Draw animated flow lines and zoom out to show all three
+      const stopFlow = addFlowLine(map, userLonLat, plantLonLat, mineLonLat);
+      map._stopFlowAnimation = stopFlow;
+
       showCaption(captionEl, "");
 
       const bounds = new maplibregl.LngLatBounds();
@@ -95,7 +118,7 @@ export function runRevealSequence(map, params) {
       bounds.extend(mineLonLat);
 
       map.fitBounds(bounds, {
-        padding: { top: 60, bottom: 60, left: 40, right: 40 },
+        padding: { top: 60, bottom: 60, left: 60, right: 60 },
         duration: STEP_DURATION_MS,
       });
 
@@ -136,63 +159,172 @@ function addMarker(map, lonLat, label, color) {
   new maplibregl.Marker({ element: el })
     .setLngLat(lonLat)
     .setPopup(
-      new maplibregl.Popup({ offset: 12, closeButton: false }).setText(label),
+      new maplibregl.Popup({ offset: 12, closeButton: false, closeOnClick: false }).setText(label),
     )
     .addTo(map)
     .togglePopup();
 }
 
 /**
- * Draw an arc line connecting multiple points.
- * Generates curved segments by interpolating intermediate points
- * with a slight latitude offset for visual curvature.
- * @param {maplibregl.Map} map
- * @param {Array<[number, number]>} points - Array of [lon, lat] pairs
+ * Generate arc coordinates between two points with a sine-curve bulge.
+ * @param {[number,number]} from - [lon, lat]
+ * @param {[number,number]} to   - [lon, lat]
+ * @param {number} segments
+ * @returns {Array<[number,number]>}
  */
-function addArcLine(map, points) {
-  const arcCoords = [];
-  for (let p = 0; p < points.length - 1; p++) {
-    const start = points[p];
-    const end = points[p + 1];
-    const segments = 50;
-    for (let i = 0; i <= segments; i++) {
-      const t = i / segments;
-      const lon = start[0] + (end[0] - start[0]) * t;
-      const lat = start[1] + (end[1] - start[1]) * t;
-      // Arc offset: sine curve peaks at midpoint
-      const arcHeight =
-        Math.sin(t * Math.PI) *
-        Math.abs(end[0] - start[0]) *
-        0.15;
-      arcCoords.push([lon, lat + arcHeight]);
-    }
+function buildArc(from, to, segments) {
+  const coords = [];
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments;
+    const lon = from[0] + (to[0] - from[0]) * t;
+    const lat = from[1] + (to[1] - from[1]) * t;
+    const arcHeight = Math.sin(t * Math.PI) * Math.abs(to[0] - from[0]) * 0.15;
+    coords.push([lon, lat + arcHeight]);
   }
+  return coords;
+}
 
-  const sourceId = "arc-line";
+/**
+ * Add a GeoJSON line source + layer pair to the map.
+ * Removes any existing source/layer with the same id first.
+ * @param {maplibregl.Map} map
+ * @param {string} id
+ * @param {Array<[number,number]>} coordinates
+ * @param {Object} paint - MapLibre paint properties
+ */
+function addLineLayer(map, id, coordinates, paint) {
+  if (map.getSource(id)) {
+    map.removeLayer(id);
+    map.removeSource(id);
+  }
+  map.addSource(id, {
+    type: "geojson",
+    data: {
+      type: "Feature",
+      geometry: { type: "LineString", coordinates },
+    },
+  });
+  map.addLayer({ id, type: "line", source: id, paint });
+}
+
+/**
+ * Add a single pulsing WebGL circle at the mine endpoint.
+ * One ring, slow sine breath — steady pressure at the source.
+ * @param {maplibregl.Map} map
+ * @param {[number,number]} mineLonLat
+ */
+function addMinePulse(map, mineLonLat) {
+  const sourceId = "mine-pulse";
   if (map.getSource(sourceId)) {
-    map.removeLayer(sourceId);
+    map.removeLayer("mine-pulse");
     map.removeSource(sourceId);
   }
-
   map.addSource(sourceId, {
     type: "geojson",
     data: {
       type: "Feature",
-      geometry: { type: "LineString", coordinates: arcCoords },
+      geometry: { type: "Point", coordinates: mineLonLat },
     },
   });
-
   map.addLayer({
-    id: sourceId,
-    type: "line",
+    id: "mine-pulse",
+    type: "circle",
     source: sourceId,
     paint: {
-      "line-color": "#c4956a",
-      "line-width": 2,
-      "line-opacity": 0.7,
-      "line-dasharray": [4, 3],
+      "circle-radius": 14,
+      "circle-color": "#7a3d10",
+      "circle-opacity": 0.08,
+      "circle-blur": 0.6,
     },
   });
+}
+
+/**
+ * Draw the extraction flow and start the animation loop.
+ *
+ * Layers (mine → plant direction):
+ *   user-arc    — dim static dotted line: user → plant (contextual)
+ *   flow-glow   — wide blurred amber backing: mine → plant (heat haze)
+ *   flow-dashes — animated amber dashes: mine → plant (the extraction flow)
+ *   mine-pulse  — single slow-breathing circle at the mine
+ *
+ * Dash animation: static dasharray [4, 3] with linearly advancing dashoffset.
+ * One property updated per frame — frame-rate-independent, no branch switching.
+ * Pulse: single sine wave at ~3.5s period — slow, ponderous, relentless.
+ *
+ * @param {maplibregl.Map} map
+ * @param {[number,number]} userLonLat
+ * @param {[number,number]} plantLonLat
+ * @param {[number,number]} mineLonLat
+ * @returns {function} stop — cancel the animation loop before calling map.remove()
+ */
+function addFlowLine(map, userLonLat, plantLonLat, mineLonLat) {
+  const arc = buildArc(mineLonLat, plantLonLat, 60);
+
+  // User → plant: dim contextual connection (you are downstream of this plant)
+  addLineLayer(map, "user-arc", buildArc(userLonLat, plantLonLat, 30), {
+    "line-color": "#3a3a3a",
+    "line-width": 1,
+    "line-opacity": 0.3,
+    "line-dasharray": [2, 5],
+  });
+
+  // Mine → plant: wide blurred backing — heat haze of the extraction corridor
+  addLineLayer(map, "flow-glow", arc, {
+    "line-color": "#4a1e05",
+    "line-width": 10,
+    "line-opacity": 0.5,
+    "line-blur": 6,
+  });
+
+  // Mine → plant: amber dashes, static pattern, offset-animated
+  addLineLayer(map, "flow-dashes", arc, {
+    "line-color": "#c4956a",
+    "line-width": 3,
+    "line-opacity": 1,
+    "line-dasharray": [DASH_LEN, GAP_LEN],
+  });
+
+  // Mine: single slow-breathing circle
+  addMinePulse(map, mineLonLat);
+
+  // --- Animation loop ---
+  let rafId = null;
+  let stopped = false;
+  let startTime = null;
+
+  function animate(timestamp) {
+    if (stopped) return;
+    rafId = requestAnimationFrame(animate);
+
+    if (startTime === null) startTime = timestamp;
+    const elapsed = (timestamp - startTime) / 1000; // seconds
+
+    try {
+      // Dashes: linearly advancing offset — steady conveyor belt, no branching
+      map.setPaintProperty("flow-dashes", "line-dashoffset", elapsed * FLOW_SPEED);
+
+      // Pulse: single slow sine breath (~3.5s period)
+      const phase = elapsed * ((Math.PI * 2) / 3.5);
+      const r = 12 + 8 * Math.abs(Math.sin(phase));
+      const a = 0.06 + 0.1 * Math.abs(Math.sin(phase));
+      map.setPaintProperty("mine-pulse", "circle-radius", r);
+      map.setPaintProperty("mine-pulse", "circle-opacity", a);
+    } catch {
+      // Map removed before stop() was called — cancel the animation loop.
+      stopped = true;
+    }
+  }
+
+  rafId = requestAnimationFrame(animate);
+
+  return function stop() {
+    stopped = true;
+    if (rafId !== null) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+  };
 }
 
 /**
