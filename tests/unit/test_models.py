@@ -7,6 +7,7 @@ from app.models import AskRequest, AskResponse, MineForMeRequest, MineForMeRespo
 
 # --- MineForMeRequest ---
 
+
 class TestMineForMeRequest:
     def test_valid_subregion(self):
         req = MineForMeRequest(subregion_id="SRVC")
@@ -32,8 +33,17 @@ class TestMineForMeRequest:
         with pytest.raises(ValidationError):
             MineForMeRequest(subregion_id=123)
 
+    def test_path_traversal_rejected(self):
+        with pytest.raises(ValidationError):
+            MineForMeRequest(subregion_id="../../etc")
+
+    def test_special_chars_rejected(self):
+        with pytest.raises(ValidationError):
+            MineForMeRequest(subregion_id="../bad")
+
 
 # --- MineForMeResponse ---
+
 
 class TestMineForMeResponse:
     def test_valid_response(self, sample_mine_data):
@@ -96,6 +106,7 @@ class TestMineForMeResponse:
 
 # --- AskRequest ---
 
+
 class TestAskRequest:
     def test_question_only(self):
         req = AskRequest(question="How much coal?")
@@ -116,6 +127,7 @@ class TestAskRequest:
 
 
 # --- AskResponse ---
+
 
 class TestAskResponse:
     def test_answer_only(self):

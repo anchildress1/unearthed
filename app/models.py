@@ -1,8 +1,10 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+_SUBREGION_PATTERN = r"^[A-Za-z0-9]{2,10}$"
 
 
 class MineForMeRequest(BaseModel):
-    subregion_id: str = Field(min_length=1, max_length=10)
+    subregion_id: str = Field(pattern=_SUBREGION_PATTERN)
 
 
 class MineForMeResponse(BaseModel):
@@ -22,10 +24,25 @@ class MineForMeResponse(BaseModel):
     user_coords: list[float] | None = None
     degraded: bool = False
 
+    model_config = {"extra": "forbid"}
+
+    @field_validator("mine_coords", "plant_coords")
+    @classmethod
+    def validate_coords(cls, v: list[float]) -> list[float]:
+        lat, lon = v
+        if not (-90 <= lat <= 90):
+            raise ValueError(f"Latitude {lat} out of range [-90, 90]")
+        if not (-180 <= lon <= 180):
+            raise ValueError(f"Longitude {lon} out of range [-180, 180]")
+        return v
+
 
 class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=500)
-    subregion_id: str | None = Field(default=None, min_length=1, max_length=10)
+    subregion_id: str | None = Field(
+        default=None,
+        pattern=_SUBREGION_PATTERN,
+    )
 
 
 class AskResponse(BaseModel):
