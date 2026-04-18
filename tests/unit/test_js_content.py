@@ -167,8 +167,8 @@ class TestMapJsContent:
     def test_uses_fit_bounds(self):
         assert "fitBounds" in self.src
 
-    def test_has_arc_line_function(self):
-        assert "addArcLine" in self.src
+    def test_has_flow_line_function(self):
+        assert "addFlowLine" in self.src
 
     def test_draws_geojson_line(self):
         assert "LineString" in self.src
