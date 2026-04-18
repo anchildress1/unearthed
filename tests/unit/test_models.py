@@ -198,6 +198,52 @@ class TestMineForMeResponse:
         with pytest.raises(ValidationError):
             MineForMeResponse(**sample_mine_data, prose="Bad.", subregion_id="SRVC")
 
+    def test_mine_coords_empty_list_rejected(self, sample_mine_data):
+        sample_mine_data["mine_coords"] = []
+        with pytest.raises(ValidationError):
+            MineForMeResponse(**sample_mine_data, prose="Bad.", subregion_id="SRVC")
+
+    def test_mine_coords_nan_rejected(self, sample_mine_data):
+        sample_mine_data["mine_coords"] = [float("nan"), -80.0]
+        with pytest.raises(ValidationError):
+            MineForMeResponse(**sample_mine_data, prose="Bad.", subregion_id="SRVC")
+
+    def test_mine_coords_infinity_rejected(self, sample_mine_data):
+        sample_mine_data["mine_coords"] = [float("inf"), -80.0]
+        with pytest.raises(ValidationError):
+            MineForMeResponse(**sample_mine_data, prose="Bad.", subregion_id="SRVC")
+
+    def test_plant_coords_boundary_lon_minus_180_accepted(self, sample_mine_data):
+        sample_mine_data["plant_coords"] = [33.0, -180.0]
+        resp = MineForMeResponse(**sample_mine_data, prose="Boundary.", subregion_id="SRVC")
+        assert resp.plant_coords[1] == -180.0
+
+    def test_negative_zero_tons_accepted(self, sample_mine_data):
+        """Negative zero is >= 0, so it should be accepted."""
+        sample_mine_data["tons"] = -0.0
+        resp = MineForMeResponse(**sample_mine_data, prose="Zero.", subregion_id="SRVC")
+        assert resp.tons == 0.0
+
+    def test_very_small_tons_accepted(self, sample_mine_data):
+        sample_mine_data["tons"] = 0.001
+        resp = MineForMeResponse(**sample_mine_data, prose="Tiny.", subregion_id="SRVC")
+        assert resp.tons == pytest.approx(0.001)
+
+    def test_mine_coords_non_numeric_rejected(self, sample_mine_data):
+        sample_mine_data["mine_coords"] = ["lat", "lon"]
+        with pytest.raises(ValidationError):
+            MineForMeResponse(**sample_mine_data, prose="Bad.", subregion_id="SRVC")
+
+    def test_user_coords_out_of_range_not_validated(self, sample_mine_data):
+        """user_coords is not passed through validate_coords (no field_validator)."""
+        resp = MineForMeResponse(
+            **sample_mine_data,
+            prose="Test.",
+            subregion_id="SRVC",
+            user_coords=[999.0, 999.0],
+        )
+        assert resp.user_coords == [999.0, 999.0]
+
 
 # --- AskRequest ---
 
@@ -256,6 +302,30 @@ class TestAskRequest:
         req = AskRequest(question="日本語の質問")
         assert req.question == "日本語の質問"
 
+    def test_whitespace_only_question_accepted(self):
+        """Whitespace is >= min_length=1, so model accepts it."""
+        req = AskRequest(question="   ")
+        assert req.question == "   "
+
+    def test_extra_field_silently_ignored(self):
+        """AskRequest has no extra=forbid, so unknown fields are silently dropped."""
+        req = AskRequest(question="test", extra_field="ignored")
+        assert req.question == "test"
+
+    def test_subregion_id_none_explicitly_accepted(self):
+        req = AskRequest(question="How much?", subregion_id=None)
+        assert req.subregion_id is None
+
+    def test_numeric_question_rejected(self):
+        """Question must be StrictStr — int should fail."""
+        with pytest.raises(ValidationError):
+            AskRequest(question=123)
+
+    def test_bool_question_rejected(self):
+        """Question must be StrictStr — bool should fail."""
+        with pytest.raises(ValidationError):
+            AskRequest(question=True)
+
 
 # --- AskResponse ---
 
@@ -312,3 +382,27 @@ class TestAskResponse:
         rows = [{"A": 1}, {"A": 2}, {"A": 3}]
         resp = AskResponse(answer="", results=rows)
         assert len(resp.results) == 3
+
+    def test_suggestions_empty_list_accepted(self):
+        resp = AskResponse(answer="", suggestions=[])
+        assert resp.suggestions == []
+
+    def test_all_fields_populated(self):
+        resp = AskResponse(
+            answer="42",
+            interpretation="Restatement",
+            sql="SELECT 1",
+            error=None,
+            suggestions=["Q1"],
+            results=[{"X": 1}],
+        )
+        assert resp.answer == "42"
+        assert resp.interpretation == "Restatement"
+        assert resp.sql == "SELECT 1"
+        assert resp.results == [{"X": 1}]
+
+    def test_error_and_answer_coexist(self):
+        """Error and answer can both be set (SQL execution failure case)."""
+        resp = AskResponse(answer="Fallback.", error="Query failed")
+        assert resp.answer == "Fallback."
+        assert resp.error == "Query failed"

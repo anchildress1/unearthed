@@ -133,6 +133,26 @@ class TestFallbackProse:
         prose = gemini_client._fallback_prose(sample_mine_data)
         assert "12,345,678" in prose
 
+    def test_fallback_zero_tonnage_formatted(self, sample_mine_data):
+        """Zero tonnage must not crash the formatter."""
+        sample_mine_data["tons"] = 0.0
+        prose = gemini_client._fallback_prose(sample_mine_data)
+        assert "0" in prose
+
+    def test_fallback_empty_subregion_handled(self, sample_mine_data):
+        """Empty subregion_id should not crash fallback template."""
+        sample_mine_data["subregion_id"] = ""
+        prose = gemini_client._fallback_prose(sample_mine_data)
+        assert isinstance(prose, str)
+        assert "Bailey Mine" in prose
+
+    def test_fallback_missing_subregion_key_handled(self, sample_mine_data):
+        """mine_data without subregion_id key must use .get() default."""
+        if "subregion_id" in sample_mine_data:
+            del sample_mine_data["subregion_id"]
+        prose = gemini_client._fallback_prose(sample_mine_data)
+        assert isinstance(prose, str)
+
 
 class TestGenerateProse:
     def test_no_api_key_returns_degraded(self, sample_mine_data):
@@ -305,3 +325,61 @@ class TestGenerateProse:
                 gemini_client.generate_prose(sample_mine_data)
                 # Client constructor called once, not twice
                 assert mock_cls.call_count == 1
+
+    def test_none_api_key_returns_degraded(self, sample_mine_data):
+        """None api_key (not just empty string) must also trigger fallback."""
+        sample_mine_data["subregion_id"] = "NONE_KEY"
+        with patch.object(gemini_client.settings, "gemini_api_key", None):
+            prose, degraded = gemini_client.generate_prose(sample_mine_data)
+        assert degraded is True
+        assert "Bailey Mine" in prose
+
+    def test_prompt_template_uses_mine_data_fields(self, sample_mine_data):
+        """Prompt must be formatted with mine data before sending to Gemini."""
+        sample_mine_data["subregion_id"] = "PROMPT_CHECK"
+        mock_response = MagicMock()
+        mock_response.text = "Generated."
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = mock_response
+
+        with patch.object(gemini_client.settings, "gemini_api_key", "fake-key"):
+            with patch("app.gemini_client.genai.Client", return_value=mock_client):
+                gemini_client.generate_prose(sample_mine_data)
+
+        # Verify prompt was passed as contents arg
+        call_kwargs = mock_client.models.generate_content.call_args
+        prompt = call_kwargs[1]["contents"]
+        assert "Bailey Mine" in prompt
+        assert "Greene" in prompt
+
+    def test_gemini_model_from_settings(self, sample_mine_data):
+        """generate_content must use the model from settings."""
+        sample_mine_data["subregion_id"] = "MODEL_CHECK"
+        mock_response = MagicMock()
+        mock_response.text = "Generated."
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = mock_response
+
+        with patch.object(gemini_client.settings, "gemini_api_key", "fake-key"):
+            with patch.object(gemini_client.settings, "gemini_model", "test-model"):
+                with patch("app.gemini_client.genai.Client", return_value=mock_client):
+                    gemini_client.generate_prose(sample_mine_data)
+
+        call_kwargs = mock_client.models.generate_content.call_args
+        assert call_kwargs[1]["model"] == "test-model"
+
+    def test_whitespace_only_response_cached_as_degraded(self, sample_mine_data):
+        """Whitespace-only Gemini response must cache as degraded."""
+        sample_mine_data["subregion_id"] = "WS_CACHE"
+        mock_response = MagicMock()
+        mock_response.text = "   \t\n  "
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = mock_response
+
+        with patch.object(gemini_client.settings, "gemini_api_key", "fake-key"):
+            with patch("app.gemini_client.genai.Client", return_value=mock_client):
+                gemini_client.generate_prose(sample_mine_data)
+
+        assert "WS_CACHE" in gemini_client._prose_cache
+        _, degraded = gemini_client._prose_cache["WS_CACHE"]
+        assert degraded is True
