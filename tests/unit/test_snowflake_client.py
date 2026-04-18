@@ -1,6 +1,7 @@
 """Unit tests for Snowflake client: query result mapping, fallback loading."""
 
 from unittest.mock import MagicMock, patch
+from urllib.parse import urlparse
 
 import pytest
 
@@ -50,7 +51,7 @@ class TestQueryMineForSubregion:
         assert result["plant"] == "Cross"
         assert result["plant_operator"] == "South Carolina Public Service Authority"
         assert result["plant_coords"] == [33.371506, -80.113235]
-        assert result["tons"] == 3811733.0
+        assert result["tons"] == pytest.approx(3811733.0)
         assert result["tons_year"] == 2024
 
     @patch("app.snowflake_client._get_connection")
@@ -288,8 +289,9 @@ class TestQueryCortexAnalyst:
             query_cortex_analyst("test")
 
         call_url = mock_post.call_args[0][0]
-        assert "ojidckd-mdc60154.snowflakecomputing.com" in call_url
-        assert "/api/v2/cortex/analyst/message" in call_url
+        parsed = urlparse(call_url)
+        assert parsed.hostname == "ojidckd-mdc60154.snowflakecomputing.com"
+        assert parsed.path == "/api/v2/cortex/analyst/message"
 
     @patch("app.snowflake_client.requests.post")
     @patch("app.snowflake_client._get_connection")
