@@ -75,6 +75,63 @@ class TestSqlSafetyEdgeCases:
         long_cols = ", ".join(f"col_{i}" for i in range(100))
         assert _is_safe_sql(f"SELECT {long_cols} FROM big_table") is True
 
+    # --- Mixed case keyword tests ---
+
+    def test_mixed_case_select_allowed(self):
+        assert _is_safe_sql("SeLeCt 1") is True
+
+    def test_mixed_case_with_allowed(self):
+        assert _is_safe_sql("WiTh cte AS (SeLeCt 1) SeLeCt * FROM cte") is True
+
+    def test_mixed_case_drop_rejected(self):
+        assert _is_safe_sql("SELECT 1 DRoP TABLE t") is False
+
+    def test_mixed_case_insert_rejected(self):
+        assert _is_safe_sql("InSeRt INTO t VALUES (1)") is False
+
+    # --- CTE variants ---
+
+    def test_with_recursive_cte_allowed(self):
+        """WITH RECURSIVE is a valid read-only CTE pattern."""
+        sql = "WITH RECURSIVE cte AS (SELECT 1 UNION ALL SELECT 1) SELECT * FROM cte"
+        assert _is_safe_sql(sql) is True
+
+    # --- Additional dangerous keywords ---
+
+    def test_get_rejected(self):
+        assert _is_safe_sql("GET @stage/file.csv") is False
+
+    def test_truncate_rejected(self):
+        assert _is_safe_sql("TRUNCATE TABLE t") is False
+
+    def test_grant_rejected(self):
+        assert _is_safe_sql("GRANT SELECT ON t TO role_name") is False
+
+    # --- Keyword as non-standalone substring ---
+
+    def test_column_named_delete_count_allowed(self):
+        """'delete_count' has DELETE as substring but not standalone word."""
+        assert _is_safe_sql("SELECT delete_count FROM t") is True
+
+    def test_column_named_updated_at_allowed(self):
+        """'updated_at' has UPDATE as substring but not standalone word."""
+        assert _is_safe_sql("SELECT updated_at FROM t") is True
+
+    def test_column_named_create_date_allowed(self):
+        """'create_date' has CREATE as substring but not standalone word."""
+        assert _is_safe_sql("SELECT create_date FROM t") is True
+
+    # --- Whitespace/format edge cases ---
+
+    def test_leading_newlines_accepted(self):
+        assert _is_safe_sql("\n\nSELECT 1") is True
+
+    def test_windows_line_endings_accepted(self):
+        assert _is_safe_sql("SELECT\r\n1") is True
+
+    def test_only_whitespace_and_newlines_rejected(self):
+        assert _is_safe_sql("\n\t\r  ") is False
+
 
 class TestSqlSafetyIntegration:
     """Verify _is_safe_sql is enforced by execute_analyst_sql."""
