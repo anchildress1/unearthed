@@ -27,6 +27,7 @@ SAMPLE_MINE_DATA_SURFACE = {
 @pytest.fixture
 def client():
     from app.main import app
+
     return TestClient(app)
 
 

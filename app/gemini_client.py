@@ -10,9 +10,7 @@ logger = logging.getLogger(__name__)
 # In-memory cache: subregion_id -> (prose, degraded). TTL = until next deploy.
 _prose_cache: dict[str, tuple[str, bool]] = {}
 
-_PROMPT_TEMPLATE: str = (
-    Path(__file__).parent.parent / "assets" / "gemini_prompt.txt"
-).read_text()
+_PROMPT_TEMPLATE: str = (Path(__file__).parent.parent / "assets" / "gemini_prompt.txt").read_text()
 
 _FALLBACK_TEMPLATE = (
     "In {mine_county}, {mine_state}, the {mine_type} operation known as {mine_name} "

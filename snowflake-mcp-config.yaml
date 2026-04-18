@@ -1,7 +1,7 @@
 analyst_services: []
 
 other_services:
-  object_manager: True
+  object_manager: False
   query_manager: True
   semantic_manager: True
 
