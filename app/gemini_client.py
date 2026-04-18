@@ -71,6 +71,12 @@ def generate_prose(mine_data: dict) -> tuple[str, bool]:
                 _prose_cache[subregion_id] = (prose, True)
             return prose, True
         prose = response.text.strip()
+        if not prose:
+            logger.warning("Gemini returned blank response after strip, using fallback")
+            prose = _fallback_prose(mine_data)
+            if subregion_id:
+                _prose_cache[subregion_id] = (prose, True)
+            return prose, True
         if subregion_id:
             _prose_cache[subregion_id] = (prose, False)
         return prose, False

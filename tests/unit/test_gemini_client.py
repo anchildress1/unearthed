@@ -102,6 +102,37 @@ class TestFallbackProse:
         assert "Cross" in prose
         assert "SERC" in prose
 
+    def test_fallback_facility_uses_excavated(self, sample_mine_data):
+        """Facility mine type must use 'excavated' verb."""
+        sample_mine_data["mine_type"] = "Facility"
+        prose = gemini_client._fallback_prose(sample_mine_data)
+        assert "excavated" in prose
+        assert "stripped" not in prose
+        assert "hollowed out" not in prose
+
+    def test_fallback_facility_article_is_a(self, sample_mine_data):
+        """'Facility' starts with a consonant → article must be 'a'."""
+        sample_mine_data["mine_type"] = "Facility"
+        prose = gemini_client._fallback_prose(sample_mine_data)
+        assert "a facility" in prose
+
+    def test_fallback_unknown_type_uses_excavated(self, sample_mine_data):
+        """Unknown mine_type should default to 'excavated' verb."""
+        sample_mine_data["mine_type"] = "Quarry"
+        prose = gemini_client._fallback_prose(sample_mine_data)
+        assert "excavated" in prose
+
+    def test_fallback_returns_string(self, sample_mine_data):
+        result = gemini_client._fallback_prose(sample_mine_data)
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_fallback_large_tonnage_formatted(self, sample_mine_data):
+        """Large tonnage values should be formatted with commas."""
+        sample_mine_data["tons"] = 12_345_678.0
+        prose = gemini_client._fallback_prose(sample_mine_data)
+        assert "12,345,678" in prose
+
 
 class TestGenerateProse:
     def test_no_api_key_returns_degraded(self, sample_mine_data):
@@ -218,3 +249,59 @@ class TestGenerateProse:
 
         assert degraded is True
         assert "Bailey Mine" in prose
+
+    def test_gemini_returns_whitespace_only_uses_fallback(self, sample_mine_data):
+        """Whitespace-only response from Gemini is falsy → must degrade."""
+        sample_mine_data["subregion_id"] = "WHITESPACE_TEXT"
+        mock_response = MagicMock()
+        mock_response.text = "   "
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = mock_response
+
+        with patch.object(gemini_client.settings, "gemini_api_key", "fake-key"):
+            with patch("app.gemini_client.genai.Client", return_value=mock_client):
+                prose, degraded = gemini_client.generate_prose(sample_mine_data)
+
+        # "   ".strip() == "" which is falsy, so fallback should be used
+        assert degraded is True
+        assert "Bailey Mine" in prose
+
+    def test_no_subregion_key_does_not_crash(self, sample_mine_data):
+        """mine_data without 'subregion_id' key must not raise KeyError."""
+        if "subregion_id" in sample_mine_data:
+            del sample_mine_data["subregion_id"]
+        # sample_mine_data from conftest doesn't have subregion_id by default
+        with patch.object(gemini_client.settings, "gemini_api_key", ""):
+            prose, degraded = gemini_client.generate_prose(sample_mine_data)
+        assert isinstance(prose, str)
+        assert degraded is True
+
+    def test_successful_call_returns_stripped_prose(self, sample_mine_data):
+        """Gemini response text must be stripped of leading/trailing whitespace."""
+        sample_mine_data["subregion_id"] = "STRIP_TEST"
+        mock_response = MagicMock()
+        mock_response.text = "\n\n  Clean prose here.  \n\n"
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = mock_response
+
+        with patch.object(gemini_client.settings, "gemini_api_key", "fake-key"):
+            with patch("app.gemini_client.genai.Client", return_value=mock_client):
+                prose, degraded = gemini_client.generate_prose(sample_mine_data)
+
+        assert prose == "Clean prose here."
+        assert degraded is False
+
+    def test_second_call_same_subregion_uses_cache_not_gemini(self, sample_mine_data):
+        """Second call for same subregion must hit cache without calling Gemini again."""
+        sample_mine_data["subregion_id"] = "DOUBLE_CALL"
+        mock_response = MagicMock()
+        mock_response.text = "First call prose."
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = mock_response
+
+        with patch.object(gemini_client.settings, "gemini_api_key", "fake-key"):
+            with patch("app.gemini_client.genai.Client", return_value=mock_client) as mock_cls:
+                gemini_client.generate_prose(sample_mine_data)
+                gemini_client.generate_prose(sample_mine_data)
+                # Client constructor called once, not twice
+                assert mock_cls.call_count == 1
