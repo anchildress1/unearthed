@@ -34,7 +34,7 @@
             type="text"
             placeholder="Enter address or zip code"
             aria-label="Enter an address or zip code to find your mine"
-            autocomplete="street-address"
+            autocomplete="off"
             maxlength="200"
           >
           <button class="btn btn--primary" type="submit">Find my mine</button>
@@ -49,7 +49,7 @@
         </p>
       </div>
 
-      <div id="geo-denied" class="geo-denied hidden" role="region" aria-label="Location fallback">
+      <section id="geo-denied" class="geo-denied hidden" aria-label="Location fallback">
         <p class="geo-denied__label" tabindex="-1">Pick your state instead:</p>
         <select id="state-picker" class="state-picker" aria-label="Select your state">
           <option value="">Select a state...</option>
@@ -64,7 +64,7 @@
         <button id="btn-state-go" class="btn btn--primary" type="button" disabled>
           Show me
         </button>
-      </div>
+      </section>
 
       <div id="geo-outside-us" class="geo-outside-us hidden">
         <p>US grid data only. Use the state picker to see what a US resident sees.</p>
@@ -108,6 +108,7 @@
             type="text"
             placeholder="Address or zip code"
             aria-label="Enter a new address or zip code"
+            autocomplete="off"
             maxlength="200"
           >
           <button class="btn btn--primary btn--sm" type="submit">Go</button>
