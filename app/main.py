@@ -119,6 +119,7 @@ def ask(req: AskRequest):
                 "We generated a query but could not execute it. "
                 "Please try rephrasing your question."
             )
+            result["answer"] = "I could not answer that confidently."
 
     suggestions = result.get("suggestions") or DEFAULT_SUGGESTIONS
 

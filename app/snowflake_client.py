@@ -213,7 +213,7 @@ _FALLBACK_DIR = (Path(__file__).parent.parent / "assets" / "fallback").resolve()
 def load_fallback_data(subregion_id: str) -> dict | None:
     """Load cached fallback JSON for a subregion when Snowflake is down."""
     fallback_file = (_FALLBACK_DIR / f"{subregion_id.upper()}.json").resolve()
-    if not str(fallback_file).startswith(str(_FALLBACK_DIR)):
+    if not fallback_file.is_relative_to(_FALLBACK_DIR):
         logger.warning("Path traversal attempt blocked: %s", subregion_id)
         return None
     if fallback_file.exists():

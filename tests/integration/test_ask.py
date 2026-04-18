@@ -91,10 +91,12 @@ class TestAskSqlExecution:
             "error": None,
         },
     )
-    def test_sql_execution_failure_still_returns_answer(self, mock_cortex, mock_exec, client):
+    def test_sql_execution_failure_replaces_answer(self, mock_cortex, mock_exec, client):
         resp = client.post("/ask", json={"question": "Total?"})
         data = resp.json()
-        assert data["answer"] == "5M tons"
+        assert data["answer"] == "I could not answer that confidently."
+        assert data["error"] is not None
+        assert data["sql"] == "SELECT ..."
         assert data["results"] is None
 
     @patch(
