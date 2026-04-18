@@ -81,9 +81,7 @@ export function initChat(params) {
  * @param {AbortSignal} signal
  */
 function renderChips(container, questions, onClick, signal) {
-  while (container.firstChild) {
-    container.removeChild(container.firstChild);
-  }
+  container.replaceChildren();
   for (const q of questions) {
     const chip = document.createElement("button");
     chip.type = "button";

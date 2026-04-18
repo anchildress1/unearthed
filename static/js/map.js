@@ -60,48 +60,47 @@ export function runRevealSequence(map, params) {
       }
     }, MAP_LOAD_TIMEOUT_MS);
 
-    function startSequence() {
+    async function startSequence() {
       if (settled) return;
       settled = true;
       clearTimeout(timeoutId);
 
-      addMarker(map, userLonLat, "You", "#c4956a");
-      showCaption(captionEl, "Your location");
+      const stepDelay = STEP_DURATION_MS + PAUSE_BETWEEN_MS;
 
       // Step 1: Fly to user location
+      addMarker(map, userLonLat, "You", "#c4956a");
+      showCaption(captionEl, "Your location");
       map.flyTo({ center: userLonLat, zoom: 8, duration: STEP_DURATION_MS });
+      await delay(stepDelay);
 
-      setTimeout(() => {
-        // Step 2: Add plant marker and fly there
-        addMarker(map, plantLonLat, plantName, "#8aaa8a");
-        showCaption(captionEl, plantName);
-        map.flyTo({ center: plantLonLat, zoom: 8, duration: STEP_DURATION_MS });
+      // Step 2: Fly to power plant
+      addMarker(map, plantLonLat, plantName, "#8aaa8a");
+      showCaption(captionEl, plantName);
+      map.flyTo({ center: plantLonLat, zoom: 8, duration: STEP_DURATION_MS });
+      await delay(stepDelay);
 
-        setTimeout(() => {
-          // Step 3: Add mine marker and fly there
-          addMarker(map, mineLonLat, mineName, "#d4d0c8");
-          showCaption(captionEl, mineName);
-          map.flyTo({ center: mineLonLat, zoom: 8, duration: STEP_DURATION_MS });
+      // Step 3: Fly to source mine
+      addMarker(map, mineLonLat, mineName, "#d4d0c8");
+      showCaption(captionEl, mineName);
+      map.flyTo({ center: mineLonLat, zoom: 8, duration: STEP_DURATION_MS });
+      await delay(stepDelay);
 
-          setTimeout(() => {
-            // Step 4: Draw arc and zoom out to show all three
-            addArcLine(map, [userLonLat, plantLonLat, mineLonLat]);
-            showCaption(captionEl, "");
+      // Step 4: Draw arc and zoom out to show all three
+      addArcLine(map, [userLonLat, plantLonLat, mineLonLat]);
+      showCaption(captionEl, "");
 
-            const bounds = new maplibregl.LngLatBounds();
-            bounds.extend(userLonLat);
-            bounds.extend(plantLonLat);
-            bounds.extend(mineLonLat);
+      const bounds = new maplibregl.LngLatBounds();
+      bounds.extend(userLonLat);
+      bounds.extend(plantLonLat);
+      bounds.extend(mineLonLat);
 
-            map.fitBounds(bounds, {
-              padding: { top: 60, bottom: 60, left: 40, right: 40 },
-              duration: STEP_DURATION_MS,
-            });
+      map.fitBounds(bounds, {
+        padding: { top: 60, bottom: 60, left: 40, right: 40 },
+        duration: STEP_DURATION_MS,
+      });
 
-            setTimeout(resolve, STEP_DURATION_MS + PAUSE_BETWEEN_MS);
-          }, STEP_DURATION_MS + PAUSE_BETWEEN_MS);
-        }, STEP_DURATION_MS + PAUSE_BETWEEN_MS);
-      }, STEP_DURATION_MS + PAUSE_BETWEEN_MS);
+      await delay(stepDelay);
+      resolve();
     }
 
     if (map.loaded()) {
@@ -110,6 +109,10 @@ export function runRevealSequence(map, params) {
       map.once("load", startSequence);
     }
   });
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**

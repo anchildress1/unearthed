@@ -147,7 +147,7 @@ btnLocate.addEventListener("click", async () => {
 
 // --- State Picker ---
 function populateStatePicker() {
-  const states = Object.keys(STATE_TO_SUBREGION).sort();
+  const states = Object.keys(STATE_TO_SUBREGION).sort((a, b) => a.localeCompare(b));
   for (const code of states) {
     const opt = document.createElement("option");
     opt.value = code;
@@ -260,7 +260,7 @@ async function startReveal(subregionId, coords) {
     });
 
     // Share
-    setupShare(subregionId, data.mine, data.mine_state);
+    setupShare(subregionId);
   } catch (err) {
     showSection(introSection);
     showLoading(false);
@@ -287,13 +287,9 @@ function cleanup() {
     shareHandler = null;
   }
   // Clear map container for re-use
-  while (mapContainer.firstChild) {
-    mapContainer.removeChild(mapContainer.firstChild);
-  }
+  mapContainer.replaceChildren();
   // Clear chat transcript
-  while (chatTranscript.firstChild) {
-    chatTranscript.removeChild(chatTranscript.firstChild);
-  }
+  chatTranscript.replaceChildren();
   proseEl.classList.remove("prose--visible");
 }
 
