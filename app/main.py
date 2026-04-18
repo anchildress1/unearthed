@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +15,8 @@ from app.snowflake_client import (
     query_cortex_analyst,
     query_mine_for_subregion,
 )
+
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -40,11 +43,10 @@ app.add_middleware(
 
 @app.get("/")
 def index():
-    return FileResponse("static/index.html")
+    return FileResponse(_PROJECT_ROOT / "static" / "index.html")
 
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
-app.mount("/assets", StaticFiles(directory="assets"), name="assets")
+app.mount("/static", StaticFiles(directory=_PROJECT_ROOT / "static"), name="static")
 
 DEFAULT_SUGGESTIONS = [
     "How much has Bailey Mine produced since 2020?",

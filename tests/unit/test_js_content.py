@@ -135,8 +135,8 @@ class TestGeoJsContent:
     def test_handles_polygon(self):
         assert '"Polygon"' in self.src
 
-    def test_fetches_geojson_from_assets(self):
-        assert "/assets/egrid_subregions.geojson" in self.src
+    def test_fetches_geojson_from_static_data(self):
+        assert "/static/data/egrid_subregions.geojson" in self.src
 
     def test_coal_subregions_set(self):
         assert "COAL_SUBREGIONS" in self.src
@@ -362,3 +362,10 @@ class TestAppJsContent:
 
     def test_clipboard_failure_handled(self):
         assert "Could not copy link" in self.src
+
+    def test_map_instance_disposed_on_cleanup(self):
+        assert "mapInstance" in self.src
+        assert ".remove()" in self.src
+
+    def test_concurrent_reveal_guard(self):
+        assert "revealInProgress" in self.src

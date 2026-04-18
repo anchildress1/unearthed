@@ -100,7 +100,7 @@ export function requestLocation(timeout = 10000) {
  * @returns {Promise<Object>} Parsed GeoJSON FeatureCollection
  */
 export async function loadSubregionGeoJSON() {
-  const resp = await fetch("/assets/egrid_subregions.geojson");
+  const resp = await fetch("/static/data/egrid_subregions.geojson");
   if (!resp.ok) {
     throw new Error(`Failed to load eGRID GeoJSON: HTTP ${resp.status}`);
   }
