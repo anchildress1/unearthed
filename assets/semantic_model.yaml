@@ -14,6 +14,9 @@ tables:
       database: UNEARTHED_DB
       schema: RAW
       table: MSHA_MINES
+    primary_key:
+      columns:
+        - mine_id
     filters:
       - name: coal_mines_only
         expr: REPLACE(COAL_METAL_IND, '"', '') = 'C'
@@ -160,6 +163,9 @@ tables:
       database: UNEARTHED_DB
       schema: RAW
       table: EIA_860_PLANTS
+    primary_key:
+      columns:
+        - plant_code
     dimensions:
       - name: plant_code
         description: EIA plant identifier
@@ -194,6 +200,9 @@ tables:
       database: UNEARTHED_DB
       schema: RAW
       table: PLANT_SUBREGION_LOOKUP
+    primary_key:
+      columns:
+        - plant_code
     dimensions:
       - name: plant_code
         description: EIA plant identifier, joins to EIA_860_PLANTS.PLANTCODE
@@ -205,25 +214,29 @@ tables:
         data_type: VARCHAR
 
 relationships:
-  - left_table: EIA_923_FUEL_RECEIPTS
+  - name: receipts_to_mines
+    left_table: EIA_923_FUEL_RECEIPTS
     right_table: MSHA_MINES
     join_type: left_outer
     relationship_columns:
       - left_column: coalmine_msha_id
         right_column: mine_id
-  - left_table: EIA_923_FUEL_RECEIPTS
+  - name: receipts_to_plants
+    left_table: EIA_923_FUEL_RECEIPTS
     right_table: EIA_860_PLANTS
     join_type: inner
     relationship_columns:
       - left_column: plant_id
         right_column: plant_code
-  - left_table: EIA_860_PLANTS
+  - name: plants_to_subregions
+    left_table: EIA_860_PLANTS
     right_table: PLANT_SUBREGION_LOOKUP
     join_type: inner
     relationship_columns:
       - left_column: plant_code
         right_column: plant_code
-  - left_table: MSHA_QUARTERLY_PRODUCTION
+  - name: production_to_mines
+    left_table: MSHA_QUARTERLY_PRODUCTION
     right_table: MSHA_MINES
     join_type: inner
     relationship_columns:
