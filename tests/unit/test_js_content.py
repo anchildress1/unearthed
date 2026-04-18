@@ -173,8 +173,8 @@ class TestMapJsContent:
     def test_draws_geojson_line(self):
         assert "LineString" in self.src
 
-    def test_uses_dark_style(self):
-        assert "dark" in self.src.lower()
+    def test_uses_satellite_style(self):
+        assert "satellite" in self.src.lower()
 
     def test_has_load_timeout(self):
         assert "MAP_LOAD_TIMEOUT_MS" in self.src
