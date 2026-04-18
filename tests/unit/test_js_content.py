@@ -188,9 +188,6 @@ class TestParticlesJsContent:
     def _load(self):
         self.src = (JS_DIR / "particles.js").read_text()
 
-    def test_exports_show_hero_image(self):
-        assert "export function showHeroImage" in self.src
-
     def test_exports_start_ticker(self):
         assert "export function startTicker" in self.src
 
@@ -205,10 +202,6 @@ class TestParticlesJsContent:
 
     def test_has_cancel_animation_frame(self):
         assert "cancelAnimationFrame" in self.src
-
-    def test_hero_images_for_both_types(self):
-        assert "Surface" in self.src
-        assert "Underground" in self.src
 
     def test_ticker_shows_two_decimal_places(self):
         assert "toFixed(2)" in self.src

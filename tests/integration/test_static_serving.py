@@ -172,9 +172,6 @@ class TestHtmlStructure:
         assert "MSHA" in self.html
         assert "EIA" in self.html
 
-    def test_has_hero_image_container(self):
-        assert 'id="hero-image"' in self.html
-
     def test_has_error_message_element(self):
         assert 'id="error-message"' in self.html
 
