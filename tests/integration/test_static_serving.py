@@ -69,6 +69,16 @@ class TestStaticFiles:
         resp = client.get("/static/js/chat.js")
         assert resp.status_code == 200
 
+    def test_hero_surface_image_served(self, client):
+        resp = client.get("/static/img/hero-surface.jpg")
+        assert resp.status_code == 200
+        assert "image" in resp.headers["content-type"]
+
+    def test_hero_underground_image_served(self, client):
+        resp = client.get("/static/img/hero-underground.jpg")
+        assert resp.status_code == 200
+        assert "image" in resp.headers["content-type"]
+
     def test_nonexistent_static_returns_404(self, client):
         resp = client.get("/static/doesnotexist.js")
         assert resp.status_code == 404
