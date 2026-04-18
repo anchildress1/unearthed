@@ -281,7 +281,7 @@ function addFlowLine(map, userLonLat, plantLonLat, mineLonLat) {
   addLineLayer(map, "flow-dashes", arc, {
     "line-color": "#c4956a",
     "line-width": 3,
-    "line-opacity": 1.0,
+    "line-opacity": 1,
     "line-dasharray": [DASH_LEN, GAP_LEN],
   });
 
@@ -307,11 +307,11 @@ function addFlowLine(map, userLonLat, plantLonLat, mineLonLat) {
       // Pulse: single slow sine breath (~3.5s period)
       const phase = elapsed * ((Math.PI * 2) / 3.5);
       const r = 12 + 8 * Math.abs(Math.sin(phase));
-      const a = 0.06 + 0.10 * Math.abs(Math.sin(phase));
+      const a = 0.06 + 0.1 * Math.abs(Math.sin(phase));
       map.setPaintProperty("mine-pulse", "circle-radius", r);
       map.setPaintProperty("mine-pulse", "circle-opacity", a);
-    } catch (_) {
-      // Map was removed — stop silently
+    } catch {
+      // Map removed before stop() was called — cancel the animation loop.
       stopped = true;
     }
   }
