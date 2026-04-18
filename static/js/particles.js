@@ -48,13 +48,3 @@ export function startTicker(tickerEl, annualTons) {
     }
   };
 }
-
-/**
- * Calculate tons per second from annual tonnage.
- * Exported for testing.
- * @param {number} annualTons
- * @returns {number}
- */
-export function tonsPerSecond(annualTons) {
-  return annualTons / SECONDS_IN_YEAR;
-}

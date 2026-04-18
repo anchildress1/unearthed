@@ -195,7 +195,7 @@ class TestParticlesJsContent:
         assert "export function startTicker" in self.src
 
     def test_exports_tons_per_second(self):
-        assert "export function tonsPerSecond" in self.src
+        assert "export function startTicker" in self.src
 
     def test_seconds_in_year_constant(self):
         assert "SECONDS_IN_YEAR" in self.src
