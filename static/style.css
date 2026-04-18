@@ -507,6 +507,8 @@ a:hover {
 }
 
 .chat__interpretation {
+  /* #8a8680 on #141414 = ~5.1:1 contrast ratio — passes WCAG AA (4.5:1 minimum). */
+  /* aria-label="Query interpretation" is set programmatically in chat.js. */
   font-size: 0.8rem;
   color: var(--color-text-muted);
   font-style: italic;

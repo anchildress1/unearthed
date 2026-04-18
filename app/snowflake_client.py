@@ -253,6 +253,7 @@ def query_cortex_analyst(question: str) -> dict:
         logger.exception("Cortex Analyst query failed")
         return {
             "answer": "",
+            "interpretation": None,
             "sql": None,
             "error": "We couldn't answer that question right now. Please try again later.",
         }

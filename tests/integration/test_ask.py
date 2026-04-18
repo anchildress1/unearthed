@@ -128,6 +128,7 @@ class TestAskSqlExecution:
         assert data["error"] is not None
         assert data["sql"] == "SELECT ..."
         assert data["results"] is None
+        assert data["interpretation"] is None
 
     @patch(
         "app.main.query_cortex_analyst",

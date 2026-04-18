@@ -41,7 +41,7 @@ class TestAskPerformance:
     @pytest.mark.timeout(2)
     @patch(
         "app.main.query_cortex_analyst",
-        return_value={"answer": "42", "sql": None, "error": None},
+        return_value={"answer": "42", "interpretation": None, "sql": None, "error": None},
     )
     def test_ask_under_200ms_mocked(self, mock_cortex, client):
         start = time.perf_counter()

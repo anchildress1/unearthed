@@ -120,6 +120,7 @@ def ask(req: AskRequest):
     results = None
     error = result.get("error")
     sql = result.get("sql")
+    interpretation = result["interpretation"]
     if sql:
         try:
             results = execute_analyst_sql(sql)
@@ -130,12 +131,13 @@ def ask(req: AskRequest):
                 "Please try rephrasing your question."
             )
             result["answer"] = "I could not answer that confidently."
+            interpretation = None
 
     suggestions = result.get("suggestions") or DEFAULT_SUGGESTIONS
 
     return AskResponse(
         answer=result["answer"],
-        interpretation=result.get("interpretation"),
+        interpretation=interpretation,
         sql=sql,
         error=error,
         suggestions=suggestions,
