@@ -2,13 +2,11 @@
 
 # Install runtime dependencies
 install:
-	uv venv --python 3.12
-	uv pip install -r requirements.txt
+	uv sync --no-dev
 
 # Install all dependencies (runtime + dev)
 install-dev:
-	uv venv --python 3.12
-	uv pip install -r requirements-dev.txt
+	uv sync
 
 # Run the FastAPI dev server with auto-reload
 dev:
