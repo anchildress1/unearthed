@@ -37,6 +37,80 @@ class TestAskEndpoint:
         assert data["answer"] == ""
 
 
+class TestAskSuggestions:
+    @patch(
+        "app.main.query_cortex_analyst",
+        return_value={
+            "answer": "Try one of these:",
+            "sql": None,
+            "error": None,
+            "suggestions": ["How many mines in PA?", "Total tonnage by state?"],
+        },
+    )
+    def test_suggestions_returned(self, mock_cortex, client):
+        resp = client.post("/ask", json={"question": "Help me"})
+        data = resp.json()
+        assert data["suggestions"] == [
+            "How many mines in PA?",
+            "Total tonnage by state?",
+        ]
+
+    @patch(
+        "app.main.query_cortex_analyst",
+        return_value={"answer": "42", "sql": None, "error": None},
+    )
+    def test_no_suggestions_returns_null(self, mock_cortex, client):
+        resp = client.post("/ask", json={"question": "How much coal?"})
+        data = resp.json()
+        assert data["suggestions"] is None
+
+
+class TestAskSqlExecution:
+    @patch("app.main.execute_analyst_sql", return_value=[{"TOTAL": 5000000}])
+    @patch(
+        "app.main.query_cortex_analyst",
+        return_value={
+            "answer": "5M tons",
+            "sql": "SELECT SUM(TOTAL_TONS) AS TOTAL FROM ...",
+            "error": None,
+        },
+    )
+    def test_sql_results_included(self, mock_cortex, mock_exec, client):
+        resp = client.post("/ask", json={"question": "Total tonnage?"})
+        data = resp.json()
+        assert data["results"] == [{"TOTAL": 5000000}]
+        assert data["sql"] == "SELECT SUM(TOTAL_TONS) AS TOTAL FROM ..."
+        mock_exec.assert_called_once_with(
+            "SELECT SUM(TOTAL_TONS) AS TOTAL FROM ..."
+        )
+
+    @patch("app.main.execute_analyst_sql", side_effect=Exception("DB error"))
+    @patch(
+        "app.main.query_cortex_analyst",
+        return_value={
+            "answer": "5M tons",
+            "sql": "SELECT ...",
+            "error": None,
+        },
+    )
+    def test_sql_execution_failure_still_returns_answer(
+        self, mock_cortex, mock_exec, client
+    ):
+        resp = client.post("/ask", json={"question": "Total?"})
+        data = resp.json()
+        assert data["answer"] == "5M tons"
+        assert data["results"] is None
+
+    @patch(
+        "app.main.query_cortex_analyst",
+        return_value={"answer": "No data", "sql": None, "error": None},
+    )
+    def test_no_sql_skips_execution(self, mock_cortex, client):
+        resp = client.post("/ask", json={"question": "Help?"})
+        data = resp.json()
+        assert data["results"] is None
+
+
 class TestAskCortexFailure:
     @patch("app.main.query_cortex_analyst", side_effect=Exception("Service unavailable"))
     def test_cortex_down_returns_error(self, mock_cortex, client):

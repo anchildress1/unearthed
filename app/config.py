@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     snowflake_private_key_path: str = ""
     snowflake_private_key_passphrase: str = ""
     snowflake_role: str = "UNEARTHED_APP_ROLE"
+    snowflake_readonly_role: str = "UNEARTHED_READONLY_ROLE"
     snowflake_warehouse: str = "UNEARTHED_APP_WH"
     snowflake_database: str = "UNEARTHED_DB"
     gemini_api_key: str = ""

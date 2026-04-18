@@ -1,13 +1,16 @@
 """Unit tests for Snowflake client: query result mapping, fallback loading."""
 
-import json
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.snowflake_client import _get_connection, load_fallback_data, query_cortex_analyst, query_mine_for_subregion
-
+from app.snowflake_client import (
+    _get_connection,
+    execute_analyst_sql,
+    load_fallback_data,
+    query_cortex_analyst,
+    query_mine_for_subregion,
+)
 
 MOCK_ROW = {
     "MINE_NAME": "Bailey Mine",
@@ -316,3 +319,153 @@ class TestQueryCortexAnalyst:
         assert "Part one." in result["answer"]
         assert "Part two." in result["answer"]
         assert result["sql"] == "SELECT 1"
+
+    @patch("app.snowflake_client.requests.post")
+    @patch("app.snowflake_client._get_connection")
+    def test_suggestions_parsed(self, mock_get_conn, mock_post):
+        mock_get_conn.return_value = self._mock_connection()
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "message": {
+                "role": "analyst",
+                "content": [
+                    {"type": "text", "text": "Here are some suggestions:"},
+                    {
+                        "type": "suggestions",
+                        "suggestions": [
+                            "How many mines are in PA?",
+                            "What is the total tonnage?",
+                        ],
+                    },
+                ],
+            }
+        }
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        result = query_cortex_analyst("test")
+
+        assert result["suggestions"] == [
+            "How many mines are in PA?",
+            "What is the total tonnage?",
+        ]
+
+    @patch("app.snowflake_client.requests.post")
+    @patch("app.snowflake_client._get_connection")
+    def test_no_suggestions_returns_none(self, mock_get_conn, mock_post):
+        mock_get_conn.return_value = self._mock_connection()
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = ANALYST_RESPONSE
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        result = query_cortex_analyst("test")
+
+        assert result["suggestions"] is None
+
+
+class TestExecuteAnalystSql:
+    def _mock_connection(self, rows):
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = rows
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        return mock_conn
+
+    @patch("app.snowflake_client._get_connection")
+    def test_select_executes(self, mock_get_conn):
+        mock_get_conn.return_value = self._mock_connection(
+            [{"TOTAL_TONS": 5000000}]
+        )
+        results = execute_analyst_sql("SELECT SUM(TOTAL_TONS) AS TOTAL_TONS FROM ...")
+        assert results == [{"TOTAL_TONS": 5000000}]
+
+    @patch("app.snowflake_client._get_connection")
+    def test_uses_readonly_role(self, mock_get_conn):
+        mock_get_conn.return_value = self._mock_connection([])
+        execute_analyst_sql("SELECT 1")
+        mock_get_conn.assert_called_once_with(
+            role="UNEARTHED_READONLY_ROLE"
+        )
+
+    @patch("app.snowflake_client._get_connection")
+    def test_select_case_insensitive(self, mock_get_conn):
+        mock_get_conn.return_value = self._mock_connection([{"X": 1}])
+        results = execute_analyst_sql("select 1 as X")
+        assert results == [{"X": 1}]
+
+    @patch("app.snowflake_client._get_connection")
+    def test_with_cte_allowed(self, mock_get_conn):
+        mock_get_conn.return_value = self._mock_connection([{"X": 1}])
+        results = execute_analyst_sql(
+            "WITH cte AS (SELECT 1 AS X) SELECT * FROM cte"
+        )
+        assert results == [{"X": 1}]
+
+    @patch("app.snowflake_client._get_connection")
+    def test_trailing_semicolon_allowed(self, mock_get_conn):
+        mock_get_conn.return_value = self._mock_connection([{"X": 1}])
+        results = execute_analyst_sql("SELECT 1 AS X;")
+        assert results == [{"X": 1}]
+
+    def test_drop_rejected(self):
+        with pytest.raises(ValueError, match="read-only"):
+            execute_analyst_sql("DROP TABLE users")
+
+    def test_insert_rejected(self):
+        with pytest.raises(ValueError, match="read-only"):
+            execute_analyst_sql("INSERT INTO t VALUES (1)")
+
+    def test_update_rejected(self):
+        with pytest.raises(ValueError, match="read-only"):
+            execute_analyst_sql("UPDATE t SET x = 1")
+
+    def test_multi_statement_rejected(self):
+        with pytest.raises(ValueError, match="read-only"):
+            execute_analyst_sql("SELECT 1; DROP TABLE users")
+
+    def test_delete_rejected(self):
+        with pytest.raises(ValueError, match="read-only"):
+            execute_analyst_sql("DELETE FROM t WHERE 1=1")
+
+    def test_create_rejected(self):
+        with pytest.raises(ValueError, match="read-only"):
+            execute_analyst_sql("CREATE TABLE t (id INT)")
+
+    def test_truncate_rejected(self):
+        with pytest.raises(ValueError, match="read-only"):
+            execute_analyst_sql("TRUNCATE TABLE t")
+
+    def test_grant_rejected(self):
+        with pytest.raises(ValueError, match="read-only"):
+            execute_analyst_sql("GRANT SELECT ON t TO PUBLIC")
+
+    def test_select_into_with_create_rejected(self):
+        with pytest.raises(ValueError, match="read-only"):
+            execute_analyst_sql("SELECT 1; CREATE TABLE t AS SELECT 1")
+
+    def test_empty_rejected(self):
+        with pytest.raises(ValueError, match="read-only"):
+            execute_analyst_sql("")
+
+    def test_whitespace_only_rejected(self):
+        with pytest.raises(ValueError, match="read-only"):
+            execute_analyst_sql("   ")
+
+    @patch("app.snowflake_client._get_connection")
+    def test_connection_closed(self, mock_get_conn):
+        mock_conn = self._mock_connection([])
+        mock_get_conn.return_value = mock_conn
+        execute_analyst_sql("SELECT 1")
+        mock_conn.close.assert_called_once()
+
+    @patch("app.snowflake_client._get_connection")
+    def test_connection_closed_on_error(self, mock_get_conn):
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value.execute.side_effect = Exception("fail")
+        mock_get_conn.return_value = mock_conn
+
+        with pytest.raises(Exception, match="fail"):
+            execute_analyst_sql("SELECT 1")
+
+        mock_conn.close.assert_called_once()

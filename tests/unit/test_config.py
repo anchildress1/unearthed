@@ -21,6 +21,7 @@ class TestSettings:
             _env_file=None,
         )
         assert s.snowflake_role == "UNEARTHED_APP_ROLE"
+        assert s.snowflake_readonly_role == "UNEARTHED_READONLY_ROLE"
         assert s.snowflake_warehouse == "UNEARTHED_APP_WH"
         assert s.snowflake_database == "UNEARTHED_DB"
         assert s.gemini_model == "gemini-2.0-flash"
