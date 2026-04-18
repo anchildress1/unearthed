@@ -202,8 +202,9 @@ class TestApiEndpointsStillWork:
         assert resp.status_code == 405
 
 
+@pytest.mark.e2e
 class TestStaticServingPerformance:
-    """Static files should be served quickly."""
+    """Static files should be served quickly. Timing-sensitive — excluded from CI."""
 
     @pytest.mark.timeout(2)
     def test_index_under_100ms(self, client):

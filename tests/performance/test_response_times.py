@@ -1,8 +1,8 @@
 """Performance tests for API response times.
 
 These tests verify that mocked endpoints respond within acceptable
-latency budgets. Live Snowflake/Gemini performance is validated
-separately during integration testing against real services.
+latency budgets. Timing-sensitive — excluded from CI via the e2e marker.
+Run locally with: make test
 """
 
 import time
@@ -11,6 +11,8 @@ from unittest.mock import patch
 import pytest
 
 from tests.conftest import SAMPLE_MINE_DATA
+
+pytestmark = pytest.mark.e2e
 
 
 class TestMineForMePerformance:
