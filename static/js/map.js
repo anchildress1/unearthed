@@ -8,8 +8,8 @@
 const MAPTILER_STYLE =
   "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
 
-const STEP_DURATION_MS = 2200;
-const PAUSE_BETWEEN_MS = 400;
+const STEP_DURATION_MS = 1700;
+const PAUSE_BETWEEN_MS = 200;
 const MAP_LOAD_TIMEOUT_MS = 15000;
 
 /**
