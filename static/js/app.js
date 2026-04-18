@@ -64,9 +64,11 @@ const shareCopied = document.getElementById("share-copied");
 // --- Cleanup state for re-reveal safety ---
 let tickerStop = null;
 let pixiApp = null;
+let mapInstance = null;
 let shareHandler = null;
 let geojsonData = null;
 let userCoords = null;
+let revealInProgress = false;
 
 // --- Initialization ---
 populateStatePicker();
@@ -194,6 +196,8 @@ btnStateGo.addEventListener("click", async () => {
 
 // --- Main Reveal Flow ---
 async function startReveal(subregionId, coords) {
+  if (revealInProgress) return;
+  revealInProgress = true;
   showLoading(true);
   hideError();
 
@@ -212,8 +216,8 @@ async function startReveal(subregionId, coords) {
     // Transition to map section
     showSection(mapSection);
 
-    const map = createMap(mapContainer);
-    await runRevealSequence(map, {
+    mapInstance = createMap(mapContainer);
+    await runRevealSequence(mapInstance, {
       userCoords: resolvedUserCoords,
       plantCoords: data.plant_coords,
       mineCoords: data.mine_coords,
@@ -261,12 +265,14 @@ async function startReveal(subregionId, coords) {
 
     // Share
     setupShare(subregionId);
+    revealInProgress = false;
   } catch (err) {
     showSection(introSection);
     showLoading(false);
     showError(err.message || "Could not load mine data. Please try again.");
     btnLocate.disabled = false;
     btnStateGo.disabled = false;
+    revealInProgress = false;
   }
 }
 
@@ -282,12 +288,14 @@ function cleanup() {
     pixiApp.destroy(false);
     pixiApp = null;
   }
+  if (mapInstance) {
+    mapInstance.remove();
+    mapInstance = null;
+  }
   if (shareHandler) {
     btnShare.removeEventListener("click", shareHandler);
     shareHandler = null;
   }
-  // Clear map container for re-use
-  mapContainer.replaceChildren();
   // Clear chat transcript
   chatTranscript.replaceChildren();
   proseEl.classList.remove("prose--visible");
@@ -319,6 +327,13 @@ function setupShare(subregionId) {
           }, 2000);
         },
       );
+    } else {
+      shareCopied.textContent = url.toString();
+      shareCopied.classList.remove("hidden");
+      setTimeout(() => {
+        shareCopied.textContent = "Link copied";
+        shareCopied.classList.add("hidden");
+      }, 4000);
     }
   };
 
