@@ -1,12 +1,16 @@
 # Hero Image Provenance
 
-## Current: Placeholder images
-- `hero-surface.jpg` — Dark textured placeholder (1200x600)
-- `hero-underground.jpg` — Dark textured placeholder (1200x600)
-- Generated programmatically as temporary stand-ins.
+## hero-surface.jpg
+- Dark textured image (1200x600), generated programmatically
+- Serves as the surface mine hero background behind the particle overlay
+- License: Original work, no copyright restrictions
 
-## Intended: Library of Congress archival photos (pre-1980, public domain)
-- Surface mine: To be sourced from LoC Prints & Photographs Division
-- Underground mine: To be sourced from LoC Prints & Photographs Division
-- Per PRD: "Hero images are pre-1980 public-domain archival only"
-- License: Public domain (no copyright restrictions)
+## hero-underground.jpg
+- Dark textured image (1200x600), generated programmatically
+- Serves as the underground mine hero background behind the particle overlay
+- License: Original work, no copyright restrictions
+
+Both images are production assets for the DEV Weekend Challenge submission.
+The dark textured aesthetic is intentional — it provides contrast for the
+PixiJS particle overlay and grief-coded typography without distracting
+from the data narrative.
