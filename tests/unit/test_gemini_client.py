@@ -50,6 +50,58 @@ class TestFallbackProse:
         prose = gemini_client._fallback_prose(sample_mine_data)
         assert "SRVC" in prose
 
+    # --- Structural tests: verb, article, and tons_year by mine_type ---
+
+    def test_fallback_underground_uses_hollowed_out(self, sample_mine_data):
+        """Underground mines must not say 'stripped' — that's surface-only language."""
+        prose = gemini_client._fallback_prose(sample_mine_data)
+        assert "hollowed out" in prose
+        assert "stripped" not in prose
+
+    def test_fallback_underground_article_is_an(self, sample_mine_data):
+        """'Underground' starts with a vowel → article must be 'an'."""
+        prose = gemini_client._fallback_prose(sample_mine_data)
+        assert "an underground" in prose
+
+    def test_fallback_surface_uses_stripped(self, sample_mine_data_surface):
+        """Surface mines must use 'stripped'."""
+        prose = gemini_client._fallback_prose(sample_mine_data_surface)
+        assert "stripped" in prose
+        assert "hollowed out" not in prose
+
+    def test_fallback_surface_article_is_a(self, sample_mine_data_surface):
+        """'Surface' starts with a consonant → article must be 'a'."""
+        prose = gemini_client._fallback_prose(sample_mine_data_surface)
+        assert "a surface" in prose
+
+    def test_fallback_contains_tons_year(self, sample_mine_data):
+        """tons_year must appear in the fallback — the template had it dropped."""
+        sample_mine_data["tons_year"] = 2024
+        prose = gemini_client._fallback_prose(sample_mine_data)
+        assert "2024" in prose
+
+    def test_fallback_underground_contains_all_required_fields(self, sample_mine_data):
+        sample_mine_data["subregion_id"] = "SRVC"
+        sample_mine_data["tons_year"] = 2024
+        prose = gemini_client._fallback_prose(sample_mine_data)
+        assert "Bailey Mine" in prose
+        assert "Consol Pennsylvania Coal Company LLC" in prose
+        assert "1,247,001" in prose
+        assert "2024" in prose
+        assert "Cross" in prose
+        assert "South Carolina Public Service Authority" in prose
+        assert "SRVC" in prose
+
+    def test_fallback_surface_contains_all_required_fields(self, sample_mine_data_surface):
+        sample_mine_data_surface["subregion_id"] = "SERC"
+        sample_mine_data_surface["tons_year"] = 2023
+        prose = gemini_client._fallback_prose(sample_mine_data_surface)
+        assert "Hobet Mine" in prose
+        assert "1,247,001" in prose
+        assert "2023" in prose
+        assert "Cross" in prose
+        assert "SERC" in prose
+
 
 class TestGenerateProse:
     def test_no_api_key_returns_degraded(self, sample_mine_data):

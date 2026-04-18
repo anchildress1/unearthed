@@ -26,6 +26,7 @@ MOCK_ROW = {
     "PLANT_LATITUDE": "33.371506",
     "PLANT_LONGITUDE": "-80.113235",
     "TOTAL_TONS": "3811733.0",
+    "DATA_YEAR": 2024,
 }
 
 
@@ -65,7 +66,9 @@ class TestQueryMineForSubregion:
         mock_conn = self._mock_connection([MOCK_ROW])
         mock_get_conn.return_value = mock_conn
         query_mine_for_subregion("srvc")
-        call_args = mock_conn.cursor().execute.call_args
+        # Access the cursor reference directly; calling cursor() again would
+        # register a spurious extra call and couple the test to call-count state.
+        call_args = mock_conn.cursor.return_value.execute.call_args
         assert call_args[0][1]["subregion_id"] == "SRVC"
 
     @patch("app.snowflake_client._get_connection")
@@ -99,6 +102,82 @@ class TestQueryMineForSubregion:
         result = query_mine_for_subregion("SRVC")
         assert len(result["mine_coords"]) == 2
         assert len(result["plant_coords"]) == 2
+
+    # --- NULL / no-plant-found paths (LEFT JOIN on top_plant) ---
+
+    @patch("app.snowflake_client._get_connection")
+    def test_null_plant_latitude_returns_none(self, mock_get_conn):
+        """LEFT JOIN yields NULL plant coords when no plant matches; must signal degraded."""
+        row = {**MOCK_ROW, "PLANT_LATITUDE": None, "PLANT_LONGITUDE": None}
+        mock_get_conn.return_value = self._mock_connection([row])
+        assert query_mine_for_subregion("SRVC") is None
+
+    @patch("app.snowflake_client._get_connection")
+    def test_null_mine_latitude_returns_none(self, mock_get_conn):
+        row = {**MOCK_ROW, "MINE_LATITUDE": None}
+        mock_get_conn.return_value = self._mock_connection([row])
+        assert query_mine_for_subregion("SRVC") is None
+
+    @patch("app.snowflake_client._get_connection")
+    def test_null_total_tons_returns_none(self, mock_get_conn):
+        row = {**MOCK_ROW, "TOTAL_TONS": None}
+        mock_get_conn.return_value = self._mock_connection([row])
+        assert query_mine_for_subregion("SRVC") is None
+
+    @patch("app.snowflake_client._get_connection")
+    def test_null_mine_longitude_only_returns_none(self, mock_get_conn):
+        """Lone MINE_LONGITUDE NULL must trigger degraded mode independent of MINE_LATITUDE."""
+        row = {**MOCK_ROW, "MINE_LONGITUDE": None}
+        mock_get_conn.return_value = self._mock_connection([row])
+        assert query_mine_for_subregion("SRVC") is None
+
+    @patch("app.snowflake_client._get_connection")
+    def test_null_plant_longitude_only_returns_none(self, mock_get_conn):
+        """Lone PLANT_LONGITUDE NULL must trigger degraded mode independent of PLANT_LATITUDE."""
+        row = {**MOCK_ROW, "PLANT_LONGITUDE": None}
+        mock_get_conn.return_value = self._mock_connection([row])
+        assert query_mine_for_subregion("SRVC") is None
+
+    @patch("app.snowflake_client._get_connection")
+    def test_null_data_year_returns_none(self, mock_get_conn):
+        """NULL DATA_YEAR must not crash with TypeError; must signal degraded mode."""
+        row = {**MOCK_ROW, "DATA_YEAR": None}
+        mock_get_conn.return_value = self._mock_connection([row])
+        assert query_mine_for_subregion("SRVC") is None
+
+    # --- mine_type label mapping ---
+
+    @patch("app.snowflake_client._get_connection")
+    def test_unknown_mine_type_falls_back_to_surface(self, mock_get_conn):
+        """Unrecognised MSHA codes must not leak raw codes into the response."""
+        row = {**MOCK_ROW, "MINE_TYPE": "X"}
+        mock_get_conn.return_value = self._mock_connection([row])
+        result = query_mine_for_subregion("SRVC")
+        assert result["mine_type"] == "Surface"
+
+    @patch("app.snowflake_client._get_connection")
+    def test_null_mine_type_falls_back_to_surface(self, mock_get_conn):
+        row = {**MOCK_ROW, "MINE_TYPE": None}
+        mock_get_conn.return_value = self._mock_connection([row])
+        result = query_mine_for_subregion("SRVC")
+        assert result["mine_type"] == "Surface"
+
+    @patch("app.snowflake_client._get_connection")
+    def test_facility_mine_type_maps_correctly(self, mock_get_conn):
+        row = {**MOCK_ROW, "MINE_TYPE": "F"}
+        mock_get_conn.return_value = self._mock_connection([row])
+        result = query_mine_for_subregion("SRVC")
+        assert result["mine_type"] == "Facility"
+
+    # --- dynamic tons_year ---
+
+    @patch("app.snowflake_client._get_connection")
+    def test_tons_year_comes_from_data(self, mock_get_conn):
+        """tons_year must reflect DATA_YEAR from the query, not a hardcoded constant."""
+        row = {**MOCK_ROW, "DATA_YEAR": 2023}
+        mock_get_conn.return_value = self._mock_connection([row])
+        result = query_mine_for_subregion("SRVC")
+        assert result["tons_year"] == 2023
 
 
 class TestLoadFallbackData:

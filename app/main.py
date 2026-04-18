@@ -52,7 +52,7 @@ DEFAULT_SUGGESTIONS = [
     "How much has Bailey Mine produced since 2020?",
     "What other plants buy from Consol Pennsylvania Coal Company?",
     "Is Bailey Mine still active?",
-    "What is the total coal tonnage for SRVC in 2024?",
+    "What is the total coal tonnage for SRVC?",
     "Who is the largest coal supplier in Wyoming?",
 ]
 
