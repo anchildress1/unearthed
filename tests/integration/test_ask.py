@@ -151,6 +151,105 @@ class TestAskCortexFailure:
         assert data["answer"] == ""
 
 
+class TestAskSubregionHandling:
+    @patch(
+        "app.main.query_cortex_analyst",
+        return_value={"answer": "42", "interpretation": None, "sql": None, "error": None},
+    )
+    def test_subregion_appended_to_question(self, mock_cortex, client):
+        """When subregion_id is set, question must include eGRID subregion context."""
+        client.post("/ask", json={"question": "How much coal?", "subregion_id": "SRVC"})
+        actual_question = mock_cortex.call_args[0][0]
+        assert "(for eGRID subregion SRVC)" in actual_question
+        assert "How much coal?" in actual_question
+
+    @patch(
+        "app.main.query_cortex_analyst",
+        return_value={"answer": "42", "interpretation": None, "sql": None, "error": None},
+    )
+    def test_no_subregion_question_unchanged(self, mock_cortex, client):
+        """Without subregion_id, question must be passed as-is."""
+        client.post("/ask", json={"question": "How much coal?"})
+        actual_question = mock_cortex.call_args[0][0]
+        assert actual_question == "How much coal?"
+
+    @patch(
+        "app.main.query_cortex_analyst",
+        return_value={
+            "answer": "42",
+            "interpretation": None,
+            "sql": None,
+            "error": None,
+            "suggestions": [],
+        },
+    )
+    def test_empty_suggestions_uses_defaults(self, mock_cortex, client):
+        """Empty suggestions list must fall back to DEFAULT_SUGGESTIONS."""
+        resp = client.post("/ask", json={"question": "test"})
+        data = resp.json()
+        assert len(data["suggestions"]) == 5
+
+    @patch(
+        "app.main.query_cortex_analyst",
+        return_value={
+            "answer": "",
+            "interpretation": None,
+            "sql": None,
+            "error": "Out of scope",
+        },
+    )
+    def test_cortex_error_in_result_not_exception(self, mock_cortex, client):
+        """Error in result dict (not raised exception) must surface in response."""
+        resp = client.post("/ask", json={"question": "test"})
+        data = resp.json()
+        assert data["error"] == "Out of scope"
+        assert data["answer"] == ""
+
+    @patch(
+        "app.main.query_cortex_analyst",
+        return_value={"answer": "42", "interpretation": None, "sql": None, "error": None},
+    )
+    def test_response_content_type_is_json(self, mock_cortex, client):
+        resp = client.post("/ask", json={"question": "test"})
+        assert "application/json" in resp.headers["content-type"]
+
+
+class TestAskSqlExecutionDetails:
+    @patch("app.main.execute_analyst_sql", side_effect=Exception("DB error"))
+    @patch(
+        "app.main.query_cortex_analyst",
+        return_value={
+            "answer": "",
+            "interpretation": "Interpretation text.",
+            "sql": "SELECT ...",
+            "error": None,
+        },
+    )
+    def test_sql_error_clears_interpretation(self, mock_cortex, mock_exec, client):
+        """When SQL execution fails, interpretation must be cleared to None."""
+        resp = client.post("/ask", json={"question": "test"})
+        data = resp.json()
+        assert data["interpretation"] is None
+        assert data["error"] is not None
+
+    @patch("app.main.execute_analyst_sql", return_value=[{"X": 1}])
+    @patch(
+        "app.main.query_cortex_analyst",
+        return_value={
+            "answer": "",
+            "interpretation": "Restatement",
+            "sql": "SELECT 1",
+            "error": None,
+            "suggestions": ["Follow up?"],
+        },
+    )
+    def test_suggestions_from_cortex_preserved(self, mock_cortex, mock_exec, client):
+        """Cortex-provided suggestions must be passed through."""
+        resp = client.post("/ask", json={"question": "test"})
+        data = resp.json()
+        assert data["suggestions"] == ["Follow up?"]
+
+
 class TestAskValidation:
     def test_missing_body_returns_422(self, client):
         resp = client.post("/ask")
@@ -166,4 +265,12 @@ class TestAskValidation:
 
     def test_empty_question_returns_422(self, client):
         resp = client.post("/ask", json={"question": ""})
+        assert resp.status_code == 422
+
+    def test_null_question_returns_422(self, client):
+        resp = client.post("/ask", json={"question": None})
+        assert resp.status_code == 422
+
+    def test_numeric_question_returns_422(self, client):
+        resp = client.post("/ask", json={"question": 42})
         assert resp.status_code == 422

@@ -95,6 +95,41 @@ class TestMineForMeGeminiFailure:
         assert len(data["prose"]) > 0
 
 
+class TestMineForMeSnowflakeNoneFallbackSuccess:
+    """Snowflake returns None (no data) but fallback succeeds."""
+
+    @patch("app.main.load_fallback_data", return_value=SAMPLE_MINE_DATA)
+    @patch("app.main.generate_prose", return_value=("Fallback prose.", True))
+    @patch("app.main.query_mine_for_subregion", return_value=None)
+    def test_snowflake_none_fallback_succeeds(self, mock_sf, mock_gemini, mock_fb, client):
+        resp = client.post("/mine-for-me", json={"subregion_id": "SRVC"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["degraded"] is True
+        assert data["mine"] == "Bailey Mine"
+
+    @patch("app.main.generate_prose", return_value=("Prose.", False))
+    @patch("app.main.query_mine_for_subregion", return_value=SAMPLE_MINE_DATA)
+    def test_subregion_id_in_response(self, mock_sf, mock_gemini, client):
+        resp = client.post("/mine-for-me", json={"subregion_id": "SRVC"})
+        data = resp.json()
+        assert data["subregion_id"] == "SRVC"
+
+    @patch("app.main.generate_prose", return_value=("Prose.", False))
+    @patch("app.main.query_mine_for_subregion", return_value=SAMPLE_MINE_DATA)
+    def test_subregion_id_injected_into_generate_prose(self, mock_sf, mock_gemini, client):
+        """mine_data dict passed to generate_prose must include subregion_id."""
+        client.post("/mine-for-me", json={"subregion_id": "SRVC"})
+        call_args = mock_gemini.call_args[0][0]
+        assert call_args["subregion_id"] == "SRVC"
+
+    @patch("app.main.generate_prose", return_value=("Prose.", False))
+    @patch("app.main.query_mine_for_subregion", return_value=SAMPLE_MINE_DATA)
+    def test_response_content_type_is_json(self, mock_sf, mock_gemini, client):
+        resp = client.post("/mine-for-me", json={"subregion_id": "SRVC"})
+        assert "application/json" in resp.headers["content-type"]
+
+
 class TestMineForMeValidation:
     """Request validation edge cases."""
 
@@ -117,3 +152,11 @@ class TestMineForMeValidation:
     def test_get_method_not_allowed(self, client):
         resp = client.get("/mine-for-me")
         assert resp.status_code == 405
+
+    def test_list_subregion_returns_422(self, client):
+        resp = client.post("/mine-for-me", json={"subregion_id": ["SRVC"]})
+        assert resp.status_code == 422
+
+    def test_bool_subregion_returns_422(self, client):
+        resp = client.post("/mine-for-me", json={"subregion_id": True})
+        assert resp.status_code == 422
