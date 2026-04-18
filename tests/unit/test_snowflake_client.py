@@ -329,7 +329,7 @@ class TestAuthPolicy:
         mock_settings.snowflake_warehouse = "WH"
         mock_settings.snowflake_database = "DB"
         mock_settings.snowflake_private_key_path = ""
-        mock_settings.snowflake_password = "secret"
+        mock_settings.snowflake_password = "secret"  # NOSONAR — test mock value
         mock_settings.allow_password_auth = True
 
         _get_connection(role="CUSTOM_ROLE")

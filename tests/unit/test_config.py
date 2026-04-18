@@ -115,13 +115,13 @@ class TestSettings:
         assert s.snowflake_account == "env-account"
         assert s.snowflake_user == "env-user"
 
-    @patch.dict(os.environ, {**_CLEAN_ENV, "ALLOW_PASSWORD_AUTH": "true"}, clear=True)
+    @patch.dict(os.environ, {**_CLEAN_ENV, "ALLOW_PASSWORD_AUTH": "true"}, clear=True)  # NOSONAR
     def test_bool_coercion_from_env_string(self):
         """String 'true' in env must coerce to bool True."""
         s = Settings(_env_file=None)
         assert s.allow_password_auth is True
 
-    @patch.dict(os.environ, {**_CLEAN_ENV, "ALLOW_PASSWORD_AUTH": "false"}, clear=True)
+    @patch.dict(os.environ, {**_CLEAN_ENV, "ALLOW_PASSWORD_AUTH": "false"}, clear=True)  # NOSONAR
     def test_bool_false_from_env_string(self):
         s = Settings(_env_file=None)
         assert s.allow_password_auth is False

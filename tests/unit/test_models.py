@@ -149,17 +149,17 @@ class TestMineForMeResponse:
     def test_mine_coords_boundary_lat_90_accepted(self, sample_mine_data):
         sample_mine_data["mine_coords"] = [90.0, -80.0]
         resp = MineForMeResponse(**sample_mine_data, prose="Boundary.", subregion_id="SRVC")
-        assert resp.mine_coords[0] == 90.0
+        assert resp.mine_coords[0] == pytest.approx(90.0)
 
     def test_mine_coords_boundary_lat_minus_90_accepted(self, sample_mine_data):
         sample_mine_data["mine_coords"] = [-90.0, -80.0]
         resp = MineForMeResponse(**sample_mine_data, prose="Boundary.", subregion_id="SRVC")
-        assert resp.mine_coords[0] == -90.0
+        assert resp.mine_coords[0] == pytest.approx(-90.0)
 
     def test_mine_coords_boundary_lon_180_accepted(self, sample_mine_data):
         sample_mine_data["mine_coords"] = [39.0, 180.0]
         resp = MineForMeResponse(**sample_mine_data, prose="Boundary.", subregion_id="SRVC")
-        assert resp.mine_coords[1] == 180.0
+        assert resp.mine_coords[1] == pytest.approx(180.0)
 
     def test_plant_coords_out_of_range_rejected(self, sample_mine_data):
         sample_mine_data["plant_coords"] = [33.0, -181.0]
@@ -222,7 +222,7 @@ class TestMineForMeResponse:
         """Negative zero is >= 0, so it should be accepted."""
         sample_mine_data["tons"] = -0.0
         resp = MineForMeResponse(**sample_mine_data, prose="Zero.", subregion_id="SRVC")
-        assert resp.tons == 0.0
+        assert resp.tons == pytest.approx(0.0)
 
     def test_very_small_tons_accepted(self, sample_mine_data):
         sample_mine_data["tons"] = 0.001
