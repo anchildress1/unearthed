@@ -218,7 +218,9 @@ def load_fallback_data(subregion_id: str) -> dict | None:
         logger.warning("Invalid subregion ID rejected: %s", subregion_id)
         return None
     # safe_id is now guaranteed alphanumeric — no path traversal possible
-    fallback_file = _FALLBACK_DIR / f"{safe_id}.json"
+    fallback_file = (_FALLBACK_DIR / f"{safe_id}.json").resolve()
+    if not fallback_file.is_relative_to(_FALLBACK_DIR):
+        return None
     if not fallback_file.exists():
         return None
     try:
