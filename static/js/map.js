@@ -9,6 +9,13 @@
  * All layers are native MapLibre WebGL — they pan/zoom with the map.
  */
 
+// Basemap style evaluation — considered green topology alternatives:
+// - Stamen Terrain / Stadia Maps: requires paid API key as of 2024 (Stadia acquired Stamen tiles)
+// - OpenTopoMap: free XYZ raster tiles only; no vector style JSON; classic paper-toned look
+//   incompatible with this dark aesthetic; loses crisp vector zoom; can't be used as MapLibre style
+// - MapTiler terrain/outdoor styles: all require paid API key
+// Verdict: no suitable free green topology MapLibre style without paid access.
+// Keeping Carto dark-matter for aesthetic coherence with the coal/mining theme.
 const MAPTILER_STYLE =
   "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
 

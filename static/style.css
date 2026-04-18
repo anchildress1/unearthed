@@ -272,9 +272,9 @@ a:hover {
 
 /* Info panel: fixed-width right column, scrollable */
 .info-panel {
-  flex: 0 0 380px;
-  width: 380px;
-  max-width: 42vw;
+  flex: 0 0 460px;
+  width: 460px;
+  max-width: 45vw;
   min-width: 300px;
   display: flex;
   flex-direction: column;
@@ -553,6 +553,111 @@ a:hover {
   font-size: 0.8rem;
   color: var(--color-text-muted);
   border-top: 1px solid var(--color-border);
+}
+
+/* ===== ADDRESS FORM (HOME PAGE) ===== */
+.address-form {
+  display: flex;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 480px;
+  margin-bottom: 0;
+}
+
+.address-input {
+  flex: 1;
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--color-bg-input);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  min-width: 0;
+}
+
+.address-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.address-input::placeholder {
+  color: var(--color-text-muted);
+}
+
+/* ===== OR DIVIDER ===== */
+.geo-or {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.9rem 0;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  width: 100%;
+  max-width: 480px;
+}
+
+.geo-or::before,
+.geo-or::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--color-border);
+}
+
+/* ===== RELOC BAR (MAP PAGE — TOP OF INFO PANEL) ===== */
+.reloc-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0.4rem 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-card);
+  flex-shrink: 0;
+}
+
+.btn--reloc {
+  font-size: 0.78rem;
+  padding: 0.3rem 0.75rem;
+  border-color: var(--color-border);
+  color: var(--color-text-muted);
+}
+
+.btn--reloc:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+/* ===== RELOC INLINE FORM ===== */
+.reloc-form {
+  padding: 0.75rem 1rem;
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.address-form--compact {
+  max-width: none;
+}
+
+.geo-or--sm {
+  max-width: none;
+  margin: 0.5rem 0;
+}
+
+.btn--sm {
+  font-size: 0.85rem;
+  padding: 0.5rem 1rem;
+}
+
+.reloc-error {
+  margin-top: 0.6rem;
+  padding: 0.4rem 0.75rem;
+  background: rgba(196, 90, 90, 0.1);
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius);
+  color: var(--color-error);
+  font-size: 0.82rem;
 }
 
 /* ===== RESPONSIVE ===== */
