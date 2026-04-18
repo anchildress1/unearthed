@@ -131,9 +131,6 @@ class TestHtmlStructure:
     def test_has_map_container(self):
         assert 'id="map-container"' in self.html
 
-    def test_has_particle_canvas(self):
-        assert 'id="particle-canvas"' in self.html
-
     def test_has_ticker(self):
         assert 'id="ticker-value"' in self.html
 

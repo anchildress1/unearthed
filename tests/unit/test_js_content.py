@@ -188,9 +188,6 @@ class TestParticlesJsContent:
     def _load(self):
         self.src = (JS_DIR / "particles.js").read_text()
 
-    def test_exports_create_particle_overlay(self):
-        assert "export function createParticleOverlay" in self.src
-
     def test_exports_show_hero_image(self):
         assert "export function showHeroImage" in self.src
 
@@ -199,12 +196,6 @@ class TestParticlesJsContent:
 
     def test_exports_tons_per_second(self):
         assert "export function tonsPerSecond" in self.src
-
-    def test_uses_canvas_2d_context(self):
-        assert 'getContext("2d")' in self.src
-
-    def test_has_max_particles_limit(self):
-        assert "MAX_PARTICLES" in self.src
 
     def test_seconds_in_year_constant(self):
         assert "SECONDS_IN_YEAR" in self.src
@@ -328,8 +319,7 @@ class TestAppJsContent:
         assert "detailPlant" in self.src
         assert "detailTons" in self.src
 
-    def test_starts_particle_overlay(self):
-        assert "createParticleOverlay" in self.src
+    def test_starts_ticker(self):
         assert "startTicker" in self.src
 
     def test_initializes_chat(self):
@@ -347,17 +337,11 @@ class TestAppJsContent:
     def test_stores_ticker_stop(self):
         assert "tickerStop" in self.src
 
-    def test_stores_overlay_app(self):
-        assert "overlayApp" in self.src
-
     def test_removes_share_handler_on_re_reveal(self):
         assert "removeEventListener" in self.src
 
     def test_checks_cdn_dependencies(self):
         assert "maplibregl" in self.src
-
-    def test_overlay_failure_caught(self):
-        assert "Particle overlay unavailable" in self.src
 
     def test_clipboard_failure_handled(self):
         assert "Could not copy link" in self.src

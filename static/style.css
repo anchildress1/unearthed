@@ -230,9 +230,6 @@ a:hover {
  * the full viewport (flex: 1 on .map-wrapper expands to fill the row).
  * After the cinematic, JS removes the `hidden` class from #info-panel and
  * the panel appears as a right column while the map flexes into the rest.
- *
- * pointer-events:none is applied to .particle-canvas both here and in JS
- * (PixiJS stage.eventMode = "none") so the map stays fully interactive.
  */
 #content-section.section--active {
   display: flex;
@@ -306,15 +303,6 @@ a:hover {
 
 .hero-bg--visible {
   opacity: 0.6;
-}
-
-/* Particle canvas sits above the hero image only — never above the map */
-.particle-canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
 }
 
 /* Scrollable content area inside the info panel */

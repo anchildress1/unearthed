@@ -2,7 +2,7 @@
  * Main entry point for the unearthed frontend.
  *
  * Flow: parse share URL -> geolocation (or state picker) -> API call
- *       -> map reveal -> particle overlay + ticker -> prose -> chat
+ *       -> map reveal -> ticker -> prose -> chat
  */
 
 import { fetchMineForMe } from "./api.js";
@@ -16,7 +16,7 @@ import {
   subregionForState,
 } from "./geo.js";
 import { createMap, runRevealSequence } from "./map.js";
-import { createParticleOverlay, showHeroImage, startTicker } from "./particles.js";
+import { showHeroImage, startTicker } from "./particles.js";
 
 // --- CDN dependency check ---
 if (typeof maplibregl === "undefined") {
@@ -42,7 +42,6 @@ const mapContainer = document.getElementById("map-container");
 const mapCaption = document.getElementById("map-caption");
 
 const heroImage = document.getElementById("hero-image");
-const particleCanvas = document.getElementById("particle-canvas");
 const tickerValue = document.getElementById("ticker-value");
 const proseEl = document.getElementById("prose");
 
@@ -63,7 +62,6 @@ const shareCopied = document.getElementById("share-copied");
 
 // --- Cleanup state for re-reveal safety ---
 let tickerStop = null;
-let overlayApp = null;
 let mapInstance = null;
 let shareHandler = null;
 let geojsonData = null;
@@ -229,13 +227,8 @@ async function startReveal(subregionId, coords) {
     // Reveal the info panel alongside the map
     infoPanel.classList.remove("hidden");
 
-    // Hero image + particles (particles are non-critical — catch failures)
+    // Hero image
     showHeroImage(heroImage, data.mine_type);
-    try {
-      overlayApp = createParticleOverlay(particleCanvas);
-    } catch (overlayErr) {
-      console.warn("Particle overlay unavailable:", overlayErr.message);
-    }
     tickerStop = startTicker(tickerValue, data.tons);
 
     // Prose (fade in)
@@ -286,10 +279,6 @@ function cleanup() {
   if (tickerStop) {
     tickerStop();
     tickerStop = null;
-  }
-  if (overlayApp) {
-    overlayApp.destroy(false);
-    overlayApp = null;
   }
   if (mapInstance) {
     mapInstance._stopFlowAnimation?.();
