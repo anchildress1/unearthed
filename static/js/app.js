@@ -292,6 +292,7 @@ function cleanup() {
     pixiApp = null;
   }
   if (mapInstance) {
+    mapInstance._stopFlowAnimation?.();
     mapInstance.remove();
     mapInstance = null;
   }

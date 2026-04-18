@@ -3,6 +3,10 @@
  *
  * Sequence: user location -> power plant -> source mine.
  * Arc line drawn between all three points. Total time <= 8 seconds.
+ *
+ * Flow animation: animated dasharray cycling (MapLibre native) for the mine→plant
+ * segment, conveying directional resource extraction. Runs at ~18fps to stay
+ * well under budget when combined with the PixiJS coal-dust overlay.
  */
 
 const MAPTILER_STYLE =
@@ -11,6 +15,30 @@ const MAPTILER_STYLE =
 const STEP_DURATION_MS = 1700;
 const PAUSE_BETWEEN_MS = 200;
 const MAP_LOAD_TIMEOUT_MS = 15000;
+
+// Dasharray animation sequence — 14 frames, 7-unit pattern (4 dash + 3 gap).
+// Each frame advances 0.5 units. Line direction is mine → plant, so dashes
+// appear to travel from the extraction source toward the receiving plant.
+// Derived from MapLibre's animate-a-line pattern.
+const DASH_SEQUENCE = [
+  [0, 4, 3],
+  [0.5, 4, 2.5],
+  [1, 4, 2],
+  [1.5, 4, 1.5],
+  [2, 4, 1],
+  [2.5, 4, 0.5],
+  [3, 4, 0],
+  [0, 3.5, 3.5],
+  [0.5, 3.5, 3],
+  [1, 3.5, 2.5],
+  [1.5, 3.5, 2],
+  [2, 3.5, 1.5],
+  [2.5, 3.5, 1],
+  [3, 3.5, 0.5],
+];
+
+// ~18fps for dash updates — imperceptibly smooth, cheaper than 60fps
+const DASH_UPDATE_INTERVAL_MS = 55;
 
 /**
  * Initialize a MapLibre GL map in the given container.
@@ -30,6 +58,8 @@ export function createMap(container) {
 /**
  * Run the cinematic reveal sequence: user -> plant -> mine.
  * Rejects if the map doesn't load within MAP_LOAD_TIMEOUT_MS.
+ *
+ * Attaches a stop function to map._stopFlowAnimation — call before map.remove().
  *
  * @param {maplibregl.Map} map
  * @param {Object} params
@@ -85,8 +115,10 @@ export function runRevealSequence(map, params) {
       map.flyTo({ center: mineLonLat, zoom: 8, duration: STEP_DURATION_MS });
       await delay(stepDelay);
 
-      // Step 4: Draw arc and zoom out to show all three
-      addArcLine(map, [userLonLat, plantLonLat, mineLonLat]);
+      // Step 4: Draw animated flow lines and zoom out to show all three
+      const stopFlow = addFlowLine(map, userLonLat, plantLonLat, mineLonLat);
+      map._stopFlowAnimation = stopFlow;
+
       showCaption(captionEl, "");
 
       const bounds = new maplibregl.LngLatBounds();
@@ -143,56 +175,165 @@ function addMarker(map, lonLat, label, color) {
 }
 
 /**
- * Draw an arc line connecting multiple points.
- * Generates curved segments by interpolating intermediate points
- * with a slight latitude offset for visual curvature.
- * @param {maplibregl.Map} map
- * @param {Array<[number, number]>} points - Array of [lon, lat] pairs
+ * Generate arc coordinates between two points with a sine-curve bulge.
+ * @param {[number,number]} from - [lon, lat]
+ * @param {[number,number]} to   - [lon, lat]
+ * @param {number} segments
+ * @returns {Array<[number,number]>}
  */
-function addArcLine(map, points) {
-  const arcCoords = [];
-  for (let p = 0; p < points.length - 1; p++) {
-    const start = points[p];
-    const end = points[p + 1];
-    const segments = 50;
-    for (let i = 0; i <= segments; i++) {
-      const t = i / segments;
-      const lon = start[0] + (end[0] - start[0]) * t;
-      const lat = start[1] + (end[1] - start[1]) * t;
-      // Arc offset: sine curve peaks at midpoint
-      const arcHeight =
-        Math.sin(t * Math.PI) *
-        Math.abs(end[0] - start[0]) *
-        0.15;
-      arcCoords.push([lon, lat + arcHeight]);
-    }
+function buildArc(from, to, segments) {
+  const coords = [];
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments;
+    const lon = from[0] + (to[0] - from[0]) * t;
+    const lat = from[1] + (to[1] - from[1]) * t;
+    const arcHeight = Math.sin(t * Math.PI) * Math.abs(to[0] - from[0]) * 0.15;
+    coords.push([lon, lat + arcHeight]);
   }
+  return coords;
+}
 
-  const sourceId = "arc-line";
+/**
+ * Add a GeoJSON line source + layer pair to the map.
+ * Removes any existing source/layer with the same id first.
+ * @param {maplibregl.Map} map
+ * @param {string} id
+ * @param {Array<[number,number]>} coordinates
+ * @param {Object} paint - MapLibre paint properties
+ */
+function addLineLayer(map, id, coordinates, paint) {
+  if (map.getSource(id)) {
+    map.removeLayer(id);
+    map.removeSource(id);
+  }
+  map.addSource(id, {
+    type: "geojson",
+    data: {
+      type: "Feature",
+      geometry: { type: "LineString", coordinates },
+    },
+  });
+  map.addLayer({ id, type: "line", source: id, paint });
+}
+
+/**
+ * Add a pulsing glow circle at the mine (source end of the extraction flow).
+ * The inner marker pin is a DOM element on top; this provides the WebGL halo.
+ * @param {maplibregl.Map} map
+ * @param {[number,number]} mineLonLat
+ */
+function addSourcePulse(map, mineLonLat) {
+  const sourceId = "mine-pulse";
   if (map.getSource(sourceId)) {
-    map.removeLayer(sourceId);
+    map.removeLayer("mine-pulse-outer");
     map.removeSource(sourceId);
   }
-
   map.addSource(sourceId, {
     type: "geojson",
     data: {
       type: "Feature",
-      geometry: { type: "LineString", coordinates: arcCoords },
+      geometry: { type: "Point", coordinates: mineLonLat },
     },
   });
-
   map.addLayer({
-    id: sourceId,
-    type: "line",
+    id: "mine-pulse-outer",
+    type: "circle",
     source: sourceId,
     paint: {
-      "line-color": "#c4956a",
-      "line-width": 2,
-      "line-opacity": 0.7,
-      "line-dasharray": [4, 3],
+      "circle-radius": 11,
+      "circle-color": "#c4956a",
+      "circle-opacity": 0.1,
+      "circle-blur": 0.6,
     },
   });
+}
+
+/**
+ * Draw the full visual chain and start the animation loop.
+ *
+ * Layers added:
+ *   user-arc     — static dim dotted line: user → plant (contextual)
+ *   flow-trail   — static dark blur base: mine → plant (glow backing)
+ *   flow-dashes  — animated amber dashes: mine → plant (the extraction flow)
+ *   mine-pulse   — pulsing WebGL circle: mine endpoint (source glow)
+ *
+ * Flow direction: mine → plant. Coal is extracted at the mine and shipped
+ * to the plant. The dash animation advances from the mine end toward the plant,
+ * making the direction viscerally clear.
+ *
+ * @param {maplibregl.Map} map
+ * @param {[number,number]} userLonLat
+ * @param {[number,number]} plantLonLat
+ * @param {[number,number]} mineLonLat
+ * @returns {function} stop — cancel the animation loop before calling map.remove()
+ */
+function addFlowLine(map, userLonLat, plantLonLat, mineLonLat) {
+  // User → plant: dim contextual connection (you are downstream of this plant)
+  addLineLayer(map, "user-arc", buildArc(userLonLat, plantLonLat, 30), {
+    "line-color": "#3a3a3a",
+    "line-width": 1,
+    "line-opacity": 0.3,
+    "line-dasharray": [2, 5],
+  });
+
+  // Mine → plant: dark glow backing (makes the amber dashes pop)
+  addLineLayer(map, "flow-trail", buildArc(mineLonLat, plantLonLat, 50), {
+    "line-color": "#1a0d05",
+    "line-width": 5,
+    "line-opacity": 0.55,
+    "line-blur": 3,
+  });
+
+  // Mine → plant: the animated extraction flow
+  addLineLayer(map, "flow-dashes", buildArc(mineLonLat, plantLonLat, 50), {
+    "line-color": "#c4956a",
+    "line-width": 2,
+    "line-opacity": 0.9,
+    "line-dasharray": DASH_SEQUENCE[0],
+  });
+
+  // Mine pulse glow (behind the DOM marker pin)
+  addSourcePulse(map, mineLonLat);
+
+  // --- Animation loop ---
+  let step = 0;
+  let pulsePhase = 0;
+  let rafId = null;
+  let stopped = false;
+  let lastUpdate = 0;
+
+  function animate(timestamp) {
+    if (stopped) return;
+    rafId = requestAnimationFrame(animate);
+
+    if (timestamp - lastUpdate < DASH_UPDATE_INTERVAL_MS) return;
+    lastUpdate = timestamp;
+
+    try {
+      step = (step + 1) % DASH_SEQUENCE.length;
+      map.setPaintProperty("flow-dashes", "line-dasharray", DASH_SEQUENCE[step]);
+
+      // Pulse: slower sine on radius and opacity for heavy, relentless feel
+      pulsePhase += 0.15;
+      const r = 11 + 9 * Math.sin(pulsePhase);
+      const a = 0.07 + 0.11 * Math.abs(Math.sin(pulsePhase));
+      map.setPaintProperty("mine-pulse-outer", "circle-radius", r);
+      map.setPaintProperty("mine-pulse-outer", "circle-opacity", a);
+    } catch (_) {
+      // Map was removed — stop silently
+      stopped = true;
+    }
+  }
+
+  rafId = requestAnimationFrame(animate);
+
+  return function stop() {
+    stopped = true;
+    if (rafId !== null) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+  };
 }
 
 /**
