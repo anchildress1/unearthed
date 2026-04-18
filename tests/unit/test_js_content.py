@@ -176,6 +176,12 @@ class TestMapJsContent:
     def test_uses_dark_style(self):
         assert "dark" in self.src.lower()
 
+    def test_has_load_timeout(self):
+        assert "MAP_LOAD_TIMEOUT_MS" in self.src
+
+    def test_rejects_on_timeout(self):
+        assert "reject" in self.src
+
 
 class TestParticlesJsContent:
     @pytest.fixture(autouse=True)
@@ -263,6 +269,15 @@ class TestChatJsContent:
     def test_uses_text_content_not_innerhtml(self):
         assert "textContent" in self.src
 
+    def test_uses_abort_controller_for_listener_cleanup(self):
+        assert "AbortController" in self.src
+
+    def test_has_concurrent_request_protection(self):
+        assert "chatBusy" in self.src
+
+    def test_disables_form_during_request(self):
+        assert "setFormEnabled" in self.src
+
 
 class TestAppJsContent:
     @pytest.fixture(autouse=True)
@@ -325,3 +340,25 @@ class TestAppJsContent:
 
     def test_no_innerhtml_usage(self):
         assert "innerHTML" not in self.src
+
+    def test_has_cleanup_function(self):
+        assert "cleanup" in self.src
+
+    def test_stores_ticker_stop(self):
+        assert "tickerStop" in self.src
+
+    def test_stores_pixi_app(self):
+        assert "pixiApp" in self.src
+
+    def test_removes_share_handler_on_re_reveal(self):
+        assert "removeEventListener" in self.src
+
+    def test_checks_cdn_dependencies(self):
+        assert "maplibregl" in self.src
+        assert "PIXI" in self.src
+
+    def test_pixi_failure_caught(self):
+        assert "Particle overlay unavailable" in self.src
+
+    def test_clipboard_failure_handled(self):
+        assert "Could not copy link" in self.src

@@ -18,6 +18,13 @@ import {
 import { createMap, runRevealSequence } from "./map.js";
 import { createParticleOverlay, showHeroImage, startTicker } from "./particles.js";
 
+// --- CDN dependency check ---
+if (typeof maplibregl === "undefined" || typeof PIXI === "undefined") {
+  const msg = "Required libraries failed to load. Please check your network connection and reload.";
+  document.body.textContent = msg;
+  throw new Error(msg);
+}
+
 // --- DOM References ---
 const introSection = document.getElementById("intro");
 const mapSection = document.getElementById("map-section");
@@ -54,7 +61,10 @@ const chatTranscript = document.getElementById("chat-transcript");
 const btnShare = document.getElementById("btn-share");
 const shareCopied = document.getElementById("share-copied");
 
-// --- State ---
+// --- Cleanup state for re-reveal safety ---
+let tickerStop = null;
+let pixiApp = null;
+let shareHandler = null;
 let geojsonData = null;
 let userCoords = null;
 
@@ -63,11 +73,17 @@ populateStatePicker();
 checkShareUrl();
 
 // --- Share URL ---
-function checkShareUrl() {
+async function checkShareUrl() {
   const params = new URLSearchParams(window.location.search);
   const subregionParam = params.get("s");
   if (subregionParam && /^[A-Za-z0-9]{2,10}$/.test(subregionParam)) {
-    startReveal(subregionParam.toUpperCase(), null);
+    try {
+      await startReveal(subregionParam.toUpperCase(), null);
+    } catch (err) {
+      showSection(introSection);
+      showLoading(false);
+      showError(err.message || "Could not load mine data from share link.");
+    }
   }
 }
 
@@ -166,13 +182,23 @@ btnStateGo.addEventListener("click", async () => {
   showLoading(true);
   hideError();
 
-  await startReveal(subregion, null);
+  try {
+    await startReveal(subregion, null);
+  } catch (err) {
+    showSection(introSection);
+    showLoading(false);
+    showError(err.message || "Could not load mine data. Please try again.");
+    btnStateGo.disabled = false;
+  }
 });
 
 // --- Main Reveal Flow ---
 async function startReveal(subregionId, coords) {
   showLoading(true);
   hideError();
+
+  // Clean up any previous reveal resources
+  cleanup();
 
   try {
     const data = await fetchMineForMe(subregionId);
@@ -199,10 +225,14 @@ async function startReveal(subregionId, coords) {
     // Transition to reveal section
     showSection(revealSection);
 
-    // Hero image + particles
+    // Hero image + particles (particles are non-critical — catch failures)
     showHeroImage(heroImage, data.mine_type);
-    createParticleOverlay(particleCanvas);
-    startTicker(tickerValue, data.tons);
+    try {
+      pixiApp = createParticleOverlay(particleCanvas);
+    } catch (pixiErr) {
+      console.warn("Particle overlay unavailable:", pixiErr.message);
+    }
+    tickerStop = startTicker(tickerValue, data.tons);
 
     // Prose (fade in)
     proseEl.textContent = data.prose;
@@ -240,25 +270,63 @@ async function startReveal(subregionId, coords) {
   }
 }
 
+/**
+ * Clean up resources from a previous reveal to prevent leaks on re-reveal.
+ */
+function cleanup() {
+  if (tickerStop) {
+    tickerStop();
+    tickerStop = null;
+  }
+  if (pixiApp) {
+    pixiApp.destroy(false);
+    pixiApp = null;
+  }
+  if (shareHandler) {
+    btnShare.removeEventListener("click", shareHandler);
+    shareHandler = null;
+  }
+  // Clear map container for re-use
+  while (mapContainer.firstChild) {
+    mapContainer.removeChild(mapContainer.firstChild);
+  }
+  // Clear chat transcript
+  while (chatTranscript.firstChild) {
+    chatTranscript.removeChild(chatTranscript.firstChild);
+  }
+  proseEl.classList.remove("prose--visible");
+}
+
 // --- Share ---
-function setupShare(subregionId, mineName, mineState) {
-  btnShare.addEventListener("click", () => {
+function setupShare(subregionId) {
+  if (shareHandler) {
+    btnShare.removeEventListener("click", shareHandler);
+  }
+
+  shareHandler = () => {
     const url = new URL(window.location.href);
     url.search = `?s=${encodeURIComponent(subregionId)}`;
     url.hash = "";
 
-    // Update OG meta (only effective for crawlers on server-rendered pages,
-    // but keeps the URL shareable)
-    const title = `unearthed: ${mineName}, ${mineState}`;
-    document.title = title;
-
     if (navigator.clipboard) {
-      navigator.clipboard.writeText(url.toString()).then(() => {
-        shareCopied.classList.remove("hidden");
-        setTimeout(() => shareCopied.classList.add("hidden"), 2000);
-      });
+      navigator.clipboard.writeText(url.toString()).then(
+        () => {
+          shareCopied.classList.remove("hidden");
+          setTimeout(() => shareCopied.classList.add("hidden"), 2000);
+        },
+        () => {
+          shareCopied.textContent = "Could not copy link";
+          shareCopied.classList.remove("hidden");
+          setTimeout(() => {
+            shareCopied.textContent = "Link copied";
+            shareCopied.classList.add("hidden");
+          }, 2000);
+        },
+      );
     }
-  });
+  };
+
+  btnShare.addEventListener("click", shareHandler);
 }
 
 // --- UI Helpers ---

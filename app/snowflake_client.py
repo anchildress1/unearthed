@@ -216,6 +216,10 @@ def load_fallback_data(subregion_id: str) -> dict | None:
     if not fallback_file.is_relative_to(_FALLBACK_DIR):
         logger.warning("Path traversal attempt blocked: %s", subregion_id)
         return None
-    if fallback_file.exists():
+    if not fallback_file.exists():
+        return None
+    try:
         return json.loads(fallback_file.read_text())
-    return None
+    except (json.JSONDecodeError, OSError):
+        logger.exception("Failed to read fallback file: %s", fallback_file.name)
+        return None

@@ -1,5 +1,8 @@
 /**
  * Cortex Analyst chat UI: question chips, text input, and transcript rendering.
+ *
+ * Tracks an AbortController so re-initialization (on re-reveal) removes
+ * old form listeners, preventing duplicate submissions.
  */
 
 import { fetchAsk } from "./api.js";
@@ -12,8 +15,12 @@ const DEFAULT_CHIPS = [
   "Who is the largest coal supplier in this state?",
 ];
 
+let chatAbortController = null;
+let chatBusy = false;
+
 /**
  * Initialize the chat UI with chips and event handlers.
+ * Safe to call multiple times — previous listeners are removed.
  * @param {Object} params
  * @param {HTMLElement} params.chipsContainer
  * @param {HTMLFormElement} params.form
@@ -36,6 +43,15 @@ export function initChat(params) {
     mineState,
   } = params;
 
+  // Abort previous listeners to prevent stacking on re-reveal
+  if (chatAbortController) {
+    chatAbortController.abort();
+  }
+  chatAbortController = new AbortController();
+  const signal = chatAbortController.signal;
+
+  chatBusy = false;
+
   const chipQuestions = DEFAULT_CHIPS.map((q) =>
     q
       .replace("this mine", mineName)
@@ -45,16 +61,16 @@ export function initChat(params) {
   );
 
   renderChips(chipsContainer, chipQuestions, (question) => {
-    submitQuestion(question, subregionId, transcript);
-  });
+    submitQuestion(question, subregionId, transcript, form, input);
+  }, signal);
 
   form.addEventListener("submit", (e) => {
     e.preventDefault();
     const question = input.value.trim();
     if (!question) return;
     input.value = "";
-    submitQuestion(question, subregionId, transcript);
-  });
+    submitQuestion(question, subregionId, transcript, form, input);
+  }, { signal });
 }
 
 /**
@@ -62,8 +78,9 @@ export function initChat(params) {
  * @param {HTMLElement} container
  * @param {string[]} questions
  * @param {function} onClick
+ * @param {AbortSignal} signal
  */
-function renderChips(container, questions, onClick) {
+function renderChips(container, questions, onClick, signal) {
   while (container.firstChild) {
     container.removeChild(container.firstChild);
   }
@@ -72,27 +89,49 @@ function renderChips(container, questions, onClick) {
     chip.type = "button";
     chip.className = "chat__chip";
     chip.textContent = q;
-    chip.addEventListener("click", () => onClick(q));
+    chip.addEventListener("click", () => onClick(q), { signal });
     container.appendChild(chip);
   }
 }
 
 /**
  * Submit a question to the /ask endpoint and render the result.
+ * Prevents concurrent submissions by disabling the form while busy.
  * @param {string} question
  * @param {string} subregionId
  * @param {HTMLElement} transcript
+ * @param {HTMLFormElement} form
+ * @param {HTMLInputElement} input
  */
-async function submitQuestion(question, subregionId, transcript) {
+async function submitQuestion(question, subregionId, transcript, form, input) {
+  if (chatBusy) return;
+  chatBusy = true;
+  setFormEnabled(form, input, false);
+
   const exchange = createExchangeEl(question);
   transcript.prepend(exchange);
 
   try {
     const data = await fetchAsk(question, subregionId);
-    renderAnswer(exchange, data, subregionId, transcript);
+    renderAnswer(exchange, data, subregionId, transcript, form, input);
   } catch (err) {
     renderError(exchange, err.message || "Something went wrong. Please try again.");
+  } finally {
+    chatBusy = false;
+    setFormEnabled(form, input, true);
   }
+}
+
+/**
+ * Enable or disable the chat form controls.
+ * @param {HTMLFormElement} form
+ * @param {HTMLInputElement} input
+ * @param {boolean} enabled
+ */
+function setFormEnabled(form, input, enabled) {
+  const submitBtn = form.querySelector("button[type='submit']");
+  if (submitBtn) submitBtn.disabled = !enabled;
+  input.disabled = !enabled;
 }
 
 /**
@@ -123,8 +162,10 @@ function createExchangeEl(question) {
  * @param {Object} data - AskResponse
  * @param {string} subregionId
  * @param {HTMLElement} transcript
+ * @param {HTMLFormElement} form
+ * @param {HTMLInputElement} input
  */
-function renderAnswer(exchange, data, subregionId, transcript) {
+function renderAnswer(exchange, data, subregionId, transcript, form, input) {
   const loading = exchange.querySelector(".chat__loading");
   if (loading) loading.remove();
 
@@ -175,7 +216,7 @@ function renderAnswer(exchange, data, subregionId, transcript) {
       chip.className = "chat__chip";
       chip.textContent = s;
       chip.addEventListener("click", () => {
-        submitQuestion(s, subregionId, transcript);
+        submitQuestion(s, subregionId, transcript, form, input);
       });
       suggestionsEl.appendChild(chip);
     }

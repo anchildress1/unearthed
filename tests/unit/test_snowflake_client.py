@@ -119,6 +119,14 @@ class TestLoadFallbackData:
         result_lower = load_fallback_data("srvc")
         assert result_upper == result_lower
 
+    def test_corrupt_json_returns_none(self, tmp_path):
+        """Corrupt fallback JSON should return None, not crash."""
+        corrupt_file = tmp_path / "CORRUPT.json"
+        corrupt_file.write_text("{invalid json content")
+        with patch("app.snowflake_client._FALLBACK_DIR", tmp_path.resolve()):
+            result = load_fallback_data("CORRUPT")
+        assert result is None
+
 
 class TestAuthPolicy:
     @patch("app.snowflake_client.settings")

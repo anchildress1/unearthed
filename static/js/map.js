@@ -10,6 +10,7 @@ const MAPTILER_STYLE =
 
 const STEP_DURATION_MS = 2200;
 const PAUSE_BETWEEN_MS = 400;
+const MAP_LOAD_TIMEOUT_MS = 15000;
 
 /**
  * Initialize a MapLibre GL map in the given container.
@@ -28,6 +29,7 @@ export function createMap(container) {
 
 /**
  * Run the cinematic reveal sequence: user -> plant -> mine.
+ * Rejects if the map doesn't load within MAP_LOAD_TIMEOUT_MS.
  *
  * @param {maplibregl.Map} map
  * @param {Object} params
@@ -48,10 +50,22 @@ export function runRevealSequence(map, params) {
   const plantLonLat = [plantCoords[1], plantCoords[0]];
   const mineLonLat = [mineCoords[1], mineCoords[0]];
 
-  return new Promise((resolve) => {
-    map.once("load", () => {
-      addMarker(map, userLonLat, "You", "#c4956a");
+  return new Promise((resolve, reject) => {
+    let settled = false;
 
+    const timeoutId = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        reject(new Error("Map failed to load. Please check your network connection."));
+      }
+    }, MAP_LOAD_TIMEOUT_MS);
+
+    function startSequence() {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+
+      addMarker(map, userLonLat, "You", "#c4956a");
       showCaption(captionEl, "Your location");
 
       // Step 1: Fly to user location
@@ -88,11 +102,12 @@ export function runRevealSequence(map, params) {
           }, STEP_DURATION_MS + PAUSE_BETWEEN_MS);
         }, STEP_DURATION_MS + PAUSE_BETWEEN_MS);
       }, STEP_DURATION_MS + PAUSE_BETWEEN_MS);
-    });
+    }
 
-    // If map is already loaded (e.g., from cache), fire immediately
     if (map.loaded()) {
-      map.fire("load");
+      startSequence();
+    } else {
+      map.once("load", startSequence);
     }
   });
 }
