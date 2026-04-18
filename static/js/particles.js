@@ -1,14 +1,42 @@
 /**
- * PixiJS coal-dust particle overlay with tonnage ticker.
+ * Canvas 2D coal-dust atmospheric overlay with tonnage ticker.
  *
- * Uses ParticleContainer with sprite batching for >= 30 FPS on low-end hardware.
+ * Replaces the PixiJS particle approach. Canvas 2D gives direct control over
+ * blend modes and radial-gradient soft blobs — essential for haze, not circles.
+ *
+ * Visual approach:
+ *   - globalCompositeOperation "screen": particles add luminosity against dark
+ *     backgrounds without ever bleaching to white. Perfect for suspended haze.
+ *   - Radial gradient per particle: soft falloff from center → transparent edge.
+ *     No hard-edged circles. Each blob reads as a dust mote in diffuse light.
+ *   - Two depth layers: many small/slow far particles (the atmosphere itself) +
+ *     fewer larger/faster near particles (foreground drift).
+ *   - Brownian motion with drag: zero net direction, no gravity, no spawning.
+ *     All particles pre-seeded across the full canvas and edge-wrapped.
+ *
  * Tonnage rate: annual_tons / seconds_in_year, displayed to two decimal places.
  */
 
 const SECONDS_IN_YEAR = 365.25 * 24 * 60 * 60;
 const MAX_PARTICLES = 300;
-const PARTICLE_SIZE = 3;
-const SPAWN_RATE = 4; // particles per frame
+
+// Warm gray-brown — coal haze reads as this under diffuse light
+// rgb(160, 140, 120) with screen blend mode glows subtly against #0d0d0d
+const DUST_RGB_FAR = "160, 140, 120";
+const DUST_RGB_NEAR = "200, 180, 155";
+
+// Brownian motion parameters — coal dust barely moves
+const MAX_SPEED = 0.38;
+const BROWNIAN_STRENGTH = 0.05;
+const DRAG = 0.978;
+
+// Layer definitions — far (atmosphere) + near (foreground motes)
+const LAYERS = [
+  // Far: dense, small, slow, slightly opaque — the haze field itself
+  { count: 200, minR: 2.5, maxR: 7, minAlpha: 0.09, maxAlpha: 0.30, speedFactor: 0.35, rgb: DUST_RGB_FAR },
+  // Near: sparse, larger, faster, more diffuse
+  { count: 100, minR: 1.5, maxR: 4, minAlpha: 0.12, maxAlpha: 0.38, speedFactor: 0.85, rgb: DUST_RGB_NEAR },
+];
 
 // Hero images: pre-1980 public domain (Library of Congress)
 const HERO_IMAGES = {
@@ -16,76 +44,142 @@ const HERO_IMAGES = {
   Underground: "/static/img/hero-underground.jpg",
 };
 
+function rng(min, max) {
+  return min + Math.random() * (max - min);
+}
+
 /**
- * Initialize the PixiJS particle overlay.
+ * Initialize the Canvas 2D particle overlay.
  * @param {HTMLCanvasElement} canvas
- * @param {string} mineType - "Surface" or "Underground"
- * @returns {PIXI.Application}
+ * @returns {{ destroy: Function }}
  */
 export function createParticleOverlay(canvas) {
-  const app = new PIXI.Application({
-    view: canvas,
-    resizeTo: canvas.parentElement,
-    backgroundAlpha: 0,
-    antialias: false,
-    resolution: Math.min(window.devicePixelRatio, 2),
-    autoDensity: true,
-  });
-
-  // Prevent PixiJS from intercepting pointer events so the map stays interactive.
   canvas.style.pointerEvents = "none";
-  app.stage.eventMode = "none";
 
-  const particleContainer = new PIXI.ParticleContainer(MAX_PARTICLES, {
-    position: true,
-    alpha: true,
-    scale: true,
-  });
-  app.stage.addChild(particleContainer);
-
-  // Generate a small circular texture for particles
-  const gfx = new PIXI.Graphics();
-  gfx.beginFill(0xd4d0c8, 0.8);
-  gfx.drawCircle(0, 0, PARTICLE_SIZE);
-  gfx.endFill();
-  const texture = app.renderer.generateTexture(gfx);
-  gfx.destroy();
-
+  const ctx = canvas.getContext("2d");
   const particles = [];
+  let w = 0;
+  let h = 0;
+  let rafId = null;
 
-  app.ticker.add(() => {
-    const { width, height } = app.screen;
+  // Size the backing buffer to match physical pixels
+  function resize() {
+    const rect = canvas.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    w = rect.width;
+    h = rect.height;
+    if (w === 0 || h === 0) return;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
 
-    // Spawn new particles from the top
-    for (let i = 0; i < SPAWN_RATE && particles.length < MAX_PARTICLES; i++) {
-      const sprite = new PIXI.Sprite(texture);
-      sprite.x = Math.random() * width;
-      sprite.y = -PARTICLE_SIZE;
-      sprite.alpha = 0.2 + Math.random() * 0.5;
-      sprite.scale.set(0.5 + Math.random() * 1.0);
-      sprite._vy = 0.3 + Math.random() * 0.8;
-      sprite._vx = (Math.random() - 0.5) * 0.3;
-      sprite._fadeRate = 0.001 + Math.random() * 0.002;
-      particleContainer.addChild(sprite);
-      particles.push(sprite);
-    }
-
-    // Update existing particles
-    for (let i = particles.length - 1; i >= 0; i--) {
-      const p = particles[i];
-      p.y += p._vy;
-      p.x += p._vx;
-      p.alpha -= p._fadeRate;
-
-      if (p.y > height + PARTICLE_SIZE || p.alpha <= 0) {
-        particleContainer.removeChild(p);
-        p.destroy();
-        particles.splice(i, 1);
+  function spawnAll() {
+    particles.length = 0;
+    for (const layer of LAYERS) {
+      for (let i = 0; i < layer.count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = rng(0.02, MAX_SPEED * layer.speedFactor);
+        particles.push({
+          x: Math.random() * w,
+          y: Math.random() * h,
+          r: rng(layer.minR, layer.maxR),
+          baseAlpha: rng(layer.minAlpha, layer.maxAlpha),
+          alphaPhase: Math.random() * Math.PI * 2,
+          alphaRate: rng(0.005, 0.018),
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          rgb: layer.rgb,
+        });
       }
     }
-  });
+  }
 
-  return app;
+  // Initial sizing — synchronous, no async resize surprise
+  resize();
+  if (w > 0 && h > 0) {
+    spawnAll();
+  }
+
+  // Watch for layout changes (panel slide-in, mobile resize, etc.)
+  const ro = new ResizeObserver(() => {
+    resize();
+    if (particles.length === 0 && w > 0 && h > 0) {
+      spawnAll();
+    }
+  });
+  ro.observe(canvas);
+
+  function tick() {
+    if (particles.length === 0 && w > 0 && h > 0) {
+      spawnAll();
+    }
+
+    ctx.clearRect(0, 0, w, h);
+
+    // "screen" blend: each particle adds luminosity, never bleaches to white.
+    // Against the dark hero-bg (#0d0d0d) this produces subtle warm haze.
+    ctx.globalCompositeOperation = "screen";
+
+    for (const p of particles) {
+      // Brownian perturbation — equal probability in every direction
+      p.vx += (Math.random() - 0.5) * BROWNIAN_STRENGTH;
+      p.vy += (Math.random() - 0.5) * BROWNIAN_STRENGTH;
+
+      // Drag — prevents cumulative drift from winning
+      p.vx *= DRAG;
+      p.vy *= DRAG;
+
+      // Speed cap — keeps particles suspended, not racing
+      const spd = Math.hypot(p.vx, p.vy);
+      if (spd > MAX_SPEED) {
+        p.vx = (p.vx / spd) * MAX_SPEED;
+        p.vy = (p.vy / spd) * MAX_SPEED;
+      }
+
+      p.x += p.vx;
+      p.y += p.vy;
+
+      // Edge wrap — seamless, no pop-in flash
+      const r = p.r;
+      if (p.x < -r) p.x = w + r;
+      else if (p.x > w + r) p.x = -r;
+      if (p.y < -r) p.y = h + r;
+      else if (p.y > h + r) p.y = -r;
+
+      // Alpha shimmer — each mote breathes independently
+      p.alphaPhase += p.alphaRate;
+      const alpha = p.baseAlpha * (0.6 + 0.4 * Math.sin(p.alphaPhase));
+
+      // Radial gradient: solid center → transparent edge. Soft mote, not hard disc.
+      const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
+      grad.addColorStop(0, `rgba(${p.rgb}, ${alpha})`);
+      grad.addColorStop(1, `rgba(${p.rgb}, 0)`);
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 1;
+
+    rafId = requestAnimationFrame(tick);
+  }
+
+  rafId = requestAnimationFrame(tick);
+
+  return {
+    // Match the PIXI.Application.destroy(removeView) signature used in app.js
+    destroy(_removeView) {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      ro.disconnect();
+      particles.length = 0;
+    },
+  };
 }
 
 /**
@@ -107,14 +201,13 @@ export function showHeroImage(heroEl, mineType) {
  * @returns {function} Stop function to cancel the ticker
  */
 export function startTicker(tickerEl, annualTons) {
-  const tonsPerSecond = annualTons / SECONDS_IN_YEAR;
+  const rate = annualTons / SECONDS_IN_YEAR;
   const startTime = performance.now();
   let rafId = null;
 
   function update() {
     const elapsed = (performance.now() - startTime) / 1000;
-    const tons = tonsPerSecond * elapsed;
-    tickerEl.textContent = tons.toFixed(2);
+    tickerEl.textContent = (rate * elapsed).toFixed(2);
     rafId = requestAnimationFrame(update);
   }
 

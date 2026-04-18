@@ -200,8 +200,8 @@ class TestParticlesJsContent:
     def test_exports_tons_per_second(self):
         assert "export function tonsPerSecond" in self.src
 
-    def test_uses_particle_container(self):
-        assert "ParticleContainer" in self.src
+    def test_uses_canvas_2d_context(self):
+        assert 'getContext("2d")' in self.src
 
     def test_has_max_particles_limit(self):
         assert "MAX_PARTICLES" in self.src
