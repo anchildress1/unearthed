@@ -47,8 +47,7 @@ top_plant AS (
         AND fr.YEAR = 2024
         AND lk.EGRID_SUBREGION = %(subregion_id)s
     GROUP BY p.PLANTNAME, p.UTILITYNAME, p.LATITUDE, p.LONGITUDE
-    ORDER BY TONS DESC
-    LIMIT 1
+    QUALIFY ROW_NUMBER() OVER (ORDER BY TONS DESC) = 1
 )
 SELECT
     tm.MINE_NAME,
@@ -265,14 +264,19 @@ def execute_analyst_sql(sql: str) -> list[dict]:
     1. Snowflake role (UNEARTHED_READONLY_ROLE) — only has SELECT grants.
     2. Regex validation — rejects non-SELECT SQL before it hits the wire.
     """
-    if not _is_safe_sql(sql):
+    # Cortex Analyst appends a trailing semicolon; strip it before safety check and execution.
+    clean_sql = sql.strip().rstrip(";").strip()
+    if not _is_safe_sql(clean_sql):
         raise ValueError("Only single read-only SELECT statements are allowed.")
     conn = _get_connection(role=settings.snowflake_readonly_role)
     try:
         cur = conn.cursor(snowflake.connector.DictCursor)
-        cur.execute("ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = 10")
-        cur.execute(sql)
-        return [dict(row) for row in cur.fetchmany(500)]
+        try:
+            cur.execute("ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = 10")
+            cur.execute(clean_sql)
+            return [dict(row) for row in cur.fetchmany(500)]
+        finally:
+            cur.close()
     finally:
         conn.close()
 
