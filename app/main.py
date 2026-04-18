@@ -135,6 +135,7 @@ def ask(req: AskRequest):
 
     return AskResponse(
         answer=result["answer"],
+        interpretation=result.get("interpretation"),
         sql=sql,
         error=error,
         suggestions=suggestions,

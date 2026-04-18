@@ -156,6 +156,12 @@ function createExchangeEl(question) {
 
 /**
  * Render the answer, SQL, and results into an exchange element.
+ *
+ * Priority order:
+ *  1. SQL results (table) → primary answer; interpretation shown as secondary label
+ *  2. answer text (out-of-scope explanation, SQL execution failure message)
+ *  3. interpretation fallback (should not reach here in practice)
+ *
  * @param {HTMLElement} exchange
  * @param {Object} data - AskResponse
  * @param {string} subregionId
@@ -174,10 +180,26 @@ function renderAnswer(exchange, data, subregionId, transcript, form, input) {
     exchange.appendChild(errorEl);
   }
 
-  if (data.answer) {
+  if (data.results && data.results.length > 0) {
+    // Real data is the answer. Interpretation is a dim label, not the headline.
+    if (data.interpretation) {
+      const interpEl = document.createElement("div");
+      interpEl.className = "chat__interpretation";
+      interpEl.textContent = data.interpretation;
+      exchange.appendChild(interpEl);
+    }
+    exchange.appendChild(renderResultsTable(data.results));
+  } else if (data.answer) {
     const answerEl = document.createElement("div");
     answerEl.className = "chat__answer";
     answerEl.textContent = data.answer;
+    exchange.appendChild(answerEl);
+  } else if (data.interpretation) {
+    // No SQL results and no answer text: show the interpretation as the response
+    // (e.g. out-of-scope questions where Cortex only returned a restatement).
+    const answerEl = document.createElement("div");
+    answerEl.className = "chat__answer";
+    answerEl.textContent = data.interpretation;
     exchange.appendChild(answerEl);
   }
 
@@ -197,10 +219,6 @@ function renderAnswer(exchange, data, subregionId, transcript, form, input) {
       const isHidden = sqlEl.classList.toggle("hidden");
       toggle.textContent = isHidden ? "Show SQL" : "Hide SQL";
     });
-  }
-
-  if (data.results && data.results.length > 0) {
-    exchange.appendChild(renderResultsTable(data.results));
   }
 
   if (data.suggestions && data.suggestions.length > 0) {

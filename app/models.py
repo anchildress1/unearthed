@@ -47,6 +47,7 @@ class AskRequest(BaseModel):
 
 class AskResponse(BaseModel):
     answer: str
+    interpretation: str | None = None
     sql: str | None = None
     error: str | None = None
     suggestions: list[str] | None = None

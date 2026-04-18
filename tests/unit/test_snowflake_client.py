@@ -265,11 +265,13 @@ class TestAuthPolicy:
         assert call_kwargs["password"] == "secret"
 
 
+ANALYST_INTERP = "This is our interpretation of your question: Total coal tonnage for SRVC."
+
 ANALYST_RESPONSE = {
     "message": {
         "role": "analyst",
         "content": [
-            {"type": "text", "text": "Total coal tonnage for SRVC is 5M tons."},
+            {"type": "text", "text": ANALYST_INTERP},
             {"type": "sql", "statement": "SELECT SUM(QUANTITY) FROM ..."},
         ],
     }
@@ -293,7 +295,9 @@ class TestQueryCortexAnalyst:
 
         result = query_cortex_analyst("How much coal for SRVC?")
 
-        assert result["answer"] == "Total coal tonnage for SRVC is 5M tons."
+        # When SQL is present the text item is the interpretation, not the answer.
+        assert result["answer"] == ""
+        assert result["interpretation"] == ANALYST_INTERP
         assert result["sql"] == "SELECT SUM(QUANTITY) FROM ..."
         assert result["error"] is None
 
@@ -313,7 +317,9 @@ class TestQueryCortexAnalyst:
 
         result = query_cortex_analyst("What's the weather?")
 
+        # No SQL → text is the answer, not an interpretation.
         assert result["answer"] == "I cannot answer that."
+        assert result["interpretation"] is None
         assert result["sql"] is None
         assert result["error"] is None
 
@@ -389,7 +395,7 @@ class TestQueryCortexAnalyst:
 
     @patch("app.snowflake_client.requests.post")
     @patch("app.snowflake_client._get_connection")
-    def test_multiple_text_blocks_joined(self, mock_get_conn, mock_post):
+    def test_multiple_text_blocks_joined_into_interpretation(self, mock_get_conn, mock_post):
         mock_get_conn.return_value = self._mock_connection()
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
@@ -407,8 +413,10 @@ class TestQueryCortexAnalyst:
 
         result = query_cortex_analyst("test")
 
-        assert "Part one." in result["answer"]
-        assert "Part two." in result["answer"]
+        # SQL present → text items become interpretation, joined by double newline.
+        assert result["answer"] == ""
+        assert "Part one." in result["interpretation"]
+        assert "Part two." in result["interpretation"]
         assert result["sql"] == "SELECT 1"
 
     @patch("app.snowflake_client.requests.post")
@@ -453,6 +461,47 @@ class TestQueryCortexAnalyst:
         result = query_cortex_analyst("test")
 
         assert result["suggestions"] is None
+
+    @patch("app.snowflake_client.requests.post")
+    @patch("app.snowflake_client._get_connection")
+    def test_no_text_no_sql_returns_empty(self, mock_get_conn, mock_post):
+        """Empty content → answer and interpretation are both empty/None."""
+        mock_get_conn.return_value = self._mock_connection()
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"message": {"role": "analyst", "content": []}}
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        result = query_cortex_analyst("test")
+
+        assert result["answer"] == ""
+        assert result["interpretation"] is None
+        assert result["sql"] is None
+
+    @patch("app.snowflake_client.requests.post")
+    @patch("app.snowflake_client._get_connection")
+    def test_suggestions_response_text_is_answer_not_interpretation(self, mock_get_conn, mock_post):
+        """Out-of-scope: text + suggestions (no SQL) → text is the answer, not interpretation."""
+        mock_get_conn.return_value = self._mock_connection()
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "message": {
+                "role": "analyst",
+                "content": [
+                    {"type": "text", "text": "I cannot answer that. Try these instead:"},
+                    {"type": "suggestions", "suggestions": ["Mine production?", "Active mines?"]},
+                ],
+            }
+        }
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        result = query_cortex_analyst("What is the meaning of life?")
+
+        assert result["answer"] == "I cannot answer that. Try these instead:"
+        assert result["interpretation"] is None
+        assert result["sql"] is None
+        assert result["suggestions"] == ["Mine production?", "Active mines?"]
 
 
 class TestExecuteAnalystSql:

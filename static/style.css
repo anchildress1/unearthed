@@ -506,6 +506,13 @@ a:hover {
   margin-bottom: 0.5rem;
 }
 
+.chat__interpretation {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  font-style: italic;
+  margin-bottom: 0.5rem;
+}
+
 .chat__error {
   color: var(--color-error);
   font-size: 0.9rem;
