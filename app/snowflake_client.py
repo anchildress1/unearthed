@@ -13,11 +13,17 @@ logger = logging.getLogger(__name__)
 # CTE: top mine from the MRT view, then join raw tables for plant details.
 # The view ranks mines per subregion but doesn't carry plant coordinates.
 # latest_year resolves dynamically so we never chase a hardcoded year.
+# Scoped to the subregion to avoid a global EIA_923 full-table scan on every request.
 MINE_FOR_SUBREGION_SQL = """
 WITH latest_year AS (
+    -- Single-row CTE: MAX(YEAR) for coal receipts reaching this subregion.
+    -- CROSS JOIN in the final SELECT is safe because this CTE always returns exactly one row.
     SELECT MAX(fr.YEAR) AS YEAR
     FROM UNEARTHED_DB.RAW.EIA_923_FUEL_RECEIPTS fr
+    JOIN UNEARTHED_DB.RAW.PLANT_SUBREGION_LOOKUP lk
+        ON fr.PLANT_ID = lk.PLANT_CODE
     WHERE fr.FUEL_GROUP = 'Coal'
+        AND lk.EGRID_SUBREGION = %(subregion_id)s
 ),
 top_mine AS (
     SELECT
