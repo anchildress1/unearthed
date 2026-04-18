@@ -1,7 +1,7 @@
 analyst_services: []
 
 other_services:
-  object_manager: False
+  object_manager: True
   query_manager: True
   semantic_manager: True
 
@@ -16,4 +16,6 @@ sql_statement_permissions:
   - Delete: False
   - Drop: False
   - TruncateTable: False
+  - Grant: False
+  - Command: False
   - Unknown: False
