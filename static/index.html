@@ -13,6 +13,11 @@
 
   <title>unearthed</title>
 
+  <!-- Preload hero background -->
+  <link rel="preload" as="image" href="/static/img/westva-strip-mine.webp"
+        imagesrcset="/static/img/westva-strip-mine-768.webp 768w, /static/img/westva-strip-mine.webp 1920w"
+        imagesizes="100vw">
+
   <!-- MapLibre GL JS -->
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
@@ -22,6 +27,14 @@
 <body>
   <!-- ===== INTRO / LOADING ===== -->
   <section id="intro" class="section section--active">
+    <div class="intro__bg" role="img" aria-label="Aerial view of Pickering Knob mountaintop removal site, West Virginia"></div>
+    <a
+      class="intro__photo-credit"
+      href="https://www.flickr.com/photos/nationalmemorialforthemountains/255887679/"
+      target="_blank"
+      rel="noopener"
+      aria-label="Photo credit: Kent Kessinger / iLoveMountains.org / Flickr — Flight courtesy of SouthWings"
+    >Photo: Kent Kessinger / iLoveMountains.org / Flickr — Flight courtesy of SouthWings</a>
     <div class="intro__content">
       <h1 class="intro__title">unearthed</h1>
       <p class="intro__subtitle">Find the coal mine under contract to your power plant.</p>
