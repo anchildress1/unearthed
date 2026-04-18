@@ -25,7 +25,7 @@ class TestSettings:
         assert s.snowflake_readonly_role == "UNEARTHED_READONLY_ROLE"
         assert s.snowflake_warehouse == "UNEARTHED_APP_WH"
         assert s.snowflake_database == "UNEARTHED_DB"
-        assert s.gemini_model == "gemini-2.5-flash"
+        assert s.gemini_model == "gemini-3.1-flash-lite-preview"
         assert s.snowflake_password == ""
         assert s.snowflake_private_key_path == ""
         assert s.gemini_api_key == ""
