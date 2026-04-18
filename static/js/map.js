@@ -4,8 +4,8 @@
  * Sequence: user location -> power plant -> source mine.
  * Arc line drawn between all three points. Total time <= 8 seconds.
  *
- * Flow animation: continuous dash-offset cycling (timestamp-driven, 60fps)
- * with multi-layer glow stack for a visceral extraction feel.
+ * Flow animation: static dasharray with linearly advancing dashoffset —
+ * steady conveyor-belt feel. Two layers (glow + dashes), one pulse circle.
  * All layers are native MapLibre WebGL — they pan/zoom with the map.
  */
 
@@ -24,39 +24,12 @@ const PAUSE_BETWEEN_MS = 200;
 const MAP_LOAD_TIMEOUT_MS = 15000;
 
 // Dash pattern: 4 units on, 3 units off = 7-unit repeat.
-// The animation advances the phase continuously using wall-clock time so
-// speed is frame-rate-independent and perfectly smooth at 60fps.
 const DASH_LEN = 4;
 const GAP_LEN = 3;
-const PATTERN_LEN = DASH_LEN + GAP_LEN; // 7
-// Full pattern cycle duration: chosen to match the previous visual speed.
-// Previous: 14 frames × 55ms = 770ms per cycle ≈ 9.09 units/sec.
-const DASH_CYCLE_MS = 770;
 
-/**
- * Compute a MapLibre line-dasharray triplet from a continuous time offset.
- * The returned array creates the illusion of dashes flowing from mine → plant.
- *
- * MapLibre dasharray format: [segment0, segment1, segment2, ...]
- * where the segments alternate dash/gap starting with dash.
- * We use a 3-element array to represent one full DASH+GAP cycle split at
- * an arbitrary phase, giving sub-frame visual smoothness.
- *
- * @param {number} timeMs - Wall-clock milliseconds
- * @returns {[number, number, number]}
- */
-function dashArrayAtTime(timeMs) {
-  const phase = ((timeMs % DASH_CYCLE_MS) / DASH_CYCLE_MS) * PATTERN_LEN;
-
-  if (phase < GAP_LEN) {
-    // Phase is inside the gap region: leading gap fragment, full dash, trailing gap fragment
-    return [phase, DASH_LEN, GAP_LEN - phase];
-  } else {
-    // Phase is inside the dash region: leading dash fragment, full gap, trailing dash fragment
-    const inDash = phase - GAP_LEN;
-    return [GAP_LEN + inDash, GAP_LEN, DASH_LEN - inDash];
-  }
-}
+// Flow speed in dasharray units per second.
+// 9 units/sec → one full 7-unit cycle every ~0.78s — steady conveyor pace.
+const FLOW_SPEED = 9;
 
 /**
  * Initialize a MapLibre GL map in the given container.
@@ -235,16 +208,15 @@ function addLineLayer(map, id, coordinates, paint) {
 }
 
 /**
- * Add pulsing WebGL circles at the mine endpoint — the extraction source.
- * Two rings: a slow outer breath and a faster inner beat.
+ * Add a single pulsing WebGL circle at the mine endpoint.
+ * One ring, slow sine breath — steady pressure at the source.
  * @param {maplibregl.Map} map
  * @param {[number,number]} mineLonLat
  */
-function addSourcePulse(map, mineLonLat) {
+function addMinePulse(map, mineLonLat) {
   const sourceId = "mine-pulse";
   if (map.getSource(sourceId)) {
-    map.removeLayer("mine-pulse-outer");
-    map.removeLayer("mine-pulse-inner");
+    map.removeLayer("mine-pulse");
     map.removeSource(sourceId);
   }
   map.addSource(sourceId, {
@@ -254,46 +226,31 @@ function addSourcePulse(map, mineLonLat) {
       geometry: { type: "Point", coordinates: mineLonLat },
     },
   });
-  // Outer halo: slow, wide, earthy amber — the raw pressure of extraction
   map.addLayer({
-    id: "mine-pulse-outer",
+    id: "mine-pulse",
     type: "circle",
     source: sourceId,
     paint: {
-      "circle-radius": 18,
+      "circle-radius": 14,
       "circle-color": "#7a3d10",
       "circle-opacity": 0.08,
-      "circle-blur": 0.7,
-    },
-  });
-  // Inner ring: faster beat, slightly brighter — heartbeat at the source
-  map.addLayer({
-    id: "mine-pulse-inner",
-    type: "circle",
-    source: sourceId,
-    paint: {
-      "circle-radius": 10,
-      "circle-color": "#c4956a",
-      "circle-opacity": 0.15,
-      "circle-blur": 0.4,
+      "circle-blur": 0.6,
     },
   });
 }
 
 /**
- * Draw the full visual chain and start the animation loop.
+ * Draw the extraction flow and start the animation loop.
  *
  * Layers (mine → plant direction):
- *   user-arc        — dim static dotted line: user → plant (contextual)
- *   flow-glow-outer — wide heat-haze backing: mine → plant (deep shadow glow)
- *   flow-glow-inner — medium amber haze: mine → plant (glow mid-tone)
- *   flow-dashes     — animated amber dashes: mine → plant (the extraction flow)
- *   mine-pulse-outer — slow, wide WebGL halo at the mine (raw extraction pressure)
- *   mine-pulse-inner — fast WebGL ring at the mine (heartbeat at the source)
+ *   user-arc    — dim static dotted line: user → plant (contextual)
+ *   flow-glow   — wide blurred amber backing: mine → plant (heat haze)
+ *   flow-dashes — animated amber dashes: mine → plant (the extraction flow)
+ *   mine-pulse  — single slow-breathing circle at the mine
  *
- * Animation runs at full rAF rate (60fps). Dash phase is driven by wall-clock
- * time so speed is frame-rate-independent. Pulse rings update every frame for
- * smooth sine interpolation.
+ * Dash animation: static dasharray [4, 3] with linearly advancing dashoffset.
+ * One property updated per frame — frame-rate-independent, no branch switching.
+ * Pulse: single sine wave at ~3.5s period — slow, ponderous, relentless.
  *
  * @param {maplibregl.Map} map
  * @param {[number,number]} userLonLat
@@ -312,66 +269,47 @@ function addFlowLine(map, userLonLat, plantLonLat, mineLonLat) {
     "line-dasharray": [2, 5],
   });
 
-  // Mine → plant: deep shadow layer — makes the whole corridor feel heavy
-  addLineLayer(map, "flow-glow-outer", arc, {
-    "line-color": "#1a0800",
-    "line-width": 16,
-    "line-opacity": 0.45,
-    "line-blur": 10,
+  // Mine → plant: wide blurred backing — heat haze of the extraction corridor
+  addLineLayer(map, "flow-glow", arc, {
+    "line-color": "#4a1e05",
+    "line-width": 10,
+    "line-opacity": 0.5,
+    "line-blur": 6,
   });
 
-  // Mine → plant: amber haze mid-layer — the heat of extraction
-  addLineLayer(map, "flow-glow-inner", arc, {
-    "line-color": "#5c2d0a",
-    "line-width": 6,
-    "line-opacity": 0.55,
-    "line-blur": 3,
-  });
-
-  // Mine → plant: the animated extraction flow — continuous, relentless
+  // Mine → plant: amber dashes, static pattern, offset-animated
   addLineLayer(map, "flow-dashes", arc, {
     "line-color": "#c4956a",
     "line-width": 3,
     "line-opacity": 1.0,
-    "line-dasharray": dashArrayAtTime(0),
+    "line-dasharray": [DASH_LEN, GAP_LEN],
   });
 
-  // Mine pulse rings (behind the DOM marker pin)
-  addSourcePulse(map, mineLonLat);
+  // Mine: single slow-breathing circle
+  addMinePulse(map, mineLonLat);
 
-  // --- Animation loop (60fps, timestamp-driven) ---
+  // --- Animation loop ---
   let rafId = null;
   let stopped = false;
-  // Track last rendered dasharray to skip setPaintProperty when unchanged.
-  // Dashes update ~13× per second (770ms cycle / 7 notional frames).
-  let lastDashKey = "";
+  let startTime = null;
 
   function animate(timestamp) {
     if (stopped) return;
     rafId = requestAnimationFrame(animate);
 
+    if (startTime === null) startTime = timestamp;
+    const elapsed = (timestamp - startTime) / 1000; // seconds
+
     try {
-      // Dashes: computed from wall clock — smooth, consistent speed at any framerate
-      const dashArray = dashArrayAtTime(timestamp);
-      const dashKey = dashArray.join(",");
-      if (dashKey !== lastDashKey) {
-        lastDashKey = dashKey;
-        map.setPaintProperty("flow-dashes", "line-dasharray", dashArray);
-      }
+      // Dashes: linearly advancing offset — steady conveyor belt, no branching
+      map.setPaintProperty("flow-dashes", "line-dashoffset", elapsed * FLOW_SPEED);
 
-      // Outer halo: slow, ponderous breath (period ~4s)
-      const outerPhase = timestamp * 0.0016;
-      const outerR = 16 + 14 * Math.sin(outerPhase);
-      const outerA = 0.05 + 0.10 * Math.abs(Math.sin(outerPhase));
-      map.setPaintProperty("mine-pulse-outer", "circle-radius", outerR);
-      map.setPaintProperty("mine-pulse-outer", "circle-opacity", outerA);
-
-      // Inner ring: faster beat (period ~1.8s) — feels like a pulse under pressure
-      const innerPhase = timestamp * 0.0035;
-      const innerR = 7 + 8 * Math.abs(Math.sin(innerPhase));
-      const innerA = 0.12 + 0.18 * (1 - Math.abs(Math.sin(innerPhase)));
-      map.setPaintProperty("mine-pulse-inner", "circle-radius", innerR);
-      map.setPaintProperty("mine-pulse-inner", "circle-opacity", innerA);
+      // Pulse: single slow sine breath (~3.5s period)
+      const phase = elapsed * ((Math.PI * 2) / 3.5);
+      const r = 12 + 8 * Math.abs(Math.sin(phase));
+      const a = 0.06 + 0.10 * Math.abs(Math.sin(phase));
+      map.setPaintProperty("mine-pulse", "circle-radius", r);
+      map.setPaintProperty("mine-pulse", "circle-opacity", a);
     } catch (_) {
       // Map was removed — stop silently
       stopped = true;
