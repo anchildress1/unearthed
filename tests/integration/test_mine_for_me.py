@@ -2,8 +2,6 @@
 
 from unittest.mock import patch
 
-import pytest
-
 from tests.conftest import SAMPLE_MINE_DATA
 
 

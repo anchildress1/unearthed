@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from app.gemini_client import generate_prose
 from app.models import AskRequest, AskResponse, MineForMeRequest, MineForMeResponse
 from app.snowflake_client import (
+    execute_analyst_sql,
     load_fallback_data,
     query_cortex_analyst,
     query_mine_for_subregion,
@@ -94,11 +95,22 @@ def ask(req: AskRequest):
         logger.exception("Cortex Analyst query failed")
         return AskResponse(
             answer="",
-            error="The data assistant is temporarily unavailable. Try one of the suggested questions.",
+            error="The data assistant is temporarily unavailable. "
+            "Try one of the suggested questions.",
         )
+
+    results = None
+    sql = result.get("sql")
+    if sql:
+        try:
+            results = execute_analyst_sql(sql)
+        except Exception:
+            logger.exception("Failed to execute Analyst SQL")
 
     return AskResponse(
         answer=result["answer"],
-        sql=result.get("sql"),
+        sql=sql,
         error=result.get("error"),
+        suggestions=result.get("suggestions"),
+        results=results,
     )

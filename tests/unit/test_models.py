@@ -5,7 +5,6 @@ from pydantic import ValidationError
 
 from app.models import AskRequest, AskResponse, MineForMeRequest, MineForMeResponse
 
-
 # --- MineForMeRequest ---
 
 class TestMineForMeRequest:

@@ -1,7 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
 
-
 SAMPLE_MINE_DATA = {
     "mine": "Bailey Mine",
     "mine_operator": "Consol Pennsylvania Coal Company LLC",
