@@ -208,14 +208,17 @@ def execute_analyst_sql(sql: str) -> list[dict]:
 
 
 _FALLBACK_DIR = (Path(__file__).parent.parent / "assets" / "fallback").resolve()
+_SUBREGION_RE = re.compile(r"^[A-Za-z0-9]{2,10}$")
 
 
 def load_fallback_data(subregion_id: str) -> dict | None:
     """Load cached fallback JSON for a subregion when Snowflake is down."""
-    fallback_file = (_FALLBACK_DIR / f"{subregion_id.upper()}.json").resolve()
-    if not fallback_file.is_relative_to(_FALLBACK_DIR):
-        logger.warning("Path traversal attempt blocked: %s", subregion_id)
+    safe_id = subregion_id.upper()
+    if not _SUBREGION_RE.match(safe_id):
+        logger.warning("Invalid subregion ID rejected: %s", subregion_id)
         return None
+    # safe_id is now guaranteed alphanumeric — no path traversal possible
+    fallback_file = _FALLBACK_DIR / f"{safe_id}.json"
     if not fallback_file.exists():
         return None
     try:
