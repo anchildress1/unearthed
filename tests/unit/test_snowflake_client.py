@@ -124,6 +124,27 @@ class TestQueryMineForSubregion:
         mock_get_conn.return_value = self._mock_connection([row])
         assert query_mine_for_subregion("SRVC") is None
 
+    @patch("app.snowflake_client._get_connection")
+    def test_null_mine_longitude_only_returns_none(self, mock_get_conn):
+        """Lone MINE_LONGITUDE NULL must trigger degraded mode independent of MINE_LATITUDE."""
+        row = {**MOCK_ROW, "MINE_LONGITUDE": None}
+        mock_get_conn.return_value = self._mock_connection([row])
+        assert query_mine_for_subregion("SRVC") is None
+
+    @patch("app.snowflake_client._get_connection")
+    def test_null_plant_longitude_only_returns_none(self, mock_get_conn):
+        """Lone PLANT_LONGITUDE NULL must trigger degraded mode independent of PLANT_LATITUDE."""
+        row = {**MOCK_ROW, "PLANT_LONGITUDE": None}
+        mock_get_conn.return_value = self._mock_connection([row])
+        assert query_mine_for_subregion("SRVC") is None
+
+    @patch("app.snowflake_client._get_connection")
+    def test_null_data_year_returns_none(self, mock_get_conn):
+        """NULL DATA_YEAR must not crash with TypeError; must signal degraded mode."""
+        row = {**MOCK_ROW, "DATA_YEAR": None}
+        mock_get_conn.return_value = self._mock_connection([row])
+        assert query_mine_for_subregion("SRVC") is None
+
     # --- mine_type label mapping ---
 
     @patch("app.snowflake_client._get_connection")
