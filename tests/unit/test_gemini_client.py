@@ -138,3 +138,31 @@ class TestGenerateProse:
         prose_b, _ = gemini_client.generate_prose(sample_mine_data)
 
         assert prose_a != prose_b
+
+    def test_gemini_returns_none_text_uses_fallback(self, sample_mine_data):
+        sample_mine_data["subregion_id"] = "NULL_TEXT"
+        mock_response = MagicMock()
+        mock_response.text = None
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = mock_response
+
+        with patch.object(gemini_client.settings, "gemini_api_key", "fake-key"):
+            with patch("app.gemini_client.genai.Client", return_value=mock_client):
+                prose, degraded = gemini_client.generate_prose(sample_mine_data)
+
+        assert degraded is True
+        assert "Bailey Mine" in prose
+
+    def test_gemini_returns_empty_string_uses_fallback(self, sample_mine_data):
+        sample_mine_data["subregion_id"] = "EMPTY_TEXT"
+        mock_response = MagicMock()
+        mock_response.text = ""
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = mock_response
+
+        with patch.object(gemini_client.settings, "gemini_api_key", "fake-key"):
+            with patch("app.gemini_client.genai.Client", return_value=mock_client):
+                prose, degraded = gemini_client.generate_prose(sample_mine_data)
+
+        assert degraded is True
+        assert "Bailey Mine" in prose

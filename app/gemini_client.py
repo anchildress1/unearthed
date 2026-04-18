@@ -57,6 +57,12 @@ def generate_prose(mine_data: dict) -> tuple[str, bool]:
             model=settings.gemini_model,
             contents=prompt,
         )
+        if not response.text:
+            logger.warning("Gemini returned empty response (possible safety filter)")
+            prose = _fallback_prose(mine_data)
+            if subregion_id:
+                _prose_cache[subregion_id] = (prose, True)
+            return prose, True
         prose = response.text.strip()
         if subregion_id:
             _prose_cache[subregion_id] = (prose, False)

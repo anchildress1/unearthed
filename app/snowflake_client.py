@@ -176,12 +176,12 @@ _DANGEROUS_KEYWORDS = re.compile(
 
 def _is_safe_sql(sql: str) -> bool:
     """Check that SQL is a single read-only SELECT (or WITH/CTE)."""
-    stripped = sql.strip().rstrip(";").strip()
+    stripped = sql.strip()
     if not stripped:
         return False
-    if not _SAFE_SQL_START.match(stripped):
-        return False
     if ";" in stripped:
+        return False
+    if not _SAFE_SQL_START.match(stripped):
         return False
     if _DANGEROUS_KEYWORDS.search(stripped):
         return False
@@ -209,13 +209,20 @@ def execute_analyst_sql(sql: str) -> list[dict]:
 
 _FALLBACK_DIR = (Path(__file__).parent.parent / "assets" / "fallback").resolve()
 
+# Pre-load the set of valid fallback subregion IDs from filenames on disk.
+# This allowlist prevents any user-controlled data from reaching file paths.
+_VALID_FALLBACK_IDS: dict[str, Path] = {
+    f.stem: f for f in _FALLBACK_DIR.glob("*.json") if f.is_file()
+}
+
 
 def load_fallback_data(subregion_id: str) -> dict | None:
     """Load cached fallback JSON for a subregion when Snowflake is down."""
-    fallback_file = (_FALLBACK_DIR / f"{subregion_id.upper()}.json").resolve()
-    if not fallback_file.is_relative_to(_FALLBACK_DIR):
-        logger.warning("Path traversal attempt blocked: %s", subregion_id)
+    fallback_file = _VALID_FALLBACK_IDS.get(subregion_id.upper())
+    if fallback_file is None:
         return None
-    if fallback_file.exists():
+    try:
         return json.loads(fallback_file.read_text())
-    return None
+    except (json.JSONDecodeError, OSError):
+        logger.exception("Failed to read fallback file: %s", fallback_file.name)
+        return None
