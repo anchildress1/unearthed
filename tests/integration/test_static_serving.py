@@ -168,6 +168,7 @@ class TestHtmlStructure:
     def test_has_og_meta_tags(self):
         assert 'property="og:title"' in self.html
         assert 'property="og:description"' in self.html
+        assert 'property="og:image"' in self.html
 
     def test_has_viewport_meta(self):
         assert 'name="viewport"' in self.html

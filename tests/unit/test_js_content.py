@@ -294,8 +294,8 @@ class TestAppJsContent:
     def test_handles_share_url(self):
         assert "URLSearchParams" in self.src
 
-    def test_share_url_uses_s_param(self):
-        assert '"s"' in self.src or "'s'" in self.src
+    def test_share_url_uses_m_param(self):
+        assert '"m"' in self.src or "'m'" in self.src
 
     def test_validates_share_url_param(self):
         assert "[A-Za-z0-9]" in self.src
@@ -369,3 +369,8 @@ class TestAppJsContent:
 
     def test_concurrent_reveal_guard(self):
         assert "revealInProgress" in self.src
+
+    def test_updates_og_meta_on_reveal(self):
+        assert "updateOgMeta" in self.src
+        assert "og:title" in self.src
+        assert "og:image" in self.src

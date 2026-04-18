@@ -77,6 +77,9 @@ class TestSeoMeta:
     def test_has_og_description(self, html):
         assert 'property="og:description"' in html
 
+    def test_has_og_image(self, html):
+        assert 'property="og:image"' in html
+
     def test_has_og_type(self, html):
         assert 'property="og:type"' in html
 

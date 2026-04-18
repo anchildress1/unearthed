@@ -77,7 +77,7 @@ checkShareUrl();
 // --- Share URL ---
 async function checkShareUrl() {
   const params = new URLSearchParams(window.location.search);
-  const subregionParam = params.get("s");
+  const subregionParam = params.get("m");
   if (subregionParam && /^[A-Za-z0-9]{2,10}$/.test(subregionParam)) {
     try {
       await startReveal(subregionParam.toUpperCase(), null);
@@ -242,6 +242,9 @@ async function startReveal(subregionId, coords) {
     proseEl.textContent = data.prose;
     requestAnimationFrame(() => proseEl.classList.add("prose--visible"));
 
+    // Update OG metadata for social sharing
+    updateOgMeta(data.mine, data.mine_state, data.mine_type);
+
     // Mine details
     detailMine.textContent = data.mine;
     detailOperator.textContent = data.mine_operator;
@@ -309,7 +312,7 @@ function setupShare(subregionId) {
 
   shareHandler = () => {
     const url = new URL(window.location.href);
-    url.search = `?s=${encodeURIComponent(subregionId)}`;
+    url.search = `?m=${encodeURIComponent(subregionId)}`;
     url.hash = "";
 
     if (navigator.clipboard) {
@@ -351,6 +354,23 @@ function showSection(section) {
 
   section.classList.remove("hidden");
   section.classList.add("section--active");
+}
+
+function updateOgMeta(mineName, mineState, mineType) {
+  const ogTitle = document.querySelector('meta[property="og:title"]');
+  const ogDesc = document.querySelector('meta[property="og:description"]');
+  const ogImage = document.querySelector('meta[property="og:image"]');
+  if (ogTitle) {
+    ogTitle.content = `unearthed — ${mineName}, ${mineState}`;
+  }
+  if (ogDesc) {
+    ogDesc.content = `${mineName} in ${mineState} keeps your lights on. See the coal supply chain.`;
+  }
+  if (ogImage) {
+    const heroFile = mineType === "Underground" ? "hero-underground.jpg" : "hero-surface.jpg";
+    ogImage.content = `/static/img/${heroFile}`;
+  }
+  document.title = `unearthed — ${mineName}, ${mineState}`;
 }
 
 function showLoading(visible) {
