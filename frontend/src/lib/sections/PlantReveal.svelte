@@ -66,12 +66,6 @@
 		color: var(--text-dim);
 		margin-bottom: 0.8rem;
 	}
-	.prose strong {
-		color: var(--text);
-		font-weight: 400;
-	}
-	.prose :global(.rust) { color: var(--accent); }
-
 	.cards {
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
