@@ -114,11 +114,11 @@ class TestQueryMineForSubregion:
         assert len(result["mine_coords"]) == 2
         assert len(result["plant_coords"]) == 2
 
-    # --- NULL / no-plant-found paths (LEFT JOIN on top_plant) ---
+    # --- NULL field paths ---
 
     @patch("app.snowflake_client._get_connection")
     def test_null_plant_latitude_returns_none(self, mock_get_conn):
-        """LEFT JOIN yields NULL plant coords when no plant matches; must signal degraded."""
+        """NULL plant coords must signal degraded mode (return None)."""
         row = {**MOCK_ROW, "PLANT_LATITUDE": None, "PLANT_LONGITUDE": None}
         mock_get_conn.return_value = self._mock_connection([row])
         assert query_mine_for_subregion("SRVC") is None
@@ -200,6 +200,30 @@ class TestQueryMineForSubregion:
             query_mine_for_subregion("SRVC")
 
         assert mock_cursor.close.call_count >= 1
+
+    # --- reconnect-on-failure ---
+
+    @patch("app.snowflake_client._reconnect")
+    @patch("app.snowflake_client._get_connection")
+    def test_reconnect_succeeds_on_retry(self, mock_get_conn, mock_reconnect):
+        """First query fails, reconnect provides a fresh connection, retry succeeds."""
+        failing_cursor = MagicMock()
+        failing_cursor.execute.side_effect = Exception("connection gone")
+        failing_conn = MagicMock()
+        failing_conn.cursor.return_value = failing_cursor
+
+        success_cursor = MagicMock()
+        success_cursor.fetchone.return_value = MOCK_ROW
+        success_conn = MagicMock()
+        success_conn.cursor.return_value = success_cursor
+
+        mock_get_conn.return_value = failing_conn
+        mock_reconnect.return_value = success_conn
+
+        result = query_mine_for_subregion("SRVC")
+        assert result is not None
+        assert result["mine"] == "Bailey Mine"
+        mock_reconnect.assert_called_once()
 
     # --- mine_type label mapping ---
 
@@ -956,3 +980,32 @@ class TestSummarizeAnalystResults:
         prompt = mock_cursor.execute.call_args[0][1][0]
         assert "How many fatalities?" in prompt
         assert "FATALITIES" in prompt
+
+    @patch("app.snowflake_client._get_connection")
+    def test_execute_failure_propagates(self, mock_get_conn):
+        """Cortex Complete failure propagates — caller in main.py catches it."""
+        mock_cursor = MagicMock()
+        mock_cursor.execute.side_effect = Exception("Cortex down")
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_get_conn.return_value = mock_conn
+
+        with pytest.raises(Exception, match="Cortex down"):
+            summarize_analyst_results("test?", [{"X": 1}])
+        mock_cursor.close.assert_called_once()
+
+    @patch("app.snowflake_client._get_connection")
+    def test_only_first_10_rows_sent_to_complete(self, mock_get_conn):
+        """Prompt must cap results at 10 rows to avoid token overflow."""
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = ("Summary.",)
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_get_conn.return_value = mock_conn
+
+        rows = [{"MINE": f"Mine_{i}", "TONS": i * 1000} for i in range(25)]
+        summarize_analyst_results("top mines?", rows)
+
+        prompt = mock_cursor.execute.call_args[0][1][0]
+        assert "Mine_9" in prompt
+        assert "Mine_10" not in prompt

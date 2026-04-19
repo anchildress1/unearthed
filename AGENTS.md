@@ -118,13 +118,15 @@ SNOWFLAKE_PUBLIC_DATA_FREE       — Marketplace (free, source for EMISSIONS_BY_
 
 ### Cortex AI Usage
 
-One Cortex feature in use:
+Two Cortex features in use:
 
 | Feature | Purpose | Where Used |
 |---|---|---|
 | Cortex Analyst | NL-to-SQL via semantic model YAML | `/ask` endpoint, runtime user questions |
+| Cortex Complete | Prose from mine safety data, SQL result summaries | `/mine-for-me` prose generation, `/ask` result narration |
 
 - **Cortex Analyst semantic model:** Checked into repo as YAML. Covers only the 4-5 chip question patterns — not open-ended.
+- **Cortex Complete model:** `openai-gpt-5.2` via `SNOWFLAKE.CORTEX.COMPLETE()`. Used in `prose_client.py` for mine narratives and `snowflake_client.summarize_analyst_results` for SQL result explanations.
 
 ### Security
 

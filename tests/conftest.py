@@ -28,7 +28,7 @@ SAMPLE_MINE_DATA_SURFACE = {
 }
 
 # Keys that are internal-only (not part of MineForMeResponse).
-_INTERNAL_KEYS = {"fatalities", "injuries", "days_lost", "mine_id"}
+_INTERNAL_KEYS = {"fatalities", "injuries", "days_lost"}
 
 
 @pytest.fixture

@@ -135,7 +135,11 @@ def _reconnect(role: str | None = None) -> snowflake.connector.SnowflakeConnecti
         try:
             old.close()
         except Exception:
-            pass
+            logger.debug(
+                "Failed to close stale connection for role %s",
+                effective_role,
+                exc_info=True,
+            )
     conn = _create_connection(effective_role)
     pool[effective_role] = conn
     return conn

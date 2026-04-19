@@ -134,6 +134,20 @@ class TestGenerateProse:
         assert "3 workers have died" in prose
         assert degraded is True
 
+    @patch("app.prose_client._get_connection")
+    def test_zero_stats_omitted_from_fallback(self, mock_get_conn):
+        """Fallback template must not render 'o workers have died' for zero stats."""
+        mock_conn, _ = self._mock_connection(complete_result=("",))
+        mock_get_conn.return_value = mock_conn
+
+        prose, degraded = generate_prose(_make_mine_data(fatalities=0, injuries=0, days_lost=0))
+
+        assert "Test Plant" in prose
+        assert "Test Mine" in prose
+        assert "workers have died" not in prose
+        assert "injured" not in prose
+        assert degraded is True
+
     @patch("app.prose_client._get_connection", side_effect=Exception("Connection refused"))
     def test_connection_failure_returns_fallback(self, mock_get_conn):
         prose, degraded = generate_prose(_make_mine_data())

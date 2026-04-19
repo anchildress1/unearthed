@@ -22,7 +22,6 @@ flowchart TB
 
     subgraph SNOW["SNOWFLAKE"]
         DB[(UNEARTHED_DB<br/>6 tables, 2 MRT tables, 2 views)]
-        ACCIDENTS[(MSHA_ACCIDENTS<br/>fatalities + injuries)]
         CORTEX[Cortex Analyst<br/>semantic model YAML]
         COMPLETE[Cortex Complete<br/>openai-gpt-5.2 prose]
         H3[H3 Geospatial<br/>hexbin density]
@@ -37,10 +36,9 @@ flowchart TB
     CHAT -->|POST question| ASK_EP
     MAP -->|GET| H3_EP
     SCROLL -->|GET| EMIT_EP
-    MINE_EP -->|query| DB
-    MINE_EP -->|fatality stats| ACCIDENTS
+    MINE_EP -->|query MRT| DB
     MINE_EP -->|Snowflake down| FALLBACK
-    ACCIDENTS -->|numbers| COMPLETE
+    DB -->|mine + stats| COMPLETE
     COMPLETE -->|prose| MINE_EP
     MINE_EP -->|JSON| SCROLL
     ASK_EP -->|REST API| CORTEX
@@ -51,7 +49,6 @@ flowchart TB
     EMIT_EP -->|SELECT| DB
 
     style DB fill:#29b5e8,color:#fff
-    style ACCIDENTS fill:#29b5e8,color:#fff
     style CORTEX fill:#29b5e8,color:#fff
     style COMPLETE fill:#29b5e8,color:#fff
     style H3 fill:#29b5e8,color:#fff

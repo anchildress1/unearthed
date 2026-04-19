@@ -47,7 +47,11 @@ def _prewarm_prose_cache() -> None:
                 generate_prose(mine_data)
                 logger.info("Pre-warmed prose cache for %s", subregion_id)
         except Exception:
-            logger.warning("Pre-warm failed on %s — aborting remaining subregions", subregion_id)
+            logger.warning(
+                "Pre-warm failed on %s — aborting remaining subregions",
+                subregion_id,
+                exc_info=True,
+            )
             return
 
 
@@ -115,13 +119,17 @@ def h3_density(resolution: int = 4):
 
     from app.config import settings
 
-    conn = _get_connection(role=settings.snowflake_readonly_role)
-    cur = conn.cursor(snowflake.connector.DictCursor)
     try:
-        cur.execute(_H3_DENSITY_SQL, {"resolution": int(resolution)})
-        rows = [dict(r) for r in cur.fetchall()]
-    finally:
-        cur.close()
+        conn = _get_connection(role=settings.snowflake_readonly_role)
+        cur = conn.cursor(snowflake.connector.DictCursor)
+        try:
+            cur.execute(_H3_DENSITY_SQL, {"resolution": int(resolution)})
+            rows = [dict(r) for r in cur.fetchall()]
+        finally:
+            cur.close()
+    except Exception:
+        logger.warning("H3 density query failed for resolution %s", resolution, exc_info=True)
+        raise HTTPException(status_code=503, detail="Snowflake unavailable")
     _h3_cache[resolution] = rows
     return {"resolution": resolution, "cells": rows}
 
@@ -144,13 +152,17 @@ def plant_emissions(plant_name: str):
 
     from app.config import settings
 
-    conn = _get_connection(role=settings.snowflake_readonly_role)
-    cur = conn.cursor(snowflake.connector.DictCursor)
     try:
-        cur.execute(_EMISSIONS_SQL, {"plant_name": plant_name})
-        row = cur.fetchone()
-    finally:
-        cur.close()
+        conn = _get_connection(role=settings.snowflake_readonly_role)
+        cur = conn.cursor(snowflake.connector.DictCursor)
+        try:
+            cur.execute(_EMISSIONS_SQL, {"plant_name": plant_name})
+            row = cur.fetchone()
+        finally:
+            cur.close()
+    except Exception:
+        logger.warning("Emissions query failed for %s", plant_name, exc_info=True)
+        raise HTTPException(status_code=503, detail="Snowflake unavailable")
     if not row or row.get("CO2_TONS") is None:
         result = {"plant": plant_name, "co2_tons": None, "so2_tons": None, "nox_tons": None}
     else:
@@ -203,7 +215,7 @@ def mine_for_me(req: MineForMeRequest):
     try:
         mine_data = query_mine_for_subregion(req.subregion_id)
     except Exception:
-        logger.exception("Snowflake query failed, trying fallback")
+        logger.warning("Snowflake query failed, trying fallback", exc_info=True)
         degraded = True
 
     if not mine_data:
@@ -218,8 +230,8 @@ def mine_for_me(req: MineForMeRequest):
 
     mine_data = {**mine_data, "subregion_id": req.subregion_id}
     _mine_context[req.subregion_id.upper()] = mine_data
-    prose, gemini_degraded = generate_prose(mine_data)
-    degraded = degraded or gemini_degraded
+    prose, prose_degraded = generate_prose(mine_data)
+    degraded = degraded or prose_degraded
 
     return MineForMeResponse(
         mine=mine_data["mine"],
@@ -276,7 +288,7 @@ def ask(req: AskRequest):
         try:
             result["answer"] = summarize_analyst_results(req.question, results)
         except Exception:
-            logger.debug("Analyst summary generation failed", exc_info=True)
+            logger.warning("Analyst summary generation failed", exc_info=True)
 
     suggestions = result.get("suggestions") or _suggestions_for(req.subregion_id)
 

@@ -149,7 +149,7 @@ class TestResponseHeaders:
 
 
 class TestConcurrentFailures:
-    """Both Snowflake and Gemini fail simultaneously."""
+    """Both Snowflake query and Cortex Complete prose fail simultaneously."""
 
     @patch("app.main.generate_prose", return_value=("Fallback.", True))
     @patch("app.main.load_fallback_data", return_value=SAMPLE_MINE_DATA)
@@ -168,6 +168,49 @@ class TestConcurrentFailures:
         assert resp.status_code == 404
         data = resp.json()
         assert "ZZZZ" in data["detail"]
+
+
+class TestSummaryFailurePath:
+    """Analyst summary generation failure must not break /ask."""
+
+    @patch("app.main.summarize_analyst_results", side_effect=Exception("Cortex down"))
+    @patch(
+        "app.main.execute_analyst_sql",
+        return_value=[{"MINE": "Bailey", "TONS": 5000000}],
+    )
+    @patch(
+        "app.main.query_cortex_analyst",
+        return_value={
+            "answer": "",
+            "interpretation": "Total tonnage query",
+            "sql": "SELECT 1",
+            "error": None,
+            "suggestions": None,
+        },
+    )
+    def test_summary_failure_returns_empty_answer(
+        self, mock_analyst, mock_exec, mock_summary, client
+    ):
+        """Summary failure falls back silently — answer stays empty, results still present."""
+        resp = client.post("/ask", json={"question": "How much coal?"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["answer"] == ""
+        assert data["results"] is not None
+
+
+class TestSnowflakeUnavailable:
+    """GET endpoints return 503 when Snowflake is unreachable."""
+
+    @patch("app.main._get_connection", side_effect=Exception("Snowflake down"))
+    def test_h3_density_returns_503(self, mock_conn, client):
+        resp = client.get("/h3-density?resolution=4")
+        assert resp.status_code == 503
+
+    @patch("app.main._get_connection", side_effect=Exception("Snowflake down"))
+    def test_emissions_returns_503(self, mock_conn, client):
+        resp = client.get("/emissions/TestPlant")
+        assert resp.status_code == 503
 
 
 class TestResponsePayloadBounds:

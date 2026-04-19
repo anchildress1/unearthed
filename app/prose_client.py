@@ -21,13 +21,25 @@ Safety record: {fatalities} deaths, {injuries} lost-time injuries, {days_lost} d
 Write one paragraph, 3-5 sentences: plant → mine → human cost → the reader's demand. \
 Omit any zero stat. No jargon, no hedging, no markdown."""
 
-_FALLBACK = (
-    "{plant_name} burns coal from {mine_name} in {mine_county} County, {mine_state}. "
-    "In {tons_year}, {tons} tons moved from this {mine_type} mine to that plant. "
-    "{fatalities} workers have died here. {injuries} more were injured badly enough "
-    "to miss work — {days_lost} days lost in total. "
-    "The coal kept moving to your grid."
-)
+
+def _build_fallback(args: dict) -> str:
+    """Build fallback prose, omitting any zero safety stats."""
+    parts = [
+        f"{args['plant_name']} burns coal from {args['mine_name']}"
+        f" in {args['mine_county']} County, {args['mine_state']}.",
+        f"In {args['tons_year']}, {args['tons']} tons moved"
+        f" from this {args['mine_type']} mine to that plant.",
+    ]
+    if args["fatalities"]:
+        parts.append(f"{args['fatalities']} workers have died here.")
+    if args["injuries"]:
+        parts.append(
+            f"{args['injuries']} more were injured badly enough"
+            f" to miss work — {args['days_lost']} days lost in total."
+        )
+    parts.append("The coal kept moving to your grid.")
+    return " ".join(parts)
+
 
 _FALLBACK_NO_DATA = "This mine ships coal to your power grid. The earth does not grow back."
 
@@ -86,5 +98,8 @@ def _generate(mine_data: dict) -> tuple[str, bool]:
     finally:
         cur2.close()
 
-    # Complete returned empty — use template with real numbers (degraded)
-    return _FALLBACK.format(**format_args), True
+    logger.warning(
+        "Cortex Complete returned empty for %s — using template fallback",
+        mine_data.get("mine", "unknown"),
+    )
+    return _build_fallback(format_args), True
