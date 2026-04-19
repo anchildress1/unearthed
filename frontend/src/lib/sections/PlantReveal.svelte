@@ -1,5 +1,9 @@
 <script>
 	let { data } = $props();
+
+	let paragraphs = $derived(
+		(data.prose || '').split(/\n\n+/).filter(Boolean)
+	);
 </script>
 
 <section class="reveal">
@@ -8,17 +12,24 @@
 	</h2>
 
 	<div class="prose">
-		<p>
-			<strong>{data.plant}</strong> burned the coal that fed your grid zone.
-			{data.mine_county} County, {data.mine_state}.
-			{data.mine_type} mine.
-		</p>
-		<p>
-			It receives <strong class="rust">{Number(data.tons).toLocaleString()} tons</strong> of coal per year
-			from <strong>{data.mine}</strong>, operated by {data.mine_operator}.
-		</p>
-		{#if data.prose}
-			<p>{data.prose}</p>
+		{#if paragraphs.length > 1}
+			{#each paragraphs as para}
+				<p>{para}</p>
+			{/each}
+		{:else}
+			<p>
+				<strong>{data.plant}</strong> takes coal from
+				<strong>{data.mine}</strong> in {data.mine_county} County, {data.mine_state}.
+				{data.mine_type} mine, operated by {data.mine_operator}.
+			</p>
+			<p>
+				In {data.tons_year}, that mine shipped
+				<strong class="rust">{Number(data.tons).toLocaleString()} tons</strong> of coal
+				to this plant.
+			</p>
+			{#if data.prose}
+				<p>{data.prose}</p>
+			{/if}
 		{/if}
 	</div>
 
