@@ -184,7 +184,7 @@ class TestAskSubregionHandling:
         },
     )
     def test_empty_suggestions_uses_defaults(self, mock_cortex, client):
-        """Empty suggestions list must fall back to DEFAULT_SUGGESTIONS."""
+        """Empty suggestions list must fall back to generic suggestions."""
         resp = client.post("/ask", json={"question": "test"})
         data = resp.json()
         assert len(data["suggestions"]) == 5
