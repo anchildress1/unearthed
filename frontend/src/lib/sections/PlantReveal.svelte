@@ -12,25 +12,9 @@
 	</h2>
 
 	<div class="prose">
-		{#if paragraphs.length > 1}
-			{#each paragraphs as para}
-				<p>{para}</p>
-			{/each}
-		{:else}
-			<p>
-				<strong>{data.plant}</strong> takes coal from
-				<strong>{data.mine}</strong> in {data.mine_county} County, {data.mine_state}.
-				{data.mine_type} mine, operated by {data.mine_operator}.
-			</p>
-			<p>
-				In {data.tons_year}, that mine shipped
-				<strong class="rust">{Number(data.tons).toLocaleString()} tons</strong> of coal
-				to this plant.
-			</p>
-			{#if data.prose}
-				<p>{data.prose}</p>
-			{/if}
-		{/if}
+		{#each paragraphs as para}
+			<p>{para}</p>
+		{/each}
 	</div>
 
 	<div class="cards">
