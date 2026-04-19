@@ -21,7 +21,7 @@ flowchart TB
     end
 
     subgraph SNOW["SNOWFLAKE"]
-        DB[(UNEARTHED_DB<br/>6 tables, 1 MRT table, 2 views)]
+        DB[(UNEARTHED_DB<br/>6 tables, 2 MRT tables, 2 views)]
         ACCIDENTS[(MSHA_ACCIDENTS<br/>fatalities + injuries)]
         CORTEX[Cortex Analyst<br/>semantic model YAML]
         COMPLETE[Cortex Complete<br/>openai-gpt-5-chat prose]

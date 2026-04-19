@@ -79,7 +79,7 @@ All Snowflake identifiers use **UPPERCASE with underscores**.
 
 ```
 UNEARTHED_DB
-├── RAW          — cleaned CSVs (embedded quotes stripped), original types preserved
+├── RAW          — cleaned CSVs, key columns cast to native types
 │   ├── MSHA_MINES
 │   ├── MSHA_QUARTERLY_PRODUCTION
 │   ├── MSHA_ACCIDENTS           (fatalities, injuries, narratives)
@@ -89,6 +89,7 @@ UNEARTHED_DB
 └── MRT          — consumption-ready views and tables
     ├── V_MINE_FOR_PLANT        (mine rankings per plant)
     ├── V_MINE_FOR_SUBREGION    (mine rankings per eGRID subregion)
+    ├── MINE_PLANT_FOR_SUBREGION (materialized: top mine + plant per subregion, 19 rows)
     └── EMISSIONS_BY_PLANT      (pre-aggregated EPA CO2/SO2/NOx per coal facility)
 
 SNOWFLAKE_PUBLIC_DATA_FREE       — Marketplace (free, source for EMISSIONS_BY_PLANT)
@@ -139,9 +140,10 @@ One Cortex feature in use:
 
 - Queries against `V_MINE_FOR_SUBREGION` must return in **under 2 seconds** on XS warehouse.
 - Leverage Snowflake's **24-hour result cache** — identical queries return instantly with no compute cost.
-- **RAW tables are pre-cleaned** — embedded CSV quotes have been stripped. Do NOT wrap columns in `REPLACE(col, '"', '')`. Use column values directly.
+- **RAW tables are pre-cleaned** — embedded CSV quotes stripped, key columns cast to native types (MINE_ID → NUMBER, LATITUDE/LONGITUDE → DOUBLE, QUANTITY → NUMBER). Use column values directly — no `REPLACE()`, `TRY_TO_NUMBER()`, or `TRY_TO_DOUBLE()` needed.
 - **Emissions are pre-aggregated** — `MRT.EMISSIONS_BY_PLANT` (240 rows) replaces the 2.2B-row EPA_CAM_TIMESERIES join. Query the MRT table, not the Marketplace tables directly.
-- In-memory caches exist for H3 density, emissions, and Cortex prose. These reset on process restart.
+- **Mine-plant lookup is materialized** — `MRT.MINE_PLANT_FOR_SUBREGION` (19 rows) pre-computes the top mine + plant per eGRID subregion. `/mine-for-me` reads this single table instead of joining 4 RAW tables through views.
+- In-memory caches exist for H3 density, emissions, mine context, and Cortex prose. Prose cache is pre-warmed at startup for all 19 fallback subregions. All caches reset on process restart.
 
 ## 4. Frontend Rules
 
