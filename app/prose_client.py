@@ -80,9 +80,9 @@ Scope:
 
 Numbers from MSHA's public mine registry:
 - {total:,} coal mines on record
-- {active:,} still cutting
+- {active:,} active (currently producing)
 - {abandoned:,} closed / abandoned
-- {active_pct}% of mines are still active
+- {active_pct}% of mines are active
 - The {top_n_counties} counties with the most mines: {top_counties}
 
 Rules:
@@ -101,16 +101,16 @@ Rules:
 
 _H3_SUMMARY_FALLBACK_STATE = (
     "In {state}, MSHA has {total:,} coal mines on record across its full registry "
-    "(roughly 1983 to present). {abandoned:,} of them are already closed; "
-    "{active:,} are still being cut. What this map shows is the shape of an "
-    "industry mostly in retreat—the rust dots are the few still producing, "
-    "the moss dots are what the earth will not grow back."
+    "(roughly 1983 to present). {abandoned:,} are already closed; {active:,} are "
+    "active. What this map shows is the shape of an industry mostly in retreat—"
+    "the rust dots are the few active mines, the ash dots are what the earth will "
+    "not grow back."
 )
 
 _H3_SUMMARY_FALLBACK_NATIONAL = (
     "MSHA's full registry holds {total:,} US coal mines, roughly 1983 to present. "
-    "{abandoned:,} are closed; {active:,} are still cutting. Across the country "
-    "the map is mostly moss—a map of what was, not what is."
+    "{abandoned:,} are closed; {active:,} are active. Across the country the map "
+    "is mostly ash—a map of what was, not what is."
 )
 
 
@@ -127,6 +127,7 @@ def generate_h3_summary(
     active: int,
     abandoned: int,
     top_counties: list[str] | None = None,
+    role: str | None = None,
 ) -> tuple[str, bool]:
     """Cortex-generated 2-3 sentence summary of the density map.
 
@@ -135,6 +136,11 @@ def generate_h3_summary(
     relabel or hide the "Cortex, on this map" byline so the site doesn't
     attribute template prose to the model. Cortex output is cached per scope;
     fallbacks are not, so a Cortex recovery shows up on the next request.
+
+    ``role`` lets the caller scope the Snowflake connection to its own
+    endpoint role (e.g. READONLY_ROLE for public endpoints). Without it, the
+    default role from settings is used — which can bypass the least-privilege
+    intent when ``/h3-density`` already opened a readonly cursor upstream.
     """
     cache_key = (state or "NATIONAL").upper()
     cached = _h3_summary_cache.get(cache_key)
@@ -157,7 +163,7 @@ def generate_h3_summary(
     )
 
     try:
-        conn = _get_connection()
+        conn = _get_connection(role=role)
         cur = conn.cursor()
         try:
             cur.execute(
@@ -191,10 +197,11 @@ def _build_fallback(*, fatalities: int, injuries: int, days_lost: int) -> str:
     Only emits clauses for non-zero numbers so we never read "0 workers died."
     All counts are cumulative across MSHA's full accident record (roughly 1983 to
     present), so the sentence spells that out rather than leaving a bare number
-    that readers might mistake for a recent window. The closing pair —
-    "N workers died. Your lights came on."—is deliberately two facts with a
-    period between them: the Cortex prompt enforces the same structure so the
-    fallback and the generated prose land the same way.
+    that readers might mistake for a recent window. The closing line—
+    "That is where your electricity was made."—is deliberately a flat fact set
+    next to the death count with a period between them: the Cortex prompt
+    enforces the same structure so the fallback and the generated prose land
+    the same way.
     """
     parts: list[str] = []
     if injuries or days_lost or fatalities:

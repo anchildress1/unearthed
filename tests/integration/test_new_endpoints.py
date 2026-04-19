@@ -5,20 +5,35 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
+def _h3_cursor(cells=None, totals=None):
+    """Build a mock cursor that returns hex cells on the first ``execute``
+    (density query, ``fetchall``) and a totals row on the second (registry
+    query, ``fetchone``). Totals default to non-zero so the summary
+    generator is exercised unless a test explicitly zeros them out.
+    """
+    cursor = MagicMock()
+    cursor.fetchall.return_value = cells if cells is not None else []
+    cursor.fetchone.return_value = (
+        totals if totals is not None else {"TOTAL": 100, "ACTIVE": 5, "ABANDONED": 95}
+    )
+    return cursor
+
+
 class TestH3Density:
     @patch("app.main._get_connection")
     def test_h3_returns_cells(self, mock_conn, client):
-        mock_cursor = MagicMock()
-        mock_cursor.fetchall.return_value = [
-            {
-                "H3": "842a981ffffffff",
-                "LAT": 37.5,
-                "LNG": -82.6,
-                "TOTAL": 100,
-                "ACTIVE": 5,
-                "ABANDONED": 95,
-            },
-        ]
+        mock_cursor = _h3_cursor(
+            cells=[
+                {
+                    "H3": "842a981ffffffff",
+                    "LAT": 37.5,
+                    "LNG": -82.6,
+                    "TOTAL": 100,
+                    "ACTIVE": 5,
+                    "ABANDONED": 95,
+                },
+            ],
+        )
         mock_conn.return_value.cursor.return_value = mock_cursor
 
         resp = client.get("/h3-density?resolution=4")
@@ -26,6 +41,9 @@ class TestH3Density:
         data = resp.json()
         assert "cells" in data
         assert data["resolution"] == 4
+        # Registry totals surface as a separate payload so the frontend can
+        # label "X mines on record" honestly — independent of hex filtering.
+        assert data["totals"] == {"total": 100, "active": 5, "abandoned": 95}
 
     def test_h3_invalid_resolution_returns_400(self, client):
         resp = client.get("/h3-density?resolution=1")
@@ -38,9 +56,9 @@ class TestH3Density:
     def test_h3_default_resolution(self, client):
         """Default resolution should be accepted (no query param)."""
         with patch("app.main._get_connection") as mock_conn:
-            mock_cursor = MagicMock()
-            mock_cursor.fetchall.return_value = []
-            mock_conn.return_value.cursor.return_value = mock_cursor
+            mock_conn.return_value.cursor.return_value = _h3_cursor(
+                totals={"TOTAL": 0, "ACTIVE": 0, "ABANDONED": 0}
+            )
             resp = client.get("/h3-density")
         assert resp.status_code == 200
         assert resp.json()["resolution"] == 4
@@ -48,17 +66,19 @@ class TestH3Density:
     @patch("app.main._get_connection")
     def test_h3_state_filter_scopes_query(self, mock_conn, client):
         """State param should filter SQL and echo the state in the response."""
-        mock_cursor = MagicMock()
-        mock_cursor.fetchall.return_value = [
-            {
-                "H3": "852a981ffffffff",
-                "LAT": 37.5,
-                "LNG": -82.6,
-                "TOTAL": 1,
-                "ACTIVE": 1,
-                "ABANDONED": 0,
-            },
-        ]
+        mock_cursor = _h3_cursor(
+            cells=[
+                {
+                    "H3": "852a981ffffffff",
+                    "LAT": 37.5,
+                    "LNG": -82.6,
+                    "TOTAL": 1,
+                    "ACTIVE": 1,
+                    "ABANDONED": 0,
+                },
+            ],
+            totals={"TOTAL": 1, "ACTIVE": 1, "ABANDONED": 0},
+        )
         mock_conn.return_value.cursor.return_value = mock_cursor
 
         resp = client.get("/h3-density?resolution=5&state=wv")
@@ -67,12 +87,21 @@ class TestH3Density:
         assert data["state"] == "wv"
         assert len(data["cells"]) == 1
 
-        sql_arg, bind_arg = mock_cursor.execute.call_args[0]
+        # First execute = density query; second = registry totals.
+        density_sql, density_bind = mock_cursor.execute.call_args_list[0][0]
+        totals_sql, totals_bind = mock_cursor.execute.call_args_list[1][0]
         # Require the exact filter, not just "STATE appears somewhere" —
         # otherwise a stray column named STATE_TXT_OPERATOR would pass.
-        assert "state_txt = %(state)s" in sql_arg
-        assert "HAVING total >= 1" in sql_arg
-        assert bind_arg == {"state": "WV"}
+        assert "state_txt = %(state)s" in density_sql
+        assert "HAVING total >= 1" in density_sql
+        assert density_bind == {"state": "WV"}
+        # The registry-totals query must scope to the same state but must
+        # NOT re-apply the bounding box / HAVING filters — those drop rows
+        # the headline count should still include.
+        assert "state_txt = %(state)s" in totals_sql
+        assert "lat_num BETWEEN" not in totals_sql
+        assert "HAVING" not in totals_sql
+        assert totals_bind == {"state": "WV"}
 
     def test_h3_invalid_state_returns_400(self, client):
         resp = client.get("/h3-density?state=Kentucky")
@@ -81,9 +110,9 @@ class TestH3Density:
     def test_h3_state_case_insensitive(self, client):
         """Mixed-case 2-letter codes should be accepted."""
         with patch("app.main._get_connection") as mock_conn:
-            mock_cursor = MagicMock()
-            mock_cursor.fetchall.return_value = []
-            mock_conn.return_value.cursor.return_value = mock_cursor
+            mock_conn.return_value.cursor.return_value = _h3_cursor(
+                totals={"TOTAL": 0, "ACTIVE": 0, "ABANDONED": 0}
+            )
             resp = client.get("/h3-density?state=Wy")
         assert resp.status_code == 200
         assert resp.json()["state"] == "Wy"
@@ -92,18 +121,19 @@ class TestH3Density:
     @patch("app.main._get_connection")
     def test_h3_returns_summary_on_success(self, mock_conn, mock_summary, client):
         """On success, the endpoint must surface summary + degraded=False."""
-        mock_cursor = MagicMock()
-        mock_cursor.fetchall.return_value = [
-            {
-                "H3": "852a981ffffffff",
-                "LAT": 37.5,
-                "LNG": -82.6,
-                "TOTAL": 500,
-                "ACTIVE": 10,
-                "ABANDONED": 490,
-            },
-        ]
-        mock_conn.return_value.cursor.return_value = mock_cursor
+        mock_conn.return_value.cursor.return_value = _h3_cursor(
+            cells=[
+                {
+                    "H3": "852a981ffffffff",
+                    "LAT": 37.5,
+                    "LNG": -82.6,
+                    "TOTAL": 500,
+                    "ACTIVE": 10,
+                    "ABANDONED": 490,
+                },
+            ],
+            totals={"TOTAL": 500, "ACTIVE": 10, "ABANDONED": 490},
+        )
         mock_summary.return_value = ("Mostly closed mines.", False)
 
         resp = client.get("/h3-density?resolution=5")
@@ -111,24 +141,32 @@ class TestH3Density:
         data = resp.json()
         assert data["summary"] == "Mostly closed mines."
         assert data["summary_degraded"] is False
+        # The generator must see the registry totals (not the filtered hex
+        # sum) and a role scoped to the public readonly endpoint.
+        kwargs = mock_summary.call_args.kwargs
+        assert kwargs["total"] == 500
+        assert kwargs["active"] == 10
+        assert kwargs["abandoned"] == 490
+        assert kwargs["role"]  # truthy — populated from settings.snowflake_readonly_role
 
     @patch("app.main.generate_h3_summary")
     @patch("app.main._get_connection")
     def test_h3_surfaces_degraded_flag(self, mock_conn, mock_summary, client):
         """When the generator reports degraded=True, the endpoint must
         propagate it so the UI can hide the Cortex byline."""
-        mock_cursor = MagicMock()
-        mock_cursor.fetchall.return_value = [
-            {
-                "H3": "852a981ffffffff",
-                "LAT": 37.5,
-                "LNG": -82.6,
-                "TOTAL": 100,
-                "ACTIVE": 5,
-                "ABANDONED": 95,
-            },
-        ]
-        mock_conn.return_value.cursor.return_value = mock_cursor
+        mock_conn.return_value.cursor.return_value = _h3_cursor(
+            cells=[
+                {
+                    "H3": "852a981ffffffff",
+                    "LAT": 37.5,
+                    "LNG": -82.6,
+                    "TOTAL": 100,
+                    "ACTIVE": 5,
+                    "ABANDONED": 95,
+                },
+            ],
+            totals={"TOTAL": 100, "ACTIVE": 5, "ABANDONED": 95},
+        )
         mock_summary.return_value = ("Template fallback.", True)
 
         resp = client.get("/h3-density?resolution=5")
@@ -142,18 +180,19 @@ class TestH3Density:
     def test_h3_empty_summary_when_generator_crashes(self, mock_conn, mock_summary, client):
         """An unexpected generator exception must not fail the endpoint —
         the map still renders, the byline just goes empty + degraded."""
-        mock_cursor = MagicMock()
-        mock_cursor.fetchall.return_value = [
-            {
-                "H3": "852a981ffffffff",
-                "LAT": 37.5,
-                "LNG": -82.6,
-                "TOTAL": 10,
-                "ACTIVE": 1,
-                "ABANDONED": 9,
-            },
-        ]
-        mock_conn.return_value.cursor.return_value = mock_cursor
+        mock_conn.return_value.cursor.return_value = _h3_cursor(
+            cells=[
+                {
+                    "H3": "852a981ffffffff",
+                    "LAT": 37.5,
+                    "LNG": -82.6,
+                    "TOTAL": 10,
+                    "ACTIVE": 1,
+                    "ABANDONED": 9,
+                },
+            ],
+            totals={"TOTAL": 10, "ACTIVE": 1, "ABANDONED": 9},
+        )
         mock_summary.side_effect = RuntimeError("unexpected")
 
         resp = client.get("/h3-density?resolution=5")
@@ -165,37 +204,67 @@ class TestH3Density:
     @patch("app.main.generate_h3_summary")
     @patch("app.main._get_connection")
     def test_h3_summary_skipped_when_total_zero(self, mock_conn, mock_summary, client):
-        """No mines in view → no summary request; the generator must not be
-        called, the response surfaces empty summary + degraded=False."""
-        mock_cursor = MagicMock()
-        mock_cursor.fetchall.return_value = []
-        mock_conn.return_value.cursor.return_value = mock_cursor
+        """No mines in the registry → no summary request; the generator must
+        not be called, the response surfaces empty summary + degraded=False."""
+        mock_conn.return_value.cursor.return_value = _h3_cursor(
+            cells=[],
+            totals={"TOTAL": 0, "ACTIVE": 0, "ABANDONED": 0},
+        )
 
         resp = client.get("/h3-density?resolution=5")
         assert resp.status_code == 200
         data = resp.json()
         assert data["summary"] == ""
         assert data["summary_degraded"] is False
+        assert data["totals"] == {"total": 0, "active": 0, "abandoned": 0}
         mock_summary.assert_not_called()
 
     @patch("app.main._get_connection")
     def test_h3_filters_non_us_coordinates(self, mock_conn, client):
-        """The SQL should bound lat/lng to the US landmass.
+        """The density SQL should bound lat/lng to the US landmass.
 
         MSHA occasionally ships (0,0) null-island or stray ocean coordinates
         when a mine's address was never geocoded cleanly. Without the bounding
         box, a resolution-5 hex lands in the Atlantic and drags the viewport
         off the mainland — the whole point of filtering at the query layer.
+
+        The registry-totals query does NOT apply this filter because "N mines
+        on record" has to include rows even when their coordinates are
+        missing or wrong.
         """
-        mock_cursor = MagicMock()
-        mock_cursor.fetchall.return_value = []
+        mock_cursor = _h3_cursor(totals={"TOTAL": 0, "ACTIVE": 0, "ABANDONED": 0})
         mock_conn.return_value.cursor.return_value = mock_cursor
 
         resp = client.get("/h3-density")
         assert resp.status_code == 200
-        sql_arg, _ = mock_cursor.execute.call_args[0]
-        assert "lat_num BETWEEN 24 AND 72" in sql_arg
-        assert "lng_num BETWEEN -180 AND -65" in sql_arg
+        density_sql, _ = mock_cursor.execute.call_args_list[0][0]
+        totals_sql, _ = mock_cursor.execute.call_args_list[1][0]
+        assert "lat_num BETWEEN 24 AND 72" in density_sql
+        assert "lng_num BETWEEN -180 AND -65" in density_sql
+        assert "lat_num BETWEEN" not in totals_sql
+
+    @patch("app.main.generate_h3_summary")
+    @patch("app.main._get_connection")
+    def test_h3_totals_independent_of_hex_filter(self, mock_conn, mock_summary, client):
+        """Registry totals must come from the unfiltered count query, not
+        from summing the hex cells. If the density query drops small clusters
+        (HAVING) but the state has 1,000 coal mines on record, the summary
+        must read "1,000 on record," not "0 because no hex crossed 5 mines."
+        """
+        mock_conn.return_value.cursor.return_value = _h3_cursor(
+            cells=[],  # no hexes survived clustering
+            totals={"TOTAL": 1_000, "ACTIVE": 40, "ABANDONED": 960},
+        )
+        mock_summary.return_value = ("Summary.", False)
+
+        resp = client.get("/h3-density?resolution=5&state=wv")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["cells"] == []
+        assert data["totals"] == {"total": 1_000, "active": 40, "abandoned": 960}
+        # Generator receives the real registry counts, not the empty hex sum.
+        kwargs = mock_summary.call_args.kwargs
+        assert kwargs["total"] == 1_000
 
 
 class TestEmissions:

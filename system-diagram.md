@@ -16,7 +16,7 @@ flowchart TB
     subgraph API["CLOUD RUN (FastAPI, Python 3.12)"]
         MINE_EP[POST /mine-for-me<br/>→ mine data + prose]
         ASK_EP[POST /ask<br/>→ answer + SQL + results]
-        H3_EP[GET /h3-density<br/>→ hexbin cells +<br/>Cortex summary + degraded flag]
+        H3_EP[GET /h3-density<br/>→ hexbin cells + registry totals +<br/>Cortex summary + degraded flag]
         EMIT_EP[GET /emissions/{plant}<br/>→ CO2/SO2/NOx from EPA]
         FALLBACK[Fallback JSON<br/>19 subregions]
     end

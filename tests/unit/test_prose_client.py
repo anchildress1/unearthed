@@ -288,6 +288,41 @@ class TestGenerateH3Summary:
         assert degraded is False
         assert text == "Empty map."
 
+    @patch("app.prose_client._get_connection")
+    def test_role_passed_through_to_connection(self, mock_conn):
+        """Readonly role from the /h3-density endpoint must scope the Cortex
+        connection — passing ``role=None`` would silently fall back to the
+        default APP_ROLE and break least-privilege on the public endpoint."""
+        cursor = MagicMock()
+        cursor.fetchone.return_value = ("Scoped.",)
+        mock_conn.return_value.cursor.return_value = cursor
+
+        generate_h3_summary(
+            state="WV",
+            total=10,
+            active=1,
+            abandoned=9,
+            role="READONLY_ROLE",
+        )
+        mock_conn.assert_called_once_with(role="READONLY_ROLE")
+
+    @patch("app.prose_client._get_connection")
+    def test_fallback_prose_avoids_banned_words(self, mock_conn):
+        """ "still" and "moss" were removed from the fallback templates —
+        "still" violates the voice rule the prompt itself enforces, and
+        "moss" reads as "life grew back" which contradicts the ash legend
+        on the map. Lock that out so a future edit can't quietly reintroduce
+        them under a "Cortex, on this map" byline."""
+        mock_conn.side_effect = RuntimeError("cortex down")
+
+        state_text, _ = generate_h3_summary(state="WV", total=500, active=20, abandoned=480)
+        national_text, _ = generate_h3_summary(
+            state=None, total=10_000, active=200, abandoned=9_800
+        )
+        for text in (state_text, national_text):
+            assert "still" not in text.lower()
+            assert "moss" not in text.lower()
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

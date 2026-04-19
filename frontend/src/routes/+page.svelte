@@ -63,19 +63,30 @@
 -->
 <Hero {loading} {error} onTrace={onTrace} />
 {#if mineData}
-	<main class="scroll" bind:this={resultsEl}>
-		<PlantReveal data={mineData} />
-		<MapSection data={mineData} />
-		<H3Density
-			userCoords={mineData.user_coords}
-			mineCoords={mineData.mine_coords}
-			mineName={mineData.mine}
-			mineState={mineData.mine_state}
-			subregionId={mineData.subregion_id}
-		/>
-		<CortexChat subregionId={mineData.subregion_id} mineName={mineData.mine} plantName={mineData.plant} />
-		<Ticker data={mineData} />
-	</main>
+	<!--
+		{#key} forces every section below to unmount + remount when the user
+		traces a second subregion. Without it, components see new props but
+		keep their one-shot onMount state: MapSection's flow overlay stays
+		drawn against the previous coordinates, H3Density keeps the old hex
+		markers, CortexChat holds the stale thread. Remounting is cheaper
+		than teaching every section to reset itself reactively and matches
+		"the second trace should feel like the first trace."
+	-->
+	{#key mineData.subregion_id}
+		<main class="scroll" bind:this={resultsEl}>
+			<PlantReveal data={mineData} />
+			<MapSection data={mineData} />
+			<H3Density
+				userCoords={mineData.user_coords}
+				mineCoords={mineData.mine_coords}
+				mineName={mineData.mine}
+				mineState={mineData.mine_state}
+				subregionId={mineData.subregion_id}
+			/>
+			<CortexChat subregionId={mineData.subregion_id} mineName={mineData.mine} plantName={mineData.plant} />
+			<Ticker data={mineData} />
+		</main>
+	{/key}
 {/if}
 
 <style>

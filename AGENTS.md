@@ -23,7 +23,7 @@ The backend exposes these FastAPI endpoints:
 |---|---|---|---|
 | `/mine-for-me` | POST | `{subregion_id}` | Mine + plant data, Cortex Complete prose, coords |
 | `/ask` | POST | `{question, subregion_id?}` | Cortex Analyst answer + SQL + results |
-| `/h3-density` | GET | `?resolution=4&state=WV` | H3 hexbin density + Cortex-generated `summary` (with `summary_degraded` flag when template fallback fires) |
+| `/h3-density` | GET | `?resolution=4&state=WV` | H3 hexbin cells + unfiltered registry `totals` (`total`/`active`/`abandoned`) + Cortex-generated `summary` (with `summary_degraded` flag when template fallback fires) |
 | `/emissions/{plant}` | GET | plant name | CO2/SO2/NOx from EPA Marketplace data |
 
 Subregion IDs validated with `^[A-Za-z0-9]{2,10}$`. Unknown subregions return **404**.
@@ -128,6 +128,7 @@ Two Cortex features in use:
 - **Cortex Analyst semantic model:** Checked into repo as YAML. Covers only the 4-5 chip question patterns — not open-ended.
 - **Cortex Complete prompts:** Injuries lead, fatalities land second — see `app/prose_client.py`. H3 summary prompt leads with what the reader sees, then the scale. Both strip outer quotes before returning.
 - **Honest attribution:** Both `generate_prose` and `generate_h3_summary` return `(text, degraded)`. Only Cortex output is cached — template fallbacks are not, so a recovered model shows up on the next request and the "Cortex, on this map" / "Cortex, reading the record" bylines never sit over template prose.
+- **Honest totals:** `/h3-density` runs a second unfiltered count query and returns `totals` alongside the hex cells. The hex SQL drops null-coord rows, ocean outliers, and small clusters for legibility; the `totals` payload does none of that so the Cortex summary and the frontend legend both claim "X mines on record" against MSHA's full registry, not the hexes visible at this resolution. `generate_h3_summary` accepts a `role` kwarg so the readonly endpoint can scope the Cortex connection to `UNEARTHED_READONLY_ROLE` instead of the default app role.
 
 ### Snowflake-Native Features Beyond Cortex
 

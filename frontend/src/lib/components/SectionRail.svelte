@@ -189,6 +189,18 @@
 		color: var(--rust);
 		margin-bottom: 0.4rem;
 	}
+	/* Degraded = Cortex fallback template fired. Dim the rust accent and
+	   swap the tag copy upstream so template prose doesn't ride under a
+	   "Cortex, on this map" byline. The ghost ash tone marks the note as
+	   "static copy" without hiding it entirely — the facts still matter. */
+	.section-rail :global(.cortex-note.degraded) {
+		background: rgba(255, 255, 255, 0.025);
+		border-left-color: var(--text-ghost);
+		color: var(--text-dim);
+	}
+	.section-rail :global(.cortex-note.degraded .cortex-note-tag) {
+		color: var(--text-ghost);
+	}
 
 	@media (max-width: 720px) {
 		.section-rail {

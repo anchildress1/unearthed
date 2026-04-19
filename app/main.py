@@ -85,6 +85,31 @@ HAVING total >= {min_mines}
 ORDER BY total DESC
 """
 
+# Registry totals are computed independently of the hex-density query so the
+# Cortex summary reads from "MSHA's full registry" rather than "the hexes the
+# map happens to render at this resolution." The density query drops
+# null-coord rows, ocean outliers, and small clusters (HAVING total >= 5 on
+# the national view) — all sensible for rendering hexes, all wrong for a
+# sentence that claims "MSHA has X coal mines on record." Sharing a state
+# filter with the density query is fine because that IS a scoping choice the
+# reader asked for; the bounding-box and clustering filters are not.
+_H3_REGISTRY_TOTALS_SQL = """
+WITH clean AS (
+    SELECT
+        TRIM(REPLACE(CURRENT_MINE_STATUS, '"', '')) AS status_txt,
+        TRIM(REPLACE(STATE, '"', '')) AS state_txt,
+        REPLACE(COAL_METAL_IND, '"', '') AS coal_txt
+    FROM UNEARTHED_DB.RAW.MSHA_MINES
+)
+SELECT
+    COUNT(*) AS total,
+    SUM(CASE WHEN status_txt = 'Active' THEN 1 ELSE 0 END) AS active,
+    SUM(CASE WHEN status_txt != 'Active' THEN 1 ELSE 0 END) AS abandoned
+FROM clean
+WHERE coal_txt = 'C'
+    {state_clause}
+"""
+
 _STATE_CODE_PATTERN = re.compile(r"^[A-Za-z]{2}$")
 
 
@@ -116,13 +141,26 @@ def h3_density(resolution: int = 4, state: str | None = None):
         min_mines=min_mines,
     )
 
+    totals_sql = _H3_REGISTRY_TOTALS_SQL.format(state_clause=state_clause)
+
     conn = _get_connection(role=settings.snowflake_readonly_role)
     cur = conn.cursor(snowflake.connector.DictCursor)
     try:
         cur.execute(sql, bind)
         rows = [dict(r) for r in cur.fetchall()]
+        cur.execute(totals_sql, bind)
+        totals_row = cur.fetchone() or {}
     finally:
         cur.close()
+
+    # Registry totals come from the unfiltered coal-mine registry (optionally
+    # scoped to the requested state). Hex cells may drop rows — null coords,
+    # ocean outliers, small-cluster HAVING threshold — but the Cortex summary
+    # and the frontend legend must both report "MSHA has X mines on record"
+    # honestly, not "X mines visible at this zoom."
+    total = int(totals_row.get("TOTAL") or 0)
+    active = int(totals_row.get("ACTIVE") or 0)
+    abandoned = int(totals_row.get("ABANDONED") or 0)
 
     # Cortex-generated explanation of the density map. The whole point of this
     # site is that Cortex explains the data, so we always return a summary. The
@@ -132,9 +170,6 @@ def h3_density(resolution: int = 4, state: str | None = None):
     # fallback prose under a model byline would misattribute the template to
     # Cortex. An unexpected ImportError/AttributeError here also counts as
     # degraded so the caller never sees the fallback masquerading as model output.
-    total = sum(int(r.get("TOTAL") or 0) for r in rows)
-    active = sum(int(r.get("ACTIVE") or 0) for r in rows)
-    abandoned = sum(int(r.get("ABANDONED") or 0) for r in rows)
     summary = ""
     summary_degraded = False
     if total > 0:
@@ -144,6 +179,7 @@ def h3_density(resolution: int = 4, state: str | None = None):
                 total=total,
                 active=active,
                 abandoned=abandoned,
+                role=settings.snowflake_readonly_role,
             )
         except Exception:
             logger.exception("H3 summary generation crashed outside its own guard")
@@ -154,6 +190,7 @@ def h3_density(resolution: int = 4, state: str | None = None):
         "resolution": resolution,
         "state": state,
         "cells": rows,
+        "totals": {"total": total, "active": active, "abandoned": abandoned},
         "summary": summary,
         "summary_degraded": summary_degraded,
     }

@@ -26,6 +26,7 @@
 	let subregionPolygons = [];
 
 	let cells = $state([]);
+	let registryTotals = $state({ mines: 0, active: 0, abandoned: 0 });
 	let geojson = $state(null);
 	let loaded = $state(false);
 	let errored = $state(false);
@@ -49,19 +50,13 @@
 		}),
 	);
 
-	const totals = $derived.by(() => {
-		let mines = 0;
-		let active = 0;
-		let abandoned = 0;
-		// Decimal → JSON string again—coerce before summing or
-		// `0 + "5" + "3"` becomes the string "053".
-		for (const c of filteredCells) {
-			mines += Number(c.TOTAL ?? c.total) || 0;
-			active += Number(c.ACTIVE ?? c.active) || 0;
-			abandoned += Number(c.ABANDONED ?? c.abandoned) || 0;
-		}
-		return { mines, active, abandoned };
-	});
+	// Tallies must reflect MSHA's full registry, not the hexes visible on the
+	// map. The density query drops null-coord rows, ocean outliers, and small
+	// clusters (HAVING total >= 5 on the national view) — all fine for
+	// rendering, all wrong for a headline number claiming "X mines on
+	// record." The API now returns a separate unfiltered totals payload;
+	// pass it through verbatim.
+	const totals = $derived(registryTotals);
 
 	// Once the geographic outliers are dropped, the remaining totals cluster
 	// tightly. A fixed coefficient on sqrt(total) squashes them all against
@@ -109,6 +104,12 @@
 		if (cancelled) return;
 
 		cells = density.cells || [];
+		const t = density.totals || {};
+		registryTotals = {
+			mines: Number(t.total) || 0,
+			active: Number(t.active) || 0,
+			abandoned: Number(t.abandoned) || 0,
+		};
 		summary = density.summary || '';
 		summaryDegraded = Boolean(density.summary_degraded);
 		if (geo) geojson = geo;
