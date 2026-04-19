@@ -213,6 +213,70 @@ tables:
         expr: EGRID_SUBREGION
         data_type: VARCHAR
 
+  - name: MSHA_ACCIDENTS
+    description: >
+      Accidents, injuries, and fatalities at US mines from MSHA.
+      Each row is one incident. DEGREE_INJURY classifies severity
+      (FATALITY, DAYS AWAY FROM WORK ONLY, etc). NARRATIVE contains
+      a free-text description of what happened. Joins to MSHA_MINES
+      via MINE_ID.
+    base_table:
+      database: UNEARTHED_DB
+      schema: RAW
+      table: MSHA_ACCIDENTS
+    filters:
+      - name: coal_accidents_only
+        expr: REPLACE(COAL_METAL_IND, '"', '') = 'C'
+        description: Only coal mine accidents
+    dimensions:
+      - name: mine_id
+        description: MSHA mine identifier, joins to MSHA_MINES
+        expr: TRY_TO_NUMBER(REPLACE(MINE_ID, '"', ''))
+        data_type: NUMBER
+      - name: accident_date
+        description: Date of the accident
+        expr: TRY_TO_DATE(REPLACE(ACCIDENT_DT, '"', ''), 'MM/DD/YYYY')
+        data_type: DATE
+      - name: year
+        description: Calendar year of the accident
+        expr: CAL_YR
+        data_type: NUMBER
+      - name: degree_injury
+        description: >
+          Severity classification. Key values: FATALITY, DAYS AWAY FROM WORK ONLY,
+          PERM TOT OR PERM PRTL DISABLTY, DAYS RESTRICTED ACTIVITY ONLY.
+        expr: TRIM(REPLACE(DEGREE_INJURY, '"', ''))
+        data_type: VARCHAR
+      - name: occupation
+        description: Job title of the injured worker
+        expr: TRIM(REPLACE(OCCUPATION, '"', ''))
+        data_type: VARCHAR
+      - name: narrative
+        description: Free-text description of what happened in the accident
+        expr: TRIM(REPLACE(NARRATIVE, '"', ''))
+        data_type: VARCHAR
+      - name: classification
+        description: Type of accident (e.g. Powered Haulage, Fall of Roof)
+        expr: TRIM(REPLACE(CLASSIFICATION, '"', ''))
+        data_type: VARCHAR
+      - name: injury_source
+        description: Object or substance that caused the injury
+        expr: TRIM(REPLACE(INJURY_SOURCE, '"', ''))
+        data_type: VARCHAR
+    measures:
+      - name: incident_count
+        description: Total number of accident/injury incidents
+        expr: COUNT(*)
+        data_type: NUMBER
+      - name: fatality_count
+        description: Number of fatalities
+        expr: SUM(CASE WHEN TRIM(REPLACE(DEGREE_INJURY, '"', '')) = 'FATALITY' THEN 1 ELSE 0 END)
+        data_type: NUMBER
+      - name: days_lost
+        description: Total days of work lost due to injuries
+        expr: SUM(TRY_TO_NUMBER(REPLACE(DAYS_LOST, '"', '')))
+        data_type: NUMBER
+
 relationships:
   - name: receipts_to_mines
     left_table: EIA_923_FUEL_RECEIPTS
@@ -237,6 +301,13 @@ relationships:
         right_column: plant_code
   - name: production_to_mines
     left_table: MSHA_QUARTERLY_PRODUCTION
+    right_table: MSHA_MINES
+    join_type: inner
+    relationship_columns:
+      - left_column: mine_id
+        right_column: mine_id
+  - name: accidents_to_mines
+    left_table: MSHA_ACCIDENTS
     right_table: MSHA_MINES
     join_type: inner
     relationship_columns:
