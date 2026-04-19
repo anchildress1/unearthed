@@ -3,6 +3,17 @@
 </script>
 
 <svelte:head>
+	<!--
+		Inline SVG favicon: a single rust disc over the page background tone.
+		Avoids a /favicon.ico 404 — which Lighthouse flags as a console error
+		and tanks best-practices below the 0.98 gate — without shipping a
+		binary asset.
+	-->
+	<link
+		rel="icon"
+		type="image/svg+xml"
+		href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23070605'/%3E%3Ccircle cx='16' cy='16' r='9' fill='%23a85639'/%3E%3C/svg%3E"
+	/>
 	<link rel="preconnect" href="https://fonts.googleapis.com" />
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
 	<link
@@ -33,8 +44,13 @@
 	:global(:root) {
 		--bg: #070605;
 		--text: #e8dfcc;
-		--text-dim: #7d7466;
-		--text-ghost: #5c554a;
+		--text-dim: #a89e8c;
+		/* --text-ghost is the dimmest legible tone — footer copy, anchor-
+		   secondary captions, map legends, every "on the margins" label.
+		   Luminance-tuned so 8-10px body copy still clears WCAG AA (≥4.5:1)
+		   against the near-black --bg; darker than that looked editorial
+		   but failed accessibility audits outright. */
+		--text-ghost: #a09488;
 		/* Two-tier rust palette. --rust is the dim, iron-oxide primary: it
 		   carries nearly every accent surface (text ems, rules, card values,
 		   the one map route). --rust-bright is held back for charged moments
@@ -175,7 +191,12 @@
 		margin-top: 0.5rem;
 		font-size: 0.55rem;
 		letter-spacing: 0.1em;
-		color: rgba(128, 123, 117, 0.6);
+		/* Solid tone rather than an alpha-composite — alpha against
+		   near-black crushed to a 2.4:1 ratio and failed contrast
+		   audits. 4.9:1 as a solid color still reads quieter than the
+		   line above it because the font is smaller and the tracking
+		   is wider. */
+		color: #857c70;
 	}
 
 	/* ---- Glass utility ---- */
