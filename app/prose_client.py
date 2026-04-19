@@ -112,22 +112,19 @@ def _generate_from_cortex(mine_data: dict) -> str:
     )
 
     conn = _get_connection()
+    cur = conn.cursor()
     try:
-        cur = conn.cursor()
-        try:
-            cur.execute(
-                "SELECT SNOWFLAKE.CORTEX.COMPLETE('llama3.1-70b', %s) AS prose",
-                (prompt,),
-            )
-            row = cur.fetchone()
-            if row and row[0]:
-                prose = row[0].strip().strip('"')
-                if prose:
-                    return prose
-        finally:
-            cur.close()
+        cur.execute(
+            "SELECT SNOWFLAKE.CORTEX.COMPLETE('llama3.1-70b', %s) AS prose",
+            (prompt,),
+        )
+        row = cur.fetchone()
+        if row and row[0]:
+            prose = row[0].strip().strip('"')
+            if prose:
+                return prose
     finally:
-        conn.close()
+        cur.close()
 
     raise RuntimeError("Complete returned empty prose")
 

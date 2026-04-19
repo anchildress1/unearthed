@@ -77,17 +77,21 @@ export function subregionForState(stateCode) {
 }
 
 export async function geocodeAddress(query) {
-	const url = new URL('https://nominatim.openstreetmap.org/search');
-	url.searchParams.set('format', 'json');
-	url.searchParams.set('q', query);
-	url.searchParams.set('countrycodes', 'us');
-	url.searchParams.set('limit', '1');
+	// Use Google Geocoding API — key is available since we already load Google Maps
+	const { Geocoder } = await google.maps.importLibrary('geocoding');
+	const geocoder = new Geocoder();
 
-	const resp = await fetch(url.toString());
-	if (!resp.ok) throw new Error('Geocoding service unavailable');
-	const results = await resp.json();
-	if (!results.length) return null;
-	return { lat: parseFloat(results[0].lat), lon: parseFloat(results[0].lon) };
+	try {
+		const result = await geocoder.geocode({
+			address: query,
+			componentRestrictions: { country: 'US' },
+		});
+		if (!result.results.length) return null;
+		const loc = result.results[0].geometry.location;
+		return { lat: loc.lat(), lon: loc.lng() };
+	} catch {
+		return null;
+	}
 }
 
 export function requestLocation(timeout = 10000) {

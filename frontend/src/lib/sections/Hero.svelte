@@ -141,7 +141,12 @@
 		</p>
 	</div>
 
-	<p class="hero__scroll">↓ scroll slowly</p>
+	<a
+		class="hero__credit"
+		href="https://www.flickr.com/photos/nationalmemorialforthemountains/255887679/"
+		target="_blank"
+		rel="noopener"
+	>Photo: Kent Kessinger / iLoveMountains.org / Flickr — Flight courtesy of SouthWings</a>
 </section>
 
 <style>
@@ -315,15 +320,19 @@
 		margin-top: 2.5rem;
 	}
 
-	.hero__scroll {
-		font-family: var(--font-mono);
-		font-size: 0.7rem;
-		color: var(--text-muted);
-		letter-spacing: 0.1em;
+	.hero__credit {
 		position: absolute;
-		bottom: 2rem;
-		left: 50%;
-		transform: translateX(-50%);
+		bottom: 1rem;
+		right: 1rem;
+		font-size: 0.65rem;
+		color: var(--text-muted);
+		opacity: 0.4;
+		text-decoration: none;
 		z-index: 1;
+		line-height: 1.3;
+		max-width: 280px;
+		text-align: right;
 	}
+
+	.hero__credit:hover { opacity: 1; color: var(--text); }
 </style>

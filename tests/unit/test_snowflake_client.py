@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 import pytest
 import requests as req_lib
 
+from app import snowflake_client
 from app.snowflake_client import (
     _get_connection,
     execute_analyst_sql,
@@ -13,6 +14,14 @@ from app.snowflake_client import (
     query_cortex_analyst,
     query_mine_for_subregion,
 )
+
+
+@pytest.fixture(autouse=True)
+def _clear_pool():
+    """Reset the connection pool between tests."""
+    snowflake_client._pool.clear()
+    yield
+    snowflake_client._pool.clear()
 
 MOCK_ROW = {
     "MINE_NAME": "Bailey Mine",
@@ -73,22 +82,12 @@ class TestQueryMineForSubregion:
         assert call_args[0][1]["subregion_id"] == "SRVC"
 
     @patch("app.snowflake_client._get_connection")
-    def test_connection_closed_on_success(self, mock_get_conn):
+    def test_connection_pooled_not_closed(self, mock_get_conn):
+        """Pooled connections stay open — conn.close() must NOT be called."""
         mock_conn = self._mock_connection([MOCK_ROW])
         mock_get_conn.return_value = mock_conn
         query_mine_for_subregion("SRVC")
-        mock_conn.close.assert_called_once()
-
-    @patch("app.snowflake_client._get_connection")
-    def test_connection_closed_on_error(self, mock_get_conn):
-        mock_conn = MagicMock()
-        mock_conn.cursor.return_value.execute.side_effect = Exception("DB error")
-        mock_get_conn.return_value = mock_conn
-
-        with pytest.raises(Exception, match="DB error"):
-            query_mine_for_subregion("SRVC")
-
-        mock_conn.close.assert_called_once()
+        mock_conn.close.assert_not_called()
 
     @patch("app.snowflake_client._get_connection")
     def test_tons_converted_to_float(self, mock_get_conn):
@@ -467,18 +466,18 @@ class TestQueryCortexAnalyst:
 
         query_cortex_analyst("test")
 
-        mock_conn.close.assert_called_once()
+        mock_conn.close.assert_not_called()
 
     @patch("app.snowflake_client.requests.post")
     @patch("app.snowflake_client._get_connection")
-    def test_connection_closed_on_error(self, mock_get_conn, mock_post):
+    def test_connection_pooled_on_error(self, mock_get_conn, mock_post):
         mock_conn = self._mock_connection()
         mock_get_conn.return_value = mock_conn
         mock_post.side_effect = Exception("fail")
 
         query_cortex_analyst("test")
 
-        mock_conn.close.assert_called_once()
+        mock_conn.close.assert_not_called()
 
     @patch("app.snowflake_client.requests.post")
     @patch("app.snowflake_client._get_connection")
@@ -822,22 +821,11 @@ class TestExecuteAnalystSql:
             execute_analyst_sql("   ")
 
     @patch("app.snowflake_client._get_connection")
-    def test_connection_closed(self, mock_get_conn):
+    def test_connection_pooled(self, mock_get_conn):
         mock_conn = self._mock_connection([])
         mock_get_conn.return_value = mock_conn
         execute_analyst_sql("SELECT 1")
-        mock_conn.close.assert_called_once()
-
-    @patch("app.snowflake_client._get_connection")
-    def test_connection_closed_on_error(self, mock_get_conn):
-        mock_conn = MagicMock()
-        mock_conn.cursor.return_value.execute.side_effect = Exception("fail")
-        mock_get_conn.return_value = mock_conn
-
-        with pytest.raises(Exception, match="fail"):
-            execute_analyst_sql("SELECT 1")
-
-        mock_conn.close.assert_called_once()
+        mock_conn.close.assert_not_called()
 
     @patch("app.snowflake_client._get_connection")
     def test_session_timeout_set_before_query(self, mock_get_conn):
