@@ -339,10 +339,20 @@ def ask(req: AskRequest):
             )
             answer = "I could not answer that confidently."
             interpretation = None
+    elif error:
+        # Cortex Analyst itself failed upstream (timeout, 5xx, fallback
+        # payload from `query_cortex_analyst`). Surface as a warning so it
+        # doesn't get conflated with semantic-model coverage gaps below.
+        logger.warning(
+            "Cortex Analyst returned an error for question: %s; error: %s",
+            question,
+            error,
+        )
     else:
-        # Cortex answered conversationally without producing SQL — log the question
-        # so we can tighten the semantic model for patterns it's missing.
-        logger.info("Cortex Analyst returned no SQL for question: %s", question)
+        # Cortex answered conversationally without producing SQL — the
+        # semantic model didn't match the question shape. Debug-level so
+        # the signal is reviewable in logs without polluting info output.
+        logger.debug("Cortex Analyst returned no SQL for question: %s", question)
 
     suggestions = result.get("suggestions") or DEFAULT_SUGGESTIONS
 
