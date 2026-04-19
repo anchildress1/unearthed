@@ -145,6 +145,7 @@ Two Cortex features in use:
 - **RAW tables are pre-cleaned** — embedded CSV quotes stripped, key columns cast to native types (MINE_ID → NUMBER, LATITUDE/LONGITUDE → DOUBLE, QUANTITY → NUMBER). Use column values directly — no `REPLACE()`, `TRY_TO_NUMBER()`, or `TRY_TO_DOUBLE()` needed.
 - **Emissions are pre-aggregated** — `MRT.EMISSIONS_BY_PLANT` (240 rows) replaces the 2.2B-row EPA_CAM_TIMESERIES join. Query the MRT table, not the Marketplace tables directly.
 - **Mine-plant lookup is materialized** — `MRT.MINE_PLANT_FOR_SUBREGION` (19 rows) pre-computes the top mine + plant per eGRID subregion. `/mine-for-me` reads this single table instead of joining 4 RAW tables through views.
+- **Session-level guards** — every connection sets `STATEMENT_TIMEOUT_IN_SECONDS = 10` and `ROWS_PER_RESULTSET = 500` via `ALTER SESSION` at creation time. These cap runaway Analyst SQL and protect credit burn.
 - In-memory caches exist for H3 density, emissions, mine context, and Cortex prose. Prose cache is pre-warmed at startup for all 19 fallback subregions. All caches reset on process restart.
 
 ## 4. Frontend Rules
