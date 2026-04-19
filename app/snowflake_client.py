@@ -11,11 +11,12 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# --- Connection pool ---
-# Two persistent connections: one for APP_ROLE, one for READONLY_ROLE.
-# Reconnects automatically on failure. Thread-safe via lock.
-_pool: dict[str, snowflake.connector.SnowflakeConnection] = {}
-_pool_lock = threading.Lock()
+# --- Thread-local connection pool ---
+# Each thread gets its own connections (one per role). Snowflake's Python
+# connector is not thread-safe — sharing a connection across threads
+# corrupts session state. Thread-local storage ensures the pre-warming
+# daemon and request handler threads never interfere with each other.
+_local = threading.local()
 
 # Single-row read from the pre-materialized MRT table.
 # MINE_PLANT_FOR_SUBREGION has one row per eGRID subregion with the top mine,
@@ -83,40 +84,43 @@ def _create_connection(role: str) -> snowflake.connector.SnowflakeConnection:
     return snowflake.connector.connect(**connect_args)
 
 
+def _get_pool() -> dict[str, snowflake.connector.SnowflakeConnection]:
+    """Return the thread-local connection pool, creating it if needed."""
+    if not hasattr(_local, "pool"):
+        _local.pool = {}
+    return _local.pool
+
+
 def _get_connection(
     *,
     role: str | None = None,
 ) -> snowflake.connector.SnowflakeConnection:
-    """Get a pooled connection for the given role. Reconnects if stale.
-
-    Skips the SELECT 1 health check — the caller's actual query will
-    surface staleness, and ``_reconnect_and_retry`` handles it.
-    """
+    """Get a thread-local connection for the given role. Reconnects if stale."""
     effective_role = role or settings.snowflake_role
-    with _pool_lock:
-        conn = _pool.get(effective_role)
-        if conn is not None and conn.is_closed():
-            logger.info("Pooled connection closed for role %s, reconnecting", effective_role)
-            conn = None
-        if conn is None:
-            conn = _create_connection(effective_role)
-            _pool[effective_role] = conn
-        return conn
+    pool = _get_pool()
+    conn = pool.get(effective_role)
+    if conn is not None and conn.is_closed():
+        logger.info("Connection closed for role %s, reconnecting", effective_role)
+        conn = None
+    if conn is None:
+        conn = _create_connection(effective_role)
+        pool[effective_role] = conn
+    return conn
 
 
 def _reconnect(role: str | None = None) -> snowflake.connector.SnowflakeConnection:
-    """Force-replace the pooled connection for a role after a query failure."""
+    """Force-replace this thread's connection for a role after a query failure."""
     effective_role = role or settings.snowflake_role
-    with _pool_lock:
-        old = _pool.pop(effective_role, None)
-        if old is not None:
-            try:
-                old.close()
-            except Exception:
-                pass
-        conn = _create_connection(effective_role)
-        _pool[effective_role] = conn
-        return conn
+    pool = _get_pool()
+    old = pool.pop(effective_role, None)
+    if old is not None:
+        try:
+            old.close()
+        except Exception:
+            pass
+    conn = _create_connection(effective_role)
+    pool[effective_role] = conn
+    return conn
 
 
 def query_mine_for_subregion(subregion_id: str) -> dict | None:

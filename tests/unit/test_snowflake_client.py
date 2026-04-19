@@ -18,10 +18,10 @@ from app.snowflake_client import (
 
 @pytest.fixture(autouse=True)
 def _clear_pool():
-    """Reset the connection pool between tests."""
-    snowflake_client._pool.clear()
+    """Reset the thread-local connection pool between tests."""
+    snowflake_client._get_pool().clear()
     yield
-    snowflake_client._pool.clear()
+    snowflake_client._get_pool().clear()
 
 
 MOCK_ROW = {
