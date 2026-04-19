@@ -55,6 +55,8 @@ def _create_connection(role: str) -> snowflake.connector.SnowflakeConnection:
         "warehouse": settings.snowflake_warehouse,
         "database": settings.snowflake_database,
         "client_session_keep_alive": True,
+        "login_timeout": 10,
+        "network_timeout": 15,
     }
     if settings.snowflake_private_key_path:
         from cryptography.hazmat.primitives import serialization
@@ -81,7 +83,13 @@ def _create_connection(role: str) -> snowflake.connector.SnowflakeConnection:
             "or set ALLOW_PASSWORD_AUTH=true with SNOWFLAKE_PASSWORD for local dev."
         )
 
-    return snowflake.connector.connect(**connect_args)
+    conn = snowflake.connector.connect(**connect_args)
+    cur = conn.cursor()
+    try:
+        cur.execute("ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = 10, ROWS_PER_RESULTSET = 500")
+    finally:
+        cur.close()
+    return conn
 
 
 def _get_pool() -> dict[str, snowflake.connector.SnowflakeConnection]:
@@ -323,9 +331,8 @@ def execute_analyst_sql(sql: str) -> list[dict]:
     conn = _get_connection(role=settings.snowflake_readonly_role)
     cur = conn.cursor(snowflake.connector.DictCursor)
     try:
-        cur.execute("ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = 10")
         cur.execute(clean_sql)
-        return [dict(row) for row in cur.fetchmany(500)]
+        return [dict(row) for row in cur.fetchall()]
     finally:
         cur.close()
 

@@ -745,7 +745,7 @@ class TestQueryCortexAnalyst:
 class TestExecuteAnalystSql:
     def _mock_connection(self, rows):
         mock_cursor = MagicMock()
-        mock_cursor.fetchmany.return_value = rows
+        mock_cursor.fetchall.return_value = rows
         mock_conn = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
         return mock_conn
@@ -834,26 +834,25 @@ class TestExecuteAnalystSql:
         mock_conn.close.assert_not_called()
 
     @patch("app.snowflake_client._get_connection")
-    def test_session_timeout_set_before_query(self, mock_get_conn):
-        """ALTER SESSION must be called before the actual SQL to enforce timeout."""
+    def test_no_per_query_alter_session(self, mock_get_conn):
+        """Timeout and row limit are set at connection creation, not per query."""
         mock_conn = self._mock_connection([])
         mock_get_conn.return_value = mock_conn
         execute_analyst_sql("SELECT 1")
 
         cursor = mock_conn.cursor.return_value
-        calls = [str(c) for c in cursor.execute.call_args_list]
-        assert "STATEMENT_TIMEOUT_IN_SECONDS" in calls[0]
-        assert "SELECT 1" in calls[1]
+        assert cursor.execute.call_count == 1
+        assert "SELECT 1" in str(cursor.execute.call_args)
 
     @patch("app.snowflake_client._get_connection")
-    def test_fetchmany_limited_to_500(self, mock_get_conn):
-        """Results must be capped at 500 rows."""
+    def test_fetchall_used(self, mock_get_conn):
+        """fetchall used — row limit enforced at session level via ROWS_PER_RESULTSET."""
         mock_conn = self._mock_connection([{"X": 1}])
         mock_get_conn.return_value = mock_conn
         execute_analyst_sql("SELECT 1")
 
         cursor = mock_conn.cursor.return_value
-        cursor.fetchmany.assert_called_once_with(500)
+        cursor.fetchall.assert_called_once()
 
     @patch("app.snowflake_client._get_connection")
     def test_cursor_closed_in_execute(self, mock_get_conn):
@@ -872,8 +871,7 @@ class TestExecuteAnalystSql:
         execute_analyst_sql("  SELECT 1 ;  ")
 
         cursor = mock_conn.cursor.return_value
-        # Second execute call is the actual SQL (first is ALTER SESSION)
-        actual_sql = cursor.execute.call_args_list[1][0][0]
+        actual_sql = cursor.execute.call_args[0][0]
         assert actual_sql == "SELECT 1"
 
 
