@@ -1,6 +1,7 @@
 """Generate mine prose using Snowflake Cortex Complete.
 
-Direct SQL pulls fatality/injury stats from MSHA_ACCIDENTS by MINE_ID.
+Safety stats (fatalities, injuries, days lost) arrive pre-aggregated
+in the mine_data dict from the MINE_PLANT_FOR_SUBREGION MRT table.
 Cortex Complete turns those numbers into prose.
 """
 
@@ -11,19 +12,6 @@ from app.snowflake_client import _get_connection
 logger = logging.getLogger(__name__)
 
 _prose_cache: dict[str, tuple[str, bool]] = {}
-
-_STATS_SQL = """
-SELECT
-    COUNT(*) AS total_incidents,
-    SUM(CASE WHEN TRIM(DEGREE_INJURY) = 'FATALITY'
-        THEN 1 ELSE 0 END) AS fatalities,
-    SUM(CASE WHEN TRIM(DEGREE_INJURY) LIKE '%%DAYS%%'
-        THEN 1 ELSE 0 END) AS injuries_lost_time,
-    SUM(DAYS_LOST) AS total_days_lost
-FROM UNEARTHED_DB.RAW.MSHA_ACCIDENTS
-WHERE MINE_ID = %(mine_id)s
-    AND COAL_METAL_IND = 'C'
-"""
 
 _COMPLETE_PROMPT = """\
 {plant_name} ({plant_operator}) received {tons} tons of coal in {tons_year} from \
@@ -64,21 +52,9 @@ def _generate(mine_data: dict) -> tuple[str, bool]:
     """Returns (prose, degraded). degraded=True if Complete failed."""
     conn = _get_connection()
 
-    # Pull safety stats if mine_id is available; default to zeros otherwise.
-    fatalities = injuries = days_lost = incidents = 0
-    mine_id = mine_data.get("mine_id")
-    if mine_id is not None:
-        cur = conn.cursor()
-        try:
-            cur.execute(_STATS_SQL, {"mine_id": int(mine_id)})
-            row = cur.fetchone()
-            if row:
-                incidents = int(row[0] or 0)
-                fatalities = int(row[1] or 0)
-                injuries = int(row[2] or 0)
-                days_lost = int(row[3] or 0)
-        finally:
-            cur.close()
+    fatalities = int(mine_data.get("fatalities") or 0)
+    injuries = int(mine_data.get("injuries") or 0)
+    days_lost = int(mine_data.get("days_lost") or 0)
 
     format_args = {
         "mine_name": mine_data.get("mine", ""),
@@ -93,7 +69,6 @@ def _generate(mine_data: dict) -> tuple[str, bool]:
         "fatalities": fatalities,
         "injuries": injuries,
         "days_lost": f"{days_lost:,}",
-        "incidents": incidents,
     }
     prompt = _COMPLETE_PROMPT.format(**format_args)
 

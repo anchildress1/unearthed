@@ -1,6 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
+# Internal mine data (includes stats for prose generation).
 SAMPLE_MINE_DATA = {
     "mine": "Bailey Mine",
     "mine_operator": "Consol Pennsylvania Coal Company LLC",
@@ -13,6 +14,9 @@ SAMPLE_MINE_DATA = {
     "plant_coords": [33.371506, -80.113235],
     "tons": 1247001.0,
     "tons_year": 2024,
+    "fatalities": 3,
+    "injuries": 12,
+    "days_lost": 640,
 }
 
 SAMPLE_MINE_DATA_SURFACE = {
@@ -22,6 +26,9 @@ SAMPLE_MINE_DATA_SURFACE = {
     "mine_county": "Boone",
     "mine_state": "WV",
 }
+
+# Keys that are internal-only (not part of MineForMeResponse).
+_INTERNAL_KEYS = {"fatalities", "injuries", "days_lost", "mine_id"}
 
 
 @pytest.fixture
@@ -33,9 +40,10 @@ def client():
 
 @pytest.fixture
 def sample_mine_data():
-    return SAMPLE_MINE_DATA.copy()
+    """Mine data for MineForMeResponse tests — excludes internal-only keys."""
+    return {k: v for k, v in SAMPLE_MINE_DATA.items() if k not in _INTERNAL_KEYS}
 
 
 @pytest.fixture
 def sample_mine_data_surface():
-    return SAMPLE_MINE_DATA_SURFACE.copy()
+    return {k: v for k, v in SAMPLE_MINE_DATA_SURFACE.items() if k not in _INTERNAL_KEYS}

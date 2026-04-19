@@ -1,4 +1,4 @@
-"""Unit tests for prose_client: stats query, mine_id type, Cortex Complete fallbacks."""
+"""Unit tests for prose_client: stats from mine_data, Cortex Complete fallbacks."""
 
 from unittest.mock import MagicMock, patch
 
@@ -18,83 +18,81 @@ def _make_mine_data(**overrides):
         "plant_operator": "Test Utility Co",
         "tons": 500000,
         "tons_year": 2024,
+        "fatalities": 3,
+        "injuries": 10,
+        "days_lost": 500,
     }
     base.update(overrides)
     return base
 
 
 class TestGenerateProse:
-    def _mock_connection(self, stats_row=None, complete_result=None):
+    def _mock_connection(self, complete_result=None):
         mock_conn = MagicMock()
-        stats_cursor = MagicMock()
-        stats_cursor.fetchone.return_value = stats_row
         complete_cursor = MagicMock()
         complete_cursor.fetchone.return_value = complete_result
-        mock_conn.cursor.side_effect = [stats_cursor, complete_cursor]
-        return mock_conn, stats_cursor, complete_cursor
+        mock_conn.cursor.return_value = complete_cursor
+        return mock_conn, complete_cursor
 
     @patch("app.prose_client._get_connection")
-    def test_mine_id_passed_as_int(self, mock_get_conn):
-        mock_conn, stats_cur, _ = self._mock_connection(
-            stats_row=(10, 2, 5, 100),
-            complete_result=("Workers have died.",),
+    def test_stats_from_mine_data_in_prompt(self, mock_get_conn):
+        """Safety stats are read from mine_data, not a separate SQL query."""
+        mock_conn, complete_cur = self._mock_connection(
+            complete_result=("Generated prose.",),
         )
         mock_get_conn.return_value = mock_conn
 
-        generate_prose(
-            _make_mine_data(
-                mine_id=3607958, mine="Bailey Mine", mine_county="Greene", mine_state="PA"
-            )
-        )
+        generate_prose(_make_mine_data(fatalities=7, injuries=15, days_lost=2000))
 
-        call_args = stats_cur.execute.call_args
-        assert call_args[0][1]["mine_id"] == 3607958
+        prompt_arg = complete_cur.execute.call_args[0][1][0]
+        assert "7 deaths" in prompt_arg
+        assert "15 lost-time injuries" in prompt_arg
+        assert "2,000 days lost" in prompt_arg
 
     @patch("app.prose_client._get_connection")
-    def test_mine_id_from_string_converted_to_int(self, mock_get_conn):
-        mock_conn, stats_cur, _ = self._mock_connection(
-            stats_row=(5, 0, 3, 50),
-        )
-        mock_get_conn.return_value = mock_conn
-
-        generate_prose(
-            _make_mine_data(
-                mine_id="3607958", mine="Bailey Mine", mine_county="Greene", mine_state="PA"
-            )
-        )
-
-        call_args = stats_cur.execute.call_args
-        assert call_args[0][1]["mine_id"] == 3607958
-
-    @patch("app.prose_client._get_connection")
-    def test_no_stats_still_calls_complete(self, mock_get_conn):
-        """Even without accident data, Cortex Complete runs with zero stats."""
-        mock_conn, _, complete_cur = self._mock_connection(
-            stats_row=None,
+    def test_missing_stats_default_to_zero(self, mock_get_conn):
+        """mine_data without stats keys → zeros in prompt, Complete still runs."""
+        mock_conn, complete_cur = self._mock_connection(
             complete_result=("Prose without safety data.",),
         )
         mock_get_conn.return_value = mock_conn
 
-        prose, degraded = generate_prose(
-            _make_mine_data(
-                mine_id="999", mine="Ghost Mine", mine_county="Nowhere", mine_state="XX"
-            )
-        )
+        data = _make_mine_data()
+        del data["fatalities"]
+        del data["injuries"]
+        del data["days_lost"]
+        prose, degraded = generate_prose(data)
 
         assert prose == "Prose without safety data."
         assert degraded is False
         complete_cur.execute.assert_called_once()
 
     @patch("app.prose_client._get_connection")
+    def test_none_stats_default_to_zero(self, mock_get_conn):
+        """None stat values → zeros in prompt, Complete still runs."""
+        mock_conn, complete_cur = self._mock_connection(
+            complete_result=("Prose with nulls handled.",),
+        )
+        mock_get_conn.return_value = mock_conn
+
+        prose, degraded = generate_prose(
+            _make_mine_data(fatalities=None, injuries=None, days_lost=None)
+        )
+
+        assert prose == "Prose with nulls handled."
+        assert degraded is False
+        prompt_arg = complete_cur.execute.call_args[0][1][0]
+        assert "0 deaths" in prompt_arg
+
+    @patch("app.prose_client._get_connection")
     def test_zero_stats_still_calls_complete(self, mock_get_conn):
         """Zero fatalities/injuries — Complete still runs, prompt says omit zeros."""
-        mock_conn, _, complete_cur = self._mock_connection(
-            stats_row=(5, 0, 0, 0),
+        mock_conn, complete_cur = self._mock_connection(
             complete_result=("Prose about the mine and plant.",),
         )
         mock_get_conn.return_value = mock_conn
 
-        prose, degraded = generate_prose(_make_mine_data(mine_id="123"))
+        prose, degraded = generate_prose(_make_mine_data(fatalities=0, injuries=0, days_lost=0))
 
         assert prose == "Prose about the mine and plant."
         assert degraded is False
@@ -102,8 +100,7 @@ class TestGenerateProse:
 
     @patch("app.prose_client._get_connection")
     def test_complete_success_returns_prose(self, mock_get_conn):
-        mock_conn, _, _ = self._mock_connection(
-            stats_row=(20, 3, 10, 500),
+        mock_conn, _ = self._mock_connection(
             complete_result=("Three workers have died at this mine.",),
         )
         mock_get_conn.return_value = mock_conn
@@ -115,10 +112,7 @@ class TestGenerateProse:
 
     @patch("app.prose_client._get_connection")
     def test_complete_empty_falls_back_to_template(self, mock_get_conn):
-        mock_conn, _, _ = self._mock_connection(
-            stats_row=(20, 3, 10, 500),
-            complete_result=("",),
-        )
+        mock_conn, _ = self._mock_connection(complete_result=("",))
         mock_get_conn.return_value = mock_conn
 
         prose, degraded = generate_prose(_make_mine_data())
@@ -130,10 +124,7 @@ class TestGenerateProse:
 
     @patch("app.prose_client._get_connection")
     def test_complete_none_result_falls_back_to_template(self, mock_get_conn):
-        mock_conn, _, _ = self._mock_connection(
-            stats_row=(20, 3, 10, 500),
-            complete_result=None,
-        )
+        mock_conn, _ = self._mock_connection(complete_result=None)
         mock_get_conn.return_value = mock_conn
 
         prose, degraded = generate_prose(_make_mine_data())
@@ -141,22 +132,6 @@ class TestGenerateProse:
         assert "Test Plant" in prose
         assert "Test Mine" in prose
         assert "3 workers have died" in prose
-        assert degraded is True
-
-    @patch("app.prose_client._get_connection")
-    def test_null_stats_values_default_to_zero(self, mock_get_conn):
-        """NULL stat columns default to zero; Complete still runs."""
-        mock_conn, _, complete_cur = self._mock_connection(
-            stats_row=(None, None, None, None),
-            complete_result=None,
-        )
-        mock_get_conn.return_value = mock_conn
-
-        prose, degraded = generate_prose(_make_mine_data())
-
-        # Complete was called (nulls don't skip it), but returned nothing → template fallback
-        complete_cur.execute.assert_called_once()
-        assert "Test Mine" in prose
         assert degraded is True
 
     @patch("app.prose_client._get_connection", side_effect=Exception("Connection refused"))
@@ -167,23 +142,30 @@ class TestGenerateProse:
         assert degraded is True
 
     @patch("app.prose_client._get_connection")
-    def test_stats_cursor_closed_on_success(self, mock_get_conn):
-        mock_conn, stats_cur, complete_cur = self._mock_connection(
-            stats_row=(20, 3, 10, 500),
+    def test_complete_cursor_closed(self, mock_get_conn):
+        mock_conn, complete_cur = self._mock_connection(
             complete_result=("Prose.",),
         )
         mock_get_conn.return_value = mock_conn
 
         generate_prose(_make_mine_data())
 
-        stats_cur.close.assert_called_once()
         complete_cur.close.assert_called_once()
+
+    @patch("app.prose_client._get_connection")
+    def test_only_one_cursor_opened(self, mock_get_conn):
+        """Stats come from mine_data — only one cursor (Complete) should open."""
+        mock_conn, _ = self._mock_connection(complete_result=("Prose.",))
+        mock_get_conn.return_value = mock_conn
+
+        generate_prose(_make_mine_data())
+
+        mock_conn.cursor.assert_called_once()
 
     @patch("app.prose_client._get_connection")
     def test_prompt_includes_plant_and_mine_context(self, mock_get_conn):
         """The Cortex Complete prompt must include plant, mine, tonnage, and operator."""
-        mock_conn, _, complete_cur = self._mock_connection(
-            stats_row=(20, 3, 10, 500),
+        mock_conn, complete_cur = self._mock_connection(
             complete_result=("Generated prose.",),
         )
         mock_get_conn.return_value = mock_conn
@@ -222,11 +204,9 @@ class TestProseCache:
 
         _prose_cache.clear()
         mock_conn = MagicMock()
-        stats_cursor = MagicMock()
-        stats_cursor.fetchone.return_value = (20, 3, 10, 500)
         complete_cursor = MagicMock()
         complete_cursor.fetchone.return_value = ("Generated prose.",)
-        mock_conn.cursor.side_effect = [stats_cursor, complete_cursor]
+        mock_conn.cursor.return_value = complete_cursor
         mock_get_conn.return_value = mock_conn
 
         generate_prose(_make_mine_data(subregion_id="TNVA"))
@@ -241,11 +221,9 @@ class TestProseCache:
 
         _prose_cache.clear()
         mock_conn = MagicMock()
-        stats_cursor = MagicMock()
-        stats_cursor.fetchone.return_value = None
         complete_cursor = MagicMock()
         complete_cursor.fetchone.return_value = None
-        mock_conn.cursor.side_effect = [stats_cursor, complete_cursor]
+        mock_conn.cursor.return_value = complete_cursor
         mock_get_conn.return_value = mock_conn
 
         generate_prose(_make_mine_data(subregion_id="TNVA"))

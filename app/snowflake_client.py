@@ -37,7 +37,10 @@ SELECT
     PLANT_LATITUDE,
     PLANT_LONGITUDE,
     TOTAL_TONS,
-    DATA_YEAR
+    DATA_YEAR,
+    FATALITIES,
+    INJURIES_LOST_TIME,
+    TOTAL_DAYS_LOST
 FROM UNEARTHED_DB.MRT.MINE_PLANT_FOR_SUBREGION
 WHERE EGRID_SUBREGION = %(subregion_id)s
 """
@@ -192,6 +195,9 @@ def query_mine_for_subregion(subregion_id: str) -> dict | None:
         ],
         "tons": float(row["TOTAL_TONS"]),
         "tons_year": int(row["DATA_YEAR"]),
+        "fatalities": int(row.get("FATALITIES") or 0),
+        "injuries": int(row.get("INJURIES_LOST_TIME") or 0),
+        "days_lost": int(row.get("TOTAL_DAYS_LOST") or 0),
     }
 
 

@@ -42,6 +42,9 @@ MOCK_ROW = {
     "PLANT_LONGITUDE": "-80.113235",
     "TOTAL_TONS": "3811733.0",
     "DATA_YEAR": 2024,
+    "FATALITIES": 7,
+    "INJURIES_LOST_TIME": 42,
+    "TOTAL_DAYS_LOST": 1850,
 }
 
 
@@ -69,6 +72,9 @@ class TestQueryMineForSubregion:
         assert result["plant_coords"] == [33.371506, -80.113235]
         assert result["tons"] == pytest.approx(3811733.0)
         assert result["tons_year"] == 2024
+        assert result["fatalities"] == 7
+        assert result["injuries"] == 42
+        assert result["days_lost"] == 1850
 
     @patch("app.snowflake_client._get_connection")
     def test_no_rows_returns_none(self, mock_get_conn):
@@ -149,6 +155,32 @@ class TestQueryMineForSubregion:
         row = {**MOCK_ROW, "DATA_YEAR": None}
         mock_get_conn.return_value = self._mock_connection([row])
         assert query_mine_for_subregion("SRVC") is None
+
+    # --- safety stats ---
+
+    @patch("app.snowflake_client._get_connection")
+    def test_null_stats_default_to_zero(self, mock_get_conn):
+        """NULL safety stats from MRT must default to 0, not crash."""
+        row = {**MOCK_ROW, "FATALITIES": None, "INJURIES_LOST_TIME": None, "TOTAL_DAYS_LOST": None}
+        mock_get_conn.return_value = self._mock_connection([row])
+        result = query_mine_for_subregion("SRVC")
+        assert result["fatalities"] == 0
+        assert result["injuries"] == 0
+        assert result["days_lost"] == 0
+
+    @patch("app.snowflake_client._get_connection")
+    def test_missing_stats_keys_default_to_zero(self, mock_get_conn):
+        """If stats columns are not yet in the MRT row, default to 0."""
+        row = {
+            k: v
+            for k, v in MOCK_ROW.items()
+            if k not in ("FATALITIES", "INJURIES_LOST_TIME", "TOTAL_DAYS_LOST")
+        }
+        mock_get_conn.return_value = self._mock_connection([row])
+        result = query_mine_for_subregion("SRVC")
+        assert result["fatalities"] == 0
+        assert result["injuries"] == 0
+        assert result["days_lost"] == 0
 
     # --- cursor cleanup ---
 

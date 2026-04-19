@@ -16,5 +16,8 @@
         -81.1678
     ],
     "tons": 858337.0,
-    "tons_year": 2024
+    "tons_year": 2024,
+    "fatalities": 0,
+    "injuries": 0,
+    "days_lost": 0
 }
