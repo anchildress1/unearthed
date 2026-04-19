@@ -172,9 +172,6 @@ class TestHtmlStructure:
         assert "MSHA" in self.html
         assert "EIA" in self.html
 
-    def test_has_hero_image_container(self):
-        assert 'id="hero-image"' in self.html
-
     def test_has_error_message_element(self):
         assert 'id="error-message"' in self.html
 
@@ -205,8 +202,9 @@ class TestApiEndpointsStillWork:
         assert resp.status_code == 405
 
 
+@pytest.mark.e2e
 class TestStaticServingPerformance:
-    """Static files should be served quickly."""
+    """Static files should be served quickly. Timing-sensitive — excluded from CI."""
 
     @pytest.mark.timeout(2)
     def test_index_under_100ms(self, client):

@@ -1,6 +1,6 @@
 # unearthed
 
-A live data product that shows any US resident which specific coal mine supplies their local power plant. Two AI voices: Google Gemini writes the emotional indictment, Snowflake Cortex answers factual questions about the data in natural language.
+A live data product that shows any US resident which specific coal mine supplies their local power plant. Snowflake Cortex Analyst answers factual questions about the data in natural language.
 
 **Hard deadline:** DEV submission by **2026-04-20 06:59 UTC**.
 
@@ -12,16 +12,15 @@ A live data product that shows any US resident which specific coal mine supplies
 
 ## Tech Stack
 
-- **Frontend:** Vanilla JS, MapLibre GL JS (map), PixiJS (particle overlay)
+- **Frontend:** Vanilla JS, MapLibre GL JS (map, satellite basemap, animated flow lines)
 - **Backend:** Python 3.12 / FastAPI — two endpoints: `/mine-for-me`, `/ask`
 - **Deps:** `pyproject.toml` + `uv` (no requirements.txt). `make install-dev` to set up.
 - **Data:** Snowflake (5 tables, 2 views, 2 roles: APP_ROLE + READONLY_ROLE)
-- **AI - emotional:** Google Gemini (Flash tier)
-- **AI - factual:** Snowflake Cortex Analyst (NL → SQL via semantic model YAML)
+- **AI:** Snowflake Cortex Analyst (NL → SQL via semantic model YAML)
 - **Deploy:** Google Cloud Run, secrets via Secret Manager, Docker with non-root user
 - **Lint/Format:** `ruff` via `make lint` / `make fmt`
-- **Tests:** `pytest` via `make test` (118 tests), coverage via `make test-cov`
-- **Assets:** eGRID GeoJSON (~1 MB), 2 public-domain hero images, 19 fallback JSONs, semantic model YAML
+- **Tests:** `pytest` — `make test` (521 tests, all), `make test-ci` (510, excludes e2e timing tests)
+- **Assets:** eGRID GeoJSON (~1 MB), 19 fallback JSONs, semantic model YAML
 
 ## Data Sources
 

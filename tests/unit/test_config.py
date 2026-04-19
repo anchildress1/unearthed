@@ -3,7 +3,9 @@
 import os
 from unittest.mock import patch
 
-from app.config import Settings
+import pytest
+
+from app.config import Settings, _SettingsProxy, get_settings
 
 # Prevent .env from leaking into tests
 _CLEAN_ENV = {
@@ -67,3 +69,170 @@ class TestSettings:
             _env_file=None,
         )
         assert s.gemini_api_key == "AIza-fake"
+
+    def test_allow_password_auth_explicit_true(self):
+        s = Settings(
+            snowflake_account="test",
+            snowflake_user="user",
+            allow_password_auth=True,
+            _env_file=None,
+        )
+        assert s.allow_password_auth is True
+
+    def test_snowflake_readonly_role_can_be_overridden(self):
+        s = Settings(
+            snowflake_account="test",
+            snowflake_user="user",
+            snowflake_readonly_role="MY_READONLY_ROLE",
+            _env_file=None,
+        )
+        assert s.snowflake_readonly_role == "MY_READONLY_ROLE"
+
+    def test_gemini_model_can_be_overridden(self):
+        s = Settings(
+            snowflake_account="test",
+            snowflake_user="user",
+            gemini_model="gemini-pro",
+            _env_file=None,
+        )
+        assert s.gemini_model == "gemini-pro"
+
+    def test_private_key_passphrase_defaults_empty(self):
+        s = Settings(
+            snowflake_account="test",
+            snowflake_user="user",
+            _env_file=None,
+        )
+        assert s.snowflake_private_key_passphrase == ""
+
+    @patch.dict(
+        os.environ,
+        {**_CLEAN_ENV, "SNOWFLAKE_ACCOUNT": "env-account", "SNOWFLAKE_USER": "env-user"},
+        clear=True,
+    )
+    def test_reads_from_environment_variables(self):
+        s = Settings(_env_file=None)
+        assert s.snowflake_account == "env-account"
+        assert s.snowflake_user == "env-user"
+
+    @patch.dict(os.environ, {**_CLEAN_ENV, "ALLOW_PASSWORD_AUTH": "true"}, clear=True)  # NOSONAR
+    def test_bool_coercion_from_env_string(self):
+        """String 'true' in env must coerce to bool True."""
+        s = Settings(_env_file=None)
+        assert s.allow_password_auth is True
+
+    @patch.dict(os.environ, {**_CLEAN_ENV, "ALLOW_PASSWORD_AUTH": "false"}, clear=True)  # NOSONAR
+    def test_bool_false_from_env_string(self):
+        s = Settings(_env_file=None)
+        assert s.allow_password_auth is False
+
+    def test_warehouse_can_be_overridden(self):
+        s = Settings(
+            snowflake_account="test",
+            snowflake_user="user",
+            snowflake_warehouse="MY_WH",
+            _env_file=None,
+        )
+        assert s.snowflake_warehouse == "MY_WH"
+
+    def test_database_can_be_overridden(self):
+        s = Settings(
+            snowflake_account="test",
+            snowflake_user="user",
+            snowflake_database="MY_DB",
+            _env_file=None,
+        )
+        assert s.snowflake_database == "MY_DB"
+
+    @patch.dict(os.environ, _CLEAN_ENV, clear=True)
+    def test_all_fields_have_defaults(self):
+        """Settings must construct with no arguments (all fields have defaults)."""
+        s = Settings(_env_file=None)
+        assert s.snowflake_account == ""
+        assert s.snowflake_user == ""
+        assert s.snowflake_password == ""
+        assert s.allow_password_auth is False
+
+    @patch.dict(
+        os.environ,
+        {**_CLEAN_ENV, "GEMINI_API_KEY": "env-key", "GEMINI_MODEL": "env-model"},
+        clear=True,
+    )
+    def test_gemini_fields_from_env(self):
+        s = Settings(_env_file=None)
+        assert s.gemini_api_key == "env-key"
+        assert s.gemini_model == "env-model"
+
+
+class TestGetSettings:
+    def test_get_settings_returns_settings_instance(self):
+        # Clear lru_cache to ensure a fresh call
+        get_settings.cache_clear()
+        s = get_settings()
+        assert isinstance(s, Settings)
+
+    def test_get_settings_is_cached(self):
+        """Two calls to get_settings() must return the exact same object."""
+        get_settings.cache_clear()
+        s1 = get_settings()
+        s2 = get_settings()
+        assert s1 is s2
+
+    def test_get_settings_cache_clear(self):
+        """After cache_clear(), get_settings() returns a new object."""
+        get_settings.cache_clear()
+        s1 = get_settings()
+        get_settings.cache_clear()
+        s2 = get_settings()
+        # They may be equal by value but after cache clear they are different objects.
+        assert s1 is not s2
+
+
+class TestSettingsProxy:
+    def test_proxy_forwards_attribute_access(self):
+        """_SettingsProxy must delegate attribute lookups to get_settings()."""
+        proxy = _SettingsProxy()
+        with patch("app.config.get_settings") as mock_get:
+            mock_settings = Settings(
+                snowflake_account="proxy-account",
+                snowflake_user="user",
+                _env_file=None,
+            )
+            mock_get.return_value = mock_settings
+            assert proxy.snowflake_account == "proxy-account"
+
+    def test_proxy_missing_attr_raises(self):
+        proxy = _SettingsProxy()
+        with pytest.raises(AttributeError):
+            _ = proxy.nonexistent_attribute_xyz
+
+    def test_module_level_settings_is_proxy(self):
+        """The module-level `settings` object must be a _SettingsProxy."""
+        from app.config import settings
+        assert isinstance(settings, _SettingsProxy)
+
+    def test_module_level_settings_forwards_snowflake_role(self):
+        """Accessing settings.snowflake_role through proxy must not crash."""
+        from app.config import settings
+        # Will read from actual env / defaults — just ensure no AttributeError.
+        _ = settings.snowflake_role
+
+    def test_proxy_bool_field_forwards(self):
+        """Bool fields must forward correctly through proxy."""
+        proxy = _SettingsProxy()
+        with patch("app.config.get_settings") as mock_get:
+            mock_settings = Settings(
+                snowflake_account="test",
+                snowflake_user="user",
+                allow_password_auth=True,
+                _env_file=None,
+            )
+            mock_get.return_value = mock_settings
+            assert proxy.allow_password_auth is True
+
+    def test_proxy_repr_does_not_crash(self):
+        """repr/str on proxy must not raise."""
+        proxy = _SettingsProxy()
+        # __repr__ is not delegated to Settings, so it uses default object repr
+        r = repr(proxy)
+        assert "SettingsProxy" in r

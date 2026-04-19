@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 from urllib.parse import urlparse
 
 import pytest
+import requests as req_lib
 
 from app.snowflake_client import (
     _get_connection,
@@ -145,7 +146,30 @@ class TestQueryMineForSubregion:
         mock_get_conn.return_value = self._mock_connection([row])
         assert query_mine_for_subregion("SRVC") is None
 
+    # --- cursor cleanup ---
+
+    @patch("app.snowflake_client._get_connection")
+    def test_cursor_closed_on_execute_error(self, mock_get_conn):
+        """cur.close() must be called even when execute raises (inner finally)."""
+        mock_cursor = MagicMock()
+        mock_cursor.execute.side_effect = Exception("SQL error")
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_get_conn.return_value = mock_conn
+
+        with pytest.raises(Exception, match="SQL error"):
+            query_mine_for_subregion("SRVC")
+
+        mock_cursor.close.assert_called_once()
+
     # --- mine_type label mapping ---
+
+    @patch("app.snowflake_client._get_connection")
+    def test_surface_mine_type_maps_correctly(self, mock_get_conn):
+        row = {**MOCK_ROW, "MINE_TYPE": "S"}
+        mock_get_conn.return_value = self._mock_connection([row])
+        result = query_mine_for_subregion("SRVC")
+        assert result["mine_type"] == "Surface"
 
     @patch("app.snowflake_client._get_connection")
     def test_unknown_mine_type_falls_back_to_surface(self, mock_get_conn):
@@ -209,6 +233,29 @@ class TestLoadFallbackData:
             result = load_fallback_data("CORRUPT")
         assert result is None
 
+    def test_permission_denied_returns_none(self, tmp_path):
+        """OSError (permission denied) must be caught and return None."""
+        restricted_file = tmp_path / "NOPERM.json"
+        restricted_file.write_text('{"mine": "Test"}')
+        with patch(
+            "app.snowflake_client._VALID_FALLBACK_IDS",
+            {"NOPERM": restricted_file},
+        ):
+            with patch.object(
+                type(restricted_file),
+                "read_text",
+                side_effect=OSError("Permission denied"),
+            ):
+                result = load_fallback_data("NOPERM")
+        assert result is None
+
+    def test_fallback_has_required_structure(self):
+        """Loaded fallback data must have mine, plant, coords, and tons keys."""
+        result = load_fallback_data("SRVC")
+        if result is not None:
+            for key in ("mine", "plant", "mine_coords", "plant_coords", "tons"):
+                assert key in result, f"Missing key: {key}"
+
 
 class TestAuthPolicy:
     @patch("app.snowflake_client.settings")
@@ -247,6 +294,14 @@ class TestAuthPolicy:
         with pytest.raises(RuntimeError, match="No auth method configured"):
             _get_connection()
 
+    @patch("app.snowflake_client.settings")
+    def test_missing_user_raises(self, mock_settings):
+        mock_settings.snowflake_account = "test"
+        mock_settings.snowflake_user = ""
+
+        with pytest.raises(RuntimeError, match="SNOWFLAKE_USER"):
+            _get_connection()
+
     @patch("app.snowflake_client.snowflake.connector.connect")
     @patch("app.snowflake_client.settings")
     def test_password_with_opt_in_connects(self, mock_settings, mock_connect):
@@ -263,6 +318,71 @@ class TestAuthPolicy:
         mock_connect.assert_called_once()
         call_kwargs = mock_connect.call_args[1]
         assert call_kwargs["password"] == "secret"
+
+    @patch("app.snowflake_client.snowflake.connector.connect")
+    @patch("app.snowflake_client.settings")
+    def test_custom_role_forwarded(self, mock_settings, mock_connect):
+        """role= kwarg must override settings.snowflake_role."""
+        mock_settings.snowflake_account = "test"
+        mock_settings.snowflake_user = "user"
+        mock_settings.snowflake_role = "DEFAULT_ROLE"
+        mock_settings.snowflake_warehouse = "WH"
+        mock_settings.snowflake_database = "DB"
+        mock_settings.snowflake_private_key_path = ""
+        mock_settings.snowflake_password = "secret"  # NOSONAR — test mock value
+        mock_settings.allow_password_auth = True
+
+        _get_connection(role="CUSTOM_ROLE")
+        call_kwargs = mock_connect.call_args[1]
+        assert call_kwargs["role"] == "CUSTOM_ROLE"
+
+    @patch("app.snowflake_client.snowflake.connector.connect")
+    @patch("app.snowflake_client.settings")
+    def test_private_key_auth_path(self, mock_settings, mock_connect, tmp_path):
+        """Private key file path must be read and passed to connector."""
+        mock_settings.snowflake_account = "test"
+        mock_settings.snowflake_user = "user"
+        mock_settings.snowflake_role = "ROLE"
+        mock_settings.snowflake_warehouse = "WH"
+        mock_settings.snowflake_database = "DB"
+        mock_settings.snowflake_private_key_passphrase = ""
+        mock_settings.allow_password_auth = False
+
+        # Generate a real RSA key for realistic test
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
+
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        key_path = tmp_path / "test_key.p8"
+        key_path.write_bytes(
+            key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.PKCS8,
+                encryption_algorithm=serialization.NoEncryption(),
+            )
+        )
+        mock_settings.snowflake_private_key_path = str(key_path)
+
+        _get_connection()
+        mock_connect.assert_called_once()
+        call_kwargs = mock_connect.call_args[1]
+        assert "private_key" in call_kwargs
+        assert isinstance(call_kwargs["private_key"], bytes)
+
+    @patch("app.snowflake_client.settings")
+    def test_private_key_file_not_found_raises(self, mock_settings):
+        """Missing key file must raise, not silently fall back."""
+        mock_settings.snowflake_account = "test"
+        mock_settings.snowflake_user = "user"
+        mock_settings.snowflake_role = "ROLE"
+        mock_settings.snowflake_warehouse = "WH"
+        mock_settings.snowflake_database = "DB"
+        mock_settings.snowflake_private_key_path = "/nonexistent/key.p8"
+        mock_settings.snowflake_private_key_passphrase = ""
+        mock_settings.allow_password_auth = False
+
+        with pytest.raises(FileNotFoundError):
+            _get_connection()
 
 
 ANALYST_INTERP = "This is our interpretation of your question: Total coal tonnage for SRVC."
@@ -503,6 +623,119 @@ class TestQueryCortexAnalyst:
         assert result["sql"] is None
         assert result["suggestions"] == ["Mine production?", "Active mines?"]
 
+    @patch("app.snowflake_client.requests.post")
+    @patch("app.snowflake_client._get_connection")
+    def test_http_error_status_returns_error_dict(self, mock_get_conn, mock_post):
+        """resp.ok=False triggers raise_for_status → caught by except → error dict."""
+        mock_get_conn.return_value = self._mock_connection()
+        mock_resp = MagicMock()
+        mock_resp.ok = False
+        mock_resp.status_code = 500
+        mock_resp.text = "Internal Server Error"
+        mock_resp.raise_for_status.side_effect = req_lib.HTTPError("500 Server Error")
+        mock_post.return_value = mock_resp
+
+        result = query_cortex_analyst("test")
+
+        assert result["error"] is not None
+        assert "couldn't answer" in result["error"]
+        assert result["answer"] == ""
+
+    @patch("app.snowflake_client.requests.post")
+    @patch("app.snowflake_client._get_connection")
+    def test_missing_message_key_returns_empty(self, mock_get_conn, mock_post):
+        """Response without 'message' key should not crash."""
+        mock_get_conn.return_value = self._mock_connection()
+        mock_resp = MagicMock()
+        mock_resp.ok = True
+        mock_resp.json.return_value = {}
+        mock_post.return_value = mock_resp
+
+        result = query_cortex_analyst("test")
+
+        assert result["answer"] == ""
+        assert result["sql"] is None
+
+    @patch("app.snowflake_client.requests.post")
+    @patch("app.snowflake_client._get_connection")
+    def test_sql_without_statement_key_defaults_empty(self, mock_get_conn, mock_post):
+        """SQL item missing 'statement' key defaults to empty string."""
+        mock_get_conn.return_value = self._mock_connection()
+        mock_resp = MagicMock()
+        mock_resp.ok = True
+        mock_resp.json.return_value = {
+            "message": {
+                "role": "analyst",
+                "content": [{"type": "sql"}],
+            }
+        }
+        mock_post.return_value = mock_resp
+
+        result = query_cortex_analyst("test")
+
+        assert result["sql"] == ""
+
+    @patch("app.snowflake_client.requests.post")
+    @patch("app.snowflake_client._get_connection")
+    def test_interpretation_joined_with_double_newline(self, mock_get_conn, mock_post):
+        """Multiple text blocks must be joined by exactly two newlines."""
+        mock_get_conn.return_value = self._mock_connection()
+        mock_resp = MagicMock()
+        mock_resp.ok = True
+        mock_resp.json.return_value = {
+            "message": {
+                "role": "analyst",
+                "content": [
+                    {"type": "text", "text": "Alpha"},
+                    {"type": "text", "text": "Beta"},
+                    {"type": "sql", "statement": "SELECT 1"},
+                ],
+            }
+        }
+        mock_post.return_value = mock_resp
+
+        result = query_cortex_analyst("test")
+
+        assert result["interpretation"] == "Alpha\n\nBeta"
+
+    @patch("app.snowflake_client.requests.post")
+    @patch("app.snowflake_client._get_connection")
+    def test_multiple_text_blocks_no_sql_joined_as_answer(self, mock_get_conn, mock_post):
+        """Multiple text blocks without SQL → joined as answer, not interpretation."""
+        mock_get_conn.return_value = self._mock_connection()
+        mock_resp = MagicMock()
+        mock_resp.ok = True
+        mock_resp.json.return_value = {
+            "message": {
+                "role": "analyst",
+                "content": [
+                    {"type": "text", "text": "Part 1."},
+                    {"type": "text", "text": "Part 2."},
+                ],
+            }
+        }
+        mock_post.return_value = mock_resp
+
+        result = query_cortex_analyst("test")
+
+        assert result["answer"] == "Part 1.\n\nPart 2."
+        assert result["interpretation"] is None
+
+    @patch("app.snowflake_client.requests.post")
+    @patch("app.snowflake_client._get_connection")
+    def test_sends_question_in_request_body(self, mock_get_conn, mock_post):
+        """The question must appear in the POST body."""
+        mock_get_conn.return_value = self._mock_connection()
+        mock_resp = MagicMock()
+        mock_resp.ok = True
+        mock_resp.json.return_value = ANALYST_RESPONSE
+        mock_post.return_value = mock_resp
+
+        query_cortex_analyst("How many mines in PA?")
+
+        body = mock_post.call_args[1]["json"]
+        assert body["messages"][0]["content"][0]["text"] == "How many mines in PA?"
+
 
 class TestExecuteAnalystSql:
     def _mock_connection(self, rows):
@@ -605,3 +838,46 @@ class TestExecuteAnalystSql:
             execute_analyst_sql("SELECT 1")
 
         mock_conn.close.assert_called_once()
+
+    @patch("app.snowflake_client._get_connection")
+    def test_session_timeout_set_before_query(self, mock_get_conn):
+        """ALTER SESSION must be called before the actual SQL to enforce timeout."""
+        mock_conn = self._mock_connection([])
+        mock_get_conn.return_value = mock_conn
+        execute_analyst_sql("SELECT 1")
+
+        cursor = mock_conn.cursor.return_value
+        calls = [str(c) for c in cursor.execute.call_args_list]
+        assert "STATEMENT_TIMEOUT_IN_SECONDS" in calls[0]
+        assert "SELECT 1" in calls[1]
+
+    @patch("app.snowflake_client._get_connection")
+    def test_fetchmany_limited_to_500(self, mock_get_conn):
+        """Results must be capped at 500 rows."""
+        mock_conn = self._mock_connection([{"X": 1}])
+        mock_get_conn.return_value = mock_conn
+        execute_analyst_sql("SELECT 1")
+
+        cursor = mock_conn.cursor.return_value
+        cursor.fetchmany.assert_called_once_with(500)
+
+    @patch("app.snowflake_client._get_connection")
+    def test_cursor_closed_in_execute(self, mock_get_conn):
+        """Cursor must be closed via finally block after execution."""
+        mock_conn = self._mock_connection([])
+        mock_get_conn.return_value = mock_conn
+        execute_analyst_sql("SELECT 1")
+
+        mock_conn.cursor.return_value.close.assert_called_once()
+
+    @patch("app.snowflake_client._get_connection")
+    def test_multiple_trailing_semicolons_stripped(self, mock_get_conn):
+        """Leading/trailing whitespace and semicolons must be fully stripped."""
+        mock_conn = self._mock_connection([{"X": 1}])
+        mock_get_conn.return_value = mock_conn
+        execute_analyst_sql("  SELECT 1 ;  ")
+
+        cursor = mock_conn.cursor.return_value
+        # Second execute call is the actual SQL (first is ALTER SESSION)
+        actual_sql = cursor.execute.call_args_list[1][0][0]
+        assert actual_sql == "SELECT 1"

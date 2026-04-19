@@ -126,6 +126,50 @@ class TestHttpMethods:
         assert resp.status_code == 405
 
 
+class TestResponseHeaders:
+    """Verify response headers on API endpoints."""
+
+    @patch("app.main.generate_prose", return_value=("Prose.", False))
+    @patch("app.main.query_mine_for_subregion", return_value=SAMPLE_MINE_DATA)
+    def test_mine_for_me_no_cache_header(self, mock_sf, mock_gemini, client):
+        """API JSON responses should not include cache-control by default."""
+        resp = client.post("/mine-for-me", json={"subregion_id": "SRVC"})
+        assert resp.status_code == 200
+        assert "cache-control" not in resp.headers
+
+    @patch(
+        "app.main.query_cortex_analyst",
+        return_value={"answer": "42", "interpretation": None, "sql": None, "error": None},
+    )
+    def test_ask_response_is_valid_json(self, mock_cortex, client):
+        resp = client.post("/ask", json={"question": "test"})
+        # Should not raise
+        data = resp.json()
+        assert isinstance(data, dict)
+
+
+class TestConcurrentFailures:
+    """Both Snowflake and Gemini fail simultaneously."""
+
+    @patch("app.main.generate_prose", return_value=("Fallback.", True))
+    @patch("app.main.load_fallback_data", return_value=SAMPLE_MINE_DATA)
+    @patch("app.main.query_mine_for_subregion", side_effect=Exception("SF down"))
+    def test_both_snowflake_and_gemini_degraded(self, mock_sf, mock_fb, mock_gemini, client):
+        """Both services failing must result in degraded=True."""
+        resp = client.post("/mine-for-me", json={"subregion_id": "SRVC"})
+        data = resp.json()
+        assert data["degraded"] is True
+
+    @patch("app.main.load_fallback_data", return_value=None)
+    @patch("app.main.query_mine_for_subregion", return_value=None)
+    def test_no_data_no_fallback_returns_404_detail(self, mock_sf, mock_fb, client):
+        """404 response must include descriptive detail message."""
+        resp = client.post("/mine-for-me", json={"subregion_id": "ZZZZ"})
+        assert resp.status_code == 404
+        data = resp.json()
+        assert "ZZZZ" in data["detail"]
+
+
 class TestResponsePayloadBounds:
     """Verify response payloads stay within reasonable bounds."""
 

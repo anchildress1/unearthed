@@ -6,23 +6,6 @@
 
 const SECONDS_IN_YEAR = 365.25 * 24 * 60 * 60;
 
-// Hero images: pre-1980 public domain (Library of Congress)
-const HERO_IMAGES = {
-  Surface: "/static/img/hero-surface.jpg",
-  Underground: "/static/img/hero-underground.jpg",
-};
-
-/**
- * Show the hero image.
- * @param {HTMLElement} heroEl - The hero image div
- * @param {string} mineType - "Surface" or "Underground"
- */
-export function showHeroImage(heroEl, mineType) {
-  const url = HERO_IMAGES[mineType] || HERO_IMAGES.Surface;
-  heroEl.style.backgroundImage = `url('${url}')`;
-  heroEl.classList.add("hero-bg--visible");
-}
-
 /**
  * Start the tonnage ticker.
  * @param {HTMLElement} tickerEl - The element to update with the current value

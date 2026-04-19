@@ -17,7 +17,7 @@ import {
   subregionForState,
 } from "./geo.js";
 import { createMap, runRevealSequence } from "./map.js";
-import { showHeroImage, startTicker } from "./particles.js";
+import { startTicker } from "./particles.js";
 
 // --- CDN dependency check ---
 if (typeof maplibregl === "undefined") {
@@ -52,7 +52,6 @@ const relocAddressInput = document.getElementById("reloc-address-input");
 const relocBtnLocate = document.getElementById("reloc-btn-locate");
 const relocError = document.getElementById("reloc-error");
 
-const heroImage = document.getElementById("hero-image");
 const tickerValue = document.getElementById("ticker-value");
 const proseEl = document.getElementById("prose");
 
@@ -240,8 +239,6 @@ async function startReveal(subregionId, coords) {
     // Reveal the info panel alongside the map
     infoPanel.classList.remove("hidden");
 
-    // Hero image
-    showHeroImage(heroImage, data.mine_type);
     tickerStop = startTicker(tickerValue, data.tons);
 
     // Prose (fade in)

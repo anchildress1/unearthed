@@ -17,6 +17,22 @@ class TestMineForMeRequest:
         req = MineForMeRequest(subregion_id="srvc")
         assert req.subregion_id == "srvc"
 
+    def test_min_length_subregion_accepted(self):
+        req = MineForMeRequest(subregion_id="AB")
+        assert req.subregion_id == "AB"
+
+    def test_max_length_subregion_accepted(self):
+        req = MineForMeRequest(subregion_id="ABCDEFGHIJ")  # 10 chars
+        assert req.subregion_id == "ABCDEFGHIJ"
+
+    def test_one_over_max_length_rejected(self):
+        with pytest.raises(ValidationError):
+            MineForMeRequest(subregion_id="ABCDEFGHIJK")  # 11 chars
+
+    def test_one_char_subregion_rejected(self):
+        with pytest.raises(ValidationError):
+            MineForMeRequest(subregion_id="X")
+
     def test_empty_subregion_rejected(self):
         with pytest.raises(ValidationError):
             MineForMeRequest(subregion_id="")
@@ -40,6 +56,18 @@ class TestMineForMeRequest:
     def test_special_chars_rejected(self):
         with pytest.raises(ValidationError):
             MineForMeRequest(subregion_id="../bad")
+
+    def test_space_in_subregion_rejected(self):
+        with pytest.raises(ValidationError):
+            MineForMeRequest(subregion_id="SR VC")
+
+    def test_semicolon_injection_rejected(self):
+        with pytest.raises(ValidationError):
+            MineForMeRequest(subregion_id="SRVC;")
+
+    def test_alphanumeric_mixed_accepted(self):
+        req = MineForMeRequest(subregion_id="SR1C")
+        assert req.subregion_id == "SR1C"
 
 
 # --- MineForMeResponse ---
@@ -103,6 +131,119 @@ class TestMineForMeResponse:
                 subregion_id="SRVC",
             )
 
+    def test_mine_coords_out_of_range_lat_rejected(self, sample_mine_data):
+        sample_mine_data["mine_coords"] = [91.0, -80.0]
+        with pytest.raises(ValidationError):
+            MineForMeResponse(**sample_mine_data, prose="Bad.", subregion_id="SRVC")
+
+    def test_mine_coords_out_of_range_negative_lat_rejected(self, sample_mine_data):
+        sample_mine_data["mine_coords"] = [-91.0, -80.0]
+        with pytest.raises(ValidationError):
+            MineForMeResponse(**sample_mine_data, prose="Bad.", subregion_id="SRVC")
+
+    def test_mine_coords_out_of_range_lon_rejected(self, sample_mine_data):
+        sample_mine_data["mine_coords"] = [39.0, 181.0]
+        with pytest.raises(ValidationError):
+            MineForMeResponse(**sample_mine_data, prose="Bad.", subregion_id="SRVC")
+
+    def test_mine_coords_boundary_lat_90_accepted(self, sample_mine_data):
+        sample_mine_data["mine_coords"] = [90.0, -80.0]
+        resp = MineForMeResponse(**sample_mine_data, prose="Boundary.", subregion_id="SRVC")
+        assert resp.mine_coords[0] == pytest.approx(90.0)
+
+    def test_mine_coords_boundary_lat_minus_90_accepted(self, sample_mine_data):
+        sample_mine_data["mine_coords"] = [-90.0, -80.0]
+        resp = MineForMeResponse(**sample_mine_data, prose="Boundary.", subregion_id="SRVC")
+        assert resp.mine_coords[0] == pytest.approx(-90.0)
+
+    def test_mine_coords_boundary_lon_180_accepted(self, sample_mine_data):
+        sample_mine_data["mine_coords"] = [39.0, 180.0]
+        resp = MineForMeResponse(**sample_mine_data, prose="Boundary.", subregion_id="SRVC")
+        assert resp.mine_coords[1] == pytest.approx(180.0)
+
+    def test_plant_coords_out_of_range_rejected(self, sample_mine_data):
+        sample_mine_data["plant_coords"] = [33.0, -181.0]
+        with pytest.raises(ValidationError):
+            MineForMeResponse(**sample_mine_data, prose="Bad.", subregion_id="SRVC")
+
+    def test_user_coords_none_by_default(self, sample_mine_data):
+        resp = MineForMeResponse(**sample_mine_data, prose="Test.", subregion_id="SRVC")
+        assert resp.user_coords is None
+
+    def test_user_coords_accepted(self, sample_mine_data):
+        resp = MineForMeResponse(
+            **sample_mine_data,
+            prose="Test.",
+            subregion_id="SRVC",
+            user_coords=[34.0, -81.0],
+        )
+        assert resp.user_coords == [34.0, -81.0]
+
+    def test_extra_field_rejected(self, sample_mine_data):
+        with pytest.raises(ValidationError):
+            MineForMeResponse(
+                **sample_mine_data,
+                prose="Test.",
+                subregion_id="SRVC",
+                unknown_field="bad",
+            )
+
+    def test_mine_coords_one_element_rejected(self, sample_mine_data):
+        sample_mine_data["mine_coords"] = [39.0]
+        with pytest.raises(ValidationError):
+            MineForMeResponse(**sample_mine_data, prose="Bad.", subregion_id="SRVC")
+
+    def test_mine_coords_three_elements_rejected(self, sample_mine_data):
+        sample_mine_data["mine_coords"] = [39.0, -80.0, 100.0]
+        with pytest.raises(ValidationError):
+            MineForMeResponse(**sample_mine_data, prose="Bad.", subregion_id="SRVC")
+
+    def test_mine_coords_empty_list_rejected(self, sample_mine_data):
+        sample_mine_data["mine_coords"] = []
+        with pytest.raises(ValidationError):
+            MineForMeResponse(**sample_mine_data, prose="Bad.", subregion_id="SRVC")
+
+    def test_mine_coords_nan_rejected(self, sample_mine_data):
+        sample_mine_data["mine_coords"] = [float("nan"), -80.0]
+        with pytest.raises(ValidationError):
+            MineForMeResponse(**sample_mine_data, prose="Bad.", subregion_id="SRVC")
+
+    def test_mine_coords_infinity_rejected(self, sample_mine_data):
+        sample_mine_data["mine_coords"] = [float("inf"), -80.0]
+        with pytest.raises(ValidationError):
+            MineForMeResponse(**sample_mine_data, prose="Bad.", subregion_id="SRVC")
+
+    def test_plant_coords_boundary_lon_minus_180_accepted(self, sample_mine_data):
+        sample_mine_data["plant_coords"] = [33.0, -180.0]
+        resp = MineForMeResponse(**sample_mine_data, prose="Boundary.", subregion_id="SRVC")
+        assert resp.plant_coords[1] == -180.0
+
+    def test_negative_zero_tons_accepted(self, sample_mine_data):
+        """Negative zero is >= 0, so it should be accepted."""
+        sample_mine_data["tons"] = -0.0
+        resp = MineForMeResponse(**sample_mine_data, prose="Zero.", subregion_id="SRVC")
+        assert resp.tons == pytest.approx(0.0)
+
+    def test_very_small_tons_accepted(self, sample_mine_data):
+        sample_mine_data["tons"] = 0.001
+        resp = MineForMeResponse(**sample_mine_data, prose="Tiny.", subregion_id="SRVC")
+        assert resp.tons == pytest.approx(0.001)
+
+    def test_mine_coords_non_numeric_rejected(self, sample_mine_data):
+        sample_mine_data["mine_coords"] = ["lat", "lon"]
+        with pytest.raises(ValidationError):
+            MineForMeResponse(**sample_mine_data, prose="Bad.", subregion_id="SRVC")
+
+    def test_user_coords_out_of_range_not_validated(self, sample_mine_data):
+        """user_coords is not passed through validate_coords (no field_validator)."""
+        resp = MineForMeResponse(
+            **sample_mine_data,
+            prose="Test.",
+            subregion_id="SRVC",
+            user_coords=[999.0, 999.0],
+        )
+        assert resp.user_coords == [999.0, 999.0]
+
 
 # --- AskRequest ---
 
@@ -124,6 +265,66 @@ class TestAskRequest:
     def test_empty_question_rejected(self):
         with pytest.raises(ValidationError):
             AskRequest(question="")
+
+    def test_max_length_question_accepted(self):
+        req = AskRequest(question="x" * 500)
+        assert len(req.question) == 500
+
+    def test_over_max_length_question_rejected(self):
+        with pytest.raises(ValidationError):
+            AskRequest(question="x" * 501)
+
+    def test_subregion_id_min_length_accepted(self):
+        req = AskRequest(question="How much?", subregion_id="AB")
+        assert req.subregion_id == "AB"
+
+    def test_subregion_id_max_length_accepted(self):
+        req = AskRequest(question="How much?", subregion_id="ABCDEFGHIJ")
+        assert req.subregion_id == "ABCDEFGHIJ"
+
+    def test_subregion_id_over_max_length_rejected(self):
+        with pytest.raises(ValidationError):
+            AskRequest(question="How much?", subregion_id="ABCDEFGHIJK")
+
+    def test_subregion_id_one_char_rejected(self):
+        with pytest.raises(ValidationError):
+            AskRequest(question="How much?", subregion_id="X")
+
+    def test_subregion_id_special_chars_rejected(self):
+        with pytest.raises(ValidationError):
+            AskRequest(question="How much?", subregion_id="../bad")
+
+    def test_question_is_strict_str(self):
+        with pytest.raises(ValidationError):
+            AskRequest(question=42)
+
+    def test_unicode_question_accepted(self):
+        req = AskRequest(question="日本語の質問")
+        assert req.question == "日本語の質問"
+
+    def test_whitespace_only_question_accepted(self):
+        """Whitespace is >= min_length=1, so model accepts it."""
+        req = AskRequest(question="   ")
+        assert req.question == "   "
+
+    def test_extra_field_silently_ignored(self):
+        """AskRequest has no extra=forbid, so unknown fields are silently dropped."""
+        req = AskRequest(question="test", extra_field="ignored")
+        assert req.question == "test"
+
+    def test_subregion_id_none_explicitly_accepted(self):
+        req = AskRequest(question="How much?", subregion_id=None)
+        assert req.subregion_id is None
+
+    def test_numeric_question_rejected(self):
+        """Question must be StrictStr — int should fail."""
+        with pytest.raises(ValidationError):
+            AskRequest(question=123)
+
+    def test_bool_question_rejected(self):
+        """Question must be StrictStr — bool should fail."""
+        with pytest.raises(ValidationError):
+            AskRequest(question=True)
 
 
 # --- AskResponse ---
@@ -152,3 +353,56 @@ class TestAskResponse:
     def test_results_field(self):
         resp = AskResponse(answer="42", results=[{"TOTAL_TONS": 42}])
         assert resp.results == [{"TOTAL_TONS": 42}]
+
+    def test_interpretation_field_none_by_default(self):
+        resp = AskResponse(answer="42")
+        assert resp.interpretation is None
+
+    def test_interpretation_field_set(self):
+        resp = AskResponse(answer="", interpretation="This is our interpretation.")
+        assert resp.interpretation == "This is our interpretation."
+
+    def test_all_optional_fields_none(self):
+        resp = AskResponse(answer="")
+        assert resp.sql is None
+        assert resp.error is None
+        assert resp.suggestions is None
+        assert resp.results is None
+        assert resp.interpretation is None
+
+    def test_extra_field_rejected(self):
+        with pytest.raises(ValidationError):
+            AskResponse(answer="42", unknown_field="bad")
+
+    def test_results_empty_list_accepted(self):
+        resp = AskResponse(answer="No data", results=[])
+        assert resp.results == []
+
+    def test_multiple_results_rows(self):
+        rows = [{"A": 1}, {"A": 2}, {"A": 3}]
+        resp = AskResponse(answer="", results=rows)
+        assert len(resp.results) == 3
+
+    def test_suggestions_empty_list_accepted(self):
+        resp = AskResponse(answer="", suggestions=[])
+        assert resp.suggestions == []
+
+    def test_all_fields_populated(self):
+        resp = AskResponse(
+            answer="42",
+            interpretation="Restatement",
+            sql="SELECT 1",
+            error=None,
+            suggestions=["Q1"],
+            results=[{"X": 1}],
+        )
+        assert resp.answer == "42"
+        assert resp.interpretation == "Restatement"
+        assert resp.sql == "SELECT 1"
+        assert resp.results == [{"X": 1}]
+
+    def test_error_and_answer_coexist(self):
+        """Error and answer can both be set (SQL execution failure case)."""
+        resp = AskResponse(answer="Fallback.", error="Query failed")
+        assert resp.answer == "Fallback."
+        assert resp.error == "Query failed"

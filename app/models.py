@@ -46,14 +46,34 @@ class AskRequest(BaseModel):
 
 
 class AskResponse(BaseModel):
-    answer: str = Field(description="Text answer from Cortex Analyst, or empty string when SQL results are the answer.")
+    answer: str = Field(
+        description=(
+            "Text answer from Cortex Analyst, or empty string "
+            "when SQL results are the answer."
+        ),
+    )
     interpretation: str | None = Field(
         default=None,
-        description="Analyst's internal restatement of the question, shown as a dim label when SQL results are present. None when SQL execution failed or no SQL was generated.",
+        description=(
+            "Analyst's internal restatement of the question, shown as a dim label when SQL "
+            "results are present. None when SQL execution failed or no SQL was generated."
+        ),
     )
-    sql: str | None = Field(default=None, description="Generated SQL statement, if any.")
-    error: str | None = Field(default=None, description="Error message when the query could not be answered or executed.")
-    suggestions: list[str] | None = Field(default=None, description="Follow-up question suggestions.")
-    results: list[dict] | None = Field(default=None, description="Rows returned by executing the generated SQL (capped at 500).")
+    sql: str | None = Field(
+        default=None,
+        description="Generated SQL statement, if any.",
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error message when the query could not be answered or executed.",
+    )
+    suggestions: list[str] | None = Field(
+        default=None,
+        description="Follow-up question suggestions.",
+    )
+    results: list[dict] | None = Field(
+        default=None,
+        description="Rows returned by executing the generated SQL (capped at 500).",
+    )
 
     model_config = {"extra": "forbid"}

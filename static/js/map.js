@@ -9,15 +9,23 @@
  * All layers are native MapLibre WebGL — they pan/zoom with the map.
  */
 
-// Basemap style evaluation — considered green topology alternatives:
-// - Stamen Terrain / Stadia Maps: requires paid API key as of 2024 (Stadia acquired Stamen tiles)
-// - OpenTopoMap: free XYZ raster tiles only; no vector style JSON; classic paper-toned look
-//   incompatible with this dark aesthetic; loses crisp vector zoom; can't be used as MapLibre style
-// - MapTiler terrain/outdoor styles: all require paid API key
-// Verdict: no suitable free green topology MapLibre style without paid access.
-// Keeping Carto dark-matter for aesthetic coherence with the coal/mining theme.
-const MAPTILER_STYLE =
-  "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
+// Satellite basemap via ESRI World Imagery (public access, no API key required).
+// Inline style spec feeds raster XYZ tiles into MapLibre's vector engine.
+const SATELLITE_STYLE = {
+  version: 8,
+  sources: {
+    esri: {
+      type: "raster",
+      tiles: [
+        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      ],
+      tileSize: 256,
+      attribution: "Esri, Maxar, Earthstar Geographics",
+      maxzoom: 18,
+    },
+  },
+  layers: [{ id: "esri-satellite", type: "raster", source: "esri" }],
+};
 
 const STEP_DURATION_MS = 1700;
 const PAUSE_BETWEEN_MS = 200;
@@ -39,7 +47,7 @@ const FLOW_SPEED = 9;
 export function createMap(container) {
   return new maplibregl.Map({
     container,
-    style: MAPTILER_STYLE,
+    style: SATELLITE_STYLE,
     center: [-98.5, 39.8], // Center of US
     zoom: 3.5,
     attributionControl: false,
@@ -151,7 +159,7 @@ function addMarker(map, lonLat, label, color) {
   el.style.cssText = `
     width: 14px; height: 14px;
     background: ${color};
-    border: 2px solid #0a0a0a;
+    border: 2px solid #ffffff;
     border-radius: 50%;
     box-shadow: 0 0 8px ${color}80;
   `;
@@ -232,8 +240,8 @@ function addMinePulse(map, mineLonLat) {
     source: sourceId,
     paint: {
       "circle-radius": 14,
-      "circle-color": "#7a3d10",
-      "circle-opacity": 0.08,
+      "circle-color": "#ffb347",
+      "circle-opacity": 0.15,
       "circle-blur": 0.6,
     },
   });
@@ -261,26 +269,26 @@ function addMinePulse(map, mineLonLat) {
 function addFlowLine(map, userLonLat, plantLonLat, mineLonLat) {
   const arc = buildArc(mineLonLat, plantLonLat, 60);
 
-  // User → plant: dim contextual connection (you are downstream of this plant)
+  // User → plant: contextual connection (you are downstream of this plant)
   addLineLayer(map, "user-arc", buildArc(userLonLat, plantLonLat, 30), {
-    "line-color": "#3a3a3a",
-    "line-width": 1,
-    "line-opacity": 0.3,
+    "line-color": "#ffffff",
+    "line-width": 1.5,
+    "line-opacity": 0.35,
     "line-dasharray": [2, 5],
   });
 
   // Mine → plant: wide blurred backing — heat haze of the extraction corridor
   addLineLayer(map, "flow-glow", arc, {
-    "line-color": "#4a1e05",
-    "line-width": 10,
-    "line-opacity": 0.5,
+    "line-color": "#c4956a",
+    "line-width": 12,
+    "line-opacity": 0.4,
     "line-blur": 6,
   });
 
   // Mine → plant: amber dashes, static pattern, offset-animated
   addLineLayer(map, "flow-dashes", arc, {
-    "line-color": "#c4956a",
-    "line-width": 3,
+    "line-color": "#ffb347",
+    "line-width": 3.5,
     "line-opacity": 1,
     "line-dasharray": [DASH_LEN, GAP_LEN],
   });
@@ -307,7 +315,7 @@ function addFlowLine(map, userLonLat, plantLonLat, mineLonLat) {
       // Pulse: single slow sine breath (~3.5s period)
       const phase = elapsed * ((Math.PI * 2) / 3.5);
       const r = 12 + 8 * Math.abs(Math.sin(phase));
-      const a = 0.06 + 0.1 * Math.abs(Math.sin(phase));
+      const a = 0.1 + 0.2 * Math.abs(Math.sin(phase));
       map.setPaintProperty("mine-pulse", "circle-radius", r);
       map.setPaintProperty("mine-pulse", "circle-opacity", a);
     } catch {

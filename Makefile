@@ -1,4 +1,4 @@
-.PHONY: install install-dev dev test lint clean docker-build docker-run fallbacks
+.PHONY: install install-dev dev test test-ci test-cov lint clean docker-build docker-run fallbacks
 
 # Install runtime dependencies
 install:
@@ -12,13 +12,17 @@ install-dev:
 dev:
 	uv run uvicorn app.main:app --reload --port 8001
 
-# Run the full test suite
+# Run the full test suite (all tests including e2e)
 test:
 	uv run pytest tests/ -v --tb=short
 
-# Run tests with coverage
+# Run CI-safe tests (excludes timing-sensitive e2e tests)
+test-ci:
+	uv run pytest tests/ -v --tb=short -m "not e2e"
+
+# Run tests with coverage (CI-safe)
 test-cov:
-	uv run pytest tests/ -v --tb=short --cov=app --cov-report=term-missing
+	uv run pytest tests/ -v --tb=short -m "not e2e" --cov=app --cov-report=term-missing
 
 # Lint with ruff (install separately: uv pip install ruff)
 lint:

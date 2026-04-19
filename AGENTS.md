@@ -41,20 +41,18 @@ Do not add endpoints without updating the PRD.
 - Python 3.12 / FastAPI. Dependencies managed via `pyproject.toml` + `uv`.
 - Snowflake connector: `snowflake-connector-python` with key-pair auth (preferred) or password auth (opt-in via `ALLOW_PASSWORD_AUTH=true` for local dev). Private key stored as Cloud Run secret.
 - Two Snowflake roles: `UNEARTHED_APP_ROLE` (general queries), `UNEARTHED_READONLY_ROLE` (Analyst SQL execution — SELECT-only grants).
-- Gemini calls cached per-subregion at the API layer as `(prose, degraded)` tuples (TTL: until next deploy). Do not call Gemini twice for the same subregion in the same deployment.
 - Cortex Analyst: REST API via `/ask` endpoint. Generated SQL is validated (SELECT-only, no multi-statement, no DML/DDL keywords) and executed under the read-only role with a 500-row cap and 10-second statement timeout.
 - Default suggestions (from 5 verified queries) are always returned in `/ask` responses.
 - Docs/OpenAPI disabled by default (set `ENABLE_DOCS=true` for local dev). CORS origins configurable via `CORS_ORIGINS` env var.
 
 ### Degraded Mode
 
-Both external dependencies (Snowflake, Gemini) have fallbacks:
+Snowflake is the sole external dependency. Fallbacks:
 
 | Dependency Down | Fallback |
 |---|---|
 | Snowflake | Return cached static JSON per-subregion (19 files) with `degraded: true` |
 | Snowflake + no fallback | Return **404** (no fake placeholder data) |
-| Gemini | Return pre-rendered template with data interpolated, `degraded: true` |
 | Cortex Analyst | Display fallback message with default suggestions, reveal page continues normally |
 | Analyst SQL execution | Set `error` field with explicit message; answer text still returned |
 
@@ -90,7 +88,7 @@ UNEARTHED_DB
 │   └── (intermediate transforms)
 └── MRT          — consumption-ready views
     ├── V_MINE_FOR_PLANT        (mine rankings per plant)
-    └── V_MINE_FOR_SUBREGION    (mine rankings per eGRID subregion + Cortex summary)
+    └── V_MINE_FOR_SUBREGION    (mine rankings per eGRID subregion)
 ```
 
 ### SQL Standards
@@ -113,23 +111,20 @@ UNEARTHED_DB
 
 ### Cortex AI Usage
 
-Two distinct Cortex features in use — do not confuse them:
+One Cortex feature in use:
 
 | Feature | Purpose | Where Used |
 |---|---|---|
-| `SNOWFLAKE.CORTEX.COMPLETE` | LLM text generation inline in SQL | Materialized summary column on `V_MINE_FOR_SUBREGION`, populated at build time |
 | Cortex Analyst | NL-to-SQL via semantic model YAML | `/ask` endpoint, runtime user questions |
 
-- **COMPLETE model:** Start with `llama3-8b` for cost/speed. Switch to `mistral-large` only if prose quality is inadequate.
-- **Cortex Analyst semantic model:** Checked into repo as YAML. Covers only the 4-5 chip question patterns — not open-ended. If Analyst is flaky by Sunday noon, degrade to COMPLETE with hand-written SQL templates.
-- **COMPLETE column generation:** Run during ETL/table load (Saturday), not at query time. ~500 mines x 1 call each.
+- **Cortex Analyst semantic model:** Checked into repo as YAML. Covers only the 4-5 chip question patterns — not open-ended.
 
 ### Security
 
 - **Key-pair auth** preferred for Snowflake (password auth requires explicit `ALLOW_PASSWORD_AUTH=true`). Private key stored as Cloud Run Secret Manager secret.
 - **Never hardcode credentials** in source code, environment files, or SQL scripts.
 - **Two roles:** `UNEARTHED_APP_ROLE` for data queries, `UNEARTHED_READONLY_ROLE` (SELECT-only grants on MRT schema) for executing Analyst-generated SQL.
-- **SQL validation:** Analyst SQL is regex-validated before execution — must start with SELECT/WITH, no semicolons (multi-statement), no DML/DDL keywords. Defense-in-depth on top of the read-only role.
+- **SQL validation:** Analyst SQL is regex-validated before execution — must start with SELECT/WITH, no DML/DDL keywords. **Semicolons:** Cortex Analyst appends a trailing semicolon to generated SQL; `execute_analyst_sql` strips it before validation. After stripping, any remaining semicolons (multi-statement) are rejected. Defense-in-depth on top of the read-only role.
 - **Input validation:** Subregion IDs validated with `^[A-Za-z0-9]{2,10}$` to prevent path traversal. Fallback file paths resolved and verified under `assets/fallback/`.
 - **XS warehouse only.** The free trial has $400 of credits. Do not burn them on oversized warehouses.
 - Do not use `ACCOUNTADMIN` role for application queries.
@@ -139,16 +134,8 @@ Two distinct Cortex features in use — do not confuse them:
 - Queries against `V_MINE_FOR_SUBREGION` must return in **under 2 seconds** on XS warehouse.
 - Leverage Snowflake's **24-hour result cache** — identical queries return instantly with no compute cost.
 - No clustering keys needed at this data scale (~500 mines after coal filter).
-- The Cortex COMPLETE summary column must have **no nulls** — validate after ETL.
 
-## 4. Gemini Rules
-
-- Use **Gemini Flash** tier to minimize cost and latency.
-- Prompt input must include: `{mine_name, mine_operator, mine_county, mine_state, mine_type, plant_name, plant_operator, tons_latest_year, tons_year, subregion_id}`.
-- Output: 3-5 sentences. Names the mine, the plant, the operator, the tonnage. Grief-coded register. No cheerful hedging.
-- **Cache per-subregion** at the API layer. Same subregion within the same deployment = no second Gemini call.
-
-## 5. Frontend Rules
+## 4. Frontend Rules
 
 ### Map (MapLibre GL)
 
@@ -156,33 +143,26 @@ Two distinct Cortex features in use — do not confuse them:
 - Sequence must complete within **8 seconds** from payload receipt to final zoom.
 - All three pins and labels must be readable on mobile (>= 375px wide) without horizontal scroll.
 
-### Hero Images
-
-- Exactly 2 images: one surface mine, one underground mine. Routed by mine type.
-- **Pre-1980 public domain only.** Library of Congress or Wikimedia with clear provenance.
-- No recent photography. No named living individuals.
-
 ### Share URL
 
-- Structure: `/?m=hobet-wv` (or similar slug).
-- Open Graph tags populated with mine name, share image, and 1-sentence hook.
-- Share URL skips geolocation and jumps straight to that mine's reveal.
+- Structure: `/?m=SRVC` (eGRID subregion ID, not mine slug).
+- Open Graph tags updated client-side with mine name and hook text after reveal.
+- Share URL skips geolocation and jumps straight to that subregion's reveal.
 
-## 6. Error Handling Philosophy
+## 5. Error Handling Philosophy
 
 - **Cortex Analyst misfires:** Display the generated SQL plus "I could not answer that confidently." Honesty > hallucinated numbers.
 - **Out-of-scope questions:** Semantic model guardrails reject. UI offers chip suggestions instead.
-- **Gemini failure:** Pre-rendered template with data interpolated. Never show a blank or broken reveal.
 - **Snowflake failure:** Cached static JSON fallback per-subregion.
 - **Location outside US:** Graceful message + state picker. Never a dead end.
 - **No coal in user's subregion:** Show the mine supplying the nearest coal-burning plant in their eGRID subregion, or fall back to national median contract.
 
-## 7. Code Quality & Maintenance
+## 6. Code Quality & Maintenance
 
 - **No backwards-compatibility hacks.** Do not rename unused variables to `_var`, re-export removed types, add `// removed` comments, or create shims for deleted functionality. If something is unused, delete it completely.
 - **No temporary solutions or quick fixes.** Every line of code merged must be production-intent. Do not add TODO-gated workarounds, feature flags for half-finished work, or "fix later" stubs. If a proper solution cannot be implemented now, scope the work down — do not ship a placeholder.
 
-## 8. File & Code Conventions
+## 7. File & Code Conventions
 
 - **Python:** Python 3.12. Follow PEP 8 enforced by `ruff`. Type hints on all function signatures. Use `async def` only if genuinely async; sync is fine for Snowflake connector and Cortex Analyst REST calls.
 - **Dependencies:** `pyproject.toml` with `uv`. Dev deps in `[dependency-groups]`. Run `uv sync` to install, `make lint` / `make fmt` for ruff, `make test` for pytest.
@@ -192,7 +172,7 @@ Two distinct Cortex features in use — do not confuse them:
 - **Static assets:** Checked into repo under an `assets/` directory. eGRID GeoJSON, hero images, fallback JSON (19 subregions), semantic model YAML.
 - **Docker:** Non-root user, `.dockerignore` excludes secrets/tests/dev files. Deps installed via `uv sync --frozen --no-dev` from `pyproject.toml` + `uv.lock`.
 
-## 9. Snowflake MCP Server
+## 8. Snowflake MCP Server
 
 For local development with Claude Code, use the **official Snowflake MCP server** from Snowflake-Labs:
 
@@ -208,7 +188,7 @@ Alternative (simpler, read-only): https://github.com/isaacwasserman/mcp-snowflak
 
 The checked-in config (`snowflake-mcp-config.yaml`) is read-only by default. For ETL or one-time data loading, use a local untracked override — do not commit write-enabled configs.
 
-## 10. Semantic Model (Cortex Analyst)
+## 9. Semantic Model (Cortex Analyst)
 
 The semantic model YAML must be checked into the repo and cover these supported question patterns:
 
