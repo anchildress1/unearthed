@@ -15,6 +15,14 @@
 <div class="bg-grain" aria-hidden="true"></div>
 {@render children()}
 
+<footer class="site-footer">
+	<p>© 2026 Ashley Childress</p>
+	<p class="data-credit">
+		Federal public-domain data: MSHA · EIA · EPA · eGRID ·
+		via Snowflake Cortex + Marketplace
+	</p>
+</footer>
+
 <style>
 	:global(*) {
 		box-sizing: border-box;
@@ -101,6 +109,26 @@
 			background-image: url('/img/westva-strip-mine-768.webp');
 			opacity: 0.25;
 		}
+	}
+
+	/* ---- Site footer ---- */
+	.site-footer {
+		padding: 2.5rem var(--section-pad) 2rem;
+		margin-top: 2rem;
+		border-top: 1px solid rgba(255, 255, 255, 0.05);
+		text-align: center;
+		font-family: var(--mono);
+		font-size: 0.62rem;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: var(--text-ghost);
+	}
+	.site-footer p { margin: 0; }
+	.site-footer .data-credit {
+		margin-top: 0.5rem;
+		font-size: 0.55rem;
+		letter-spacing: 0.1em;
+		color: rgba(128, 123, 117, 0.6);
 	}
 
 	/* ---- Glass utility ---- */
