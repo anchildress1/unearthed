@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.models import AskRequest, AskResponse, MineForMeRequest, MineForMeResponse
-from app.prose_client import generate_prose
+from app.prose_client import generate_h3_summary, generate_prose
 from app.snowflake_client import (
     _get_connection,
     execute_analyst_sql,
@@ -49,22 +49,36 @@ if _STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
 _H3_DENSITY_SQL = """
+WITH clean AS (
+    SELECT
+        TRY_TO_DOUBLE(REPLACE(LATITUDE, '"', '')) AS lat_num,
+        TRY_TO_DOUBLE(REPLACE(LONGITUDE, '"', '')) AS lng_num,
+        TRIM(REPLACE(CURRENT_MINE_STATUS, '"', '')) AS status_txt,
+        TRIM(REPLACE(STATE, '"', '')) AS state_txt,
+        REPLACE(COAL_METAL_IND, '"', '') AS coal_txt
+    FROM UNEARTHED_DB.RAW.MSHA_MINES
+)
 SELECT
-    H3_LATLNG_TO_CELL_STRING(
-        TRY_TO_DOUBLE(REPLACE(LATITUDE, '"', '')),
-        TRY_TO_DOUBLE(REPLACE(LONGITUDE, '"', '')),
-        {resolution}
-    ) AS h3,
-    AVG(TRY_TO_DOUBLE(REPLACE(LATITUDE, '"', ''))) AS lat,
-    AVG(TRY_TO_DOUBLE(REPLACE(LONGITUDE, '"', ''))) AS lng,
+    H3_LATLNG_TO_CELL_STRING(lat_num, lng_num, {resolution}) AS h3,
+    AVG(lat_num) AS lat,
+    AVG(lng_num) AS lng,
     COUNT(*) AS total,
-    SUM(CASE WHEN TRIM(REPLACE(CURRENT_MINE_STATUS, '"', '')) = 'Active'
-        THEN 1 ELSE 0 END) AS active,
-    SUM(CASE WHEN TRIM(REPLACE(CURRENT_MINE_STATUS, '"', '')) != 'Active'
-        THEN 1 ELSE 0 END) AS abandoned
-FROM UNEARTHED_DB.RAW.MSHA_MINES
-WHERE REPLACE(COAL_METAL_IND, '"', '') = 'C'
-    AND TRY_TO_DOUBLE(REPLACE(LATITUDE, '"', '')) IS NOT NULL
+    SUM(CASE WHEN status_txt = 'Active' THEN 1 ELSE 0 END) AS active,
+    SUM(CASE WHEN status_txt != 'Active' THEN 1 ELSE 0 END) AS abandoned
+FROM clean
+-- Bounding box: continental US + mainland Alaska. Rejects (0,0) null-island
+-- entries and stray ocean coordinates MSHA's registry occasionally ships when
+-- a mine's address was never geocoded cleanly — without this, resolution-5
+-- hexes land in the Atlantic and drag the viewport off the mainland.
+-- Aleutian Islands west of the antimeridian (positive longitudes) are outside
+-- this box on purpose: MSHA has no recorded coal mines there, and widening the
+-- filter to wrap the dateline would re-admit the very ocean outliers we're
+-- trying to drop.
+WHERE coal_txt = 'C'
+    AND lat_num IS NOT NULL
+    AND lng_num IS NOT NULL
+    AND lat_num BETWEEN 24 AND 72
+    AND lng_num BETWEEN -180 AND -65
     {state_clause}
 GROUP BY h3
 HAVING total >= {min_mines}
@@ -92,7 +106,7 @@ def h3_density(resolution: int = 4, state: str | None = None):
     if state:
         if not _STATE_CODE_PATTERN.match(state):
             raise HTTPException(status_code=400, detail="State must be a 2-letter code")
-        state_clause = "AND TRIM(REPLACE(STATE, '\"', '')) = %(state)s"
+        state_clause = "AND state_txt = %(state)s"
         bind["state"] = state.upper()
         min_mines = 1
 
@@ -109,7 +123,40 @@ def h3_density(resolution: int = 4, state: str | None = None):
         rows = [dict(r) for r in cur.fetchall()]
     finally:
         cur.close()
-    return {"resolution": resolution, "state": state, "cells": rows}
+
+    # Cortex-generated explanation of the density map. The whole point of this
+    # site is that Cortex explains the data, so we always return a summary. The
+    # generator returns a ``degraded`` flag when the template fallback fires
+    # (Cortex unavailable or empty response); the endpoint surfaces that flag
+    # so the frontend can hide the "Cortex, on this map" byline — showing
+    # fallback prose under a model byline would misattribute the template to
+    # Cortex. An unexpected ImportError/AttributeError here also counts as
+    # degraded so the caller never sees the fallback masquerading as model output.
+    total = sum(int(r.get("TOTAL") or 0) for r in rows)
+    active = sum(int(r.get("ACTIVE") or 0) for r in rows)
+    abandoned = sum(int(r.get("ABANDONED") or 0) for r in rows)
+    summary = ""
+    summary_degraded = False
+    if total > 0:
+        try:
+            summary, summary_degraded = generate_h3_summary(
+                state=(state.upper() if state else None),
+                total=total,
+                active=active,
+                abandoned=abandoned,
+            )
+        except Exception:
+            logger.exception("H3 summary generation crashed outside its own guard")
+            summary = ""
+            summary_degraded = True
+
+    return {
+        "resolution": resolution,
+        "state": state,
+        "cells": rows,
+        "summary": summary,
+        "summary_degraded": summary_degraded,
+    }
 
 
 _EMISSIONS_SQL = """
