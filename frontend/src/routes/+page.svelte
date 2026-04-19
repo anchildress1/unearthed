@@ -2,11 +2,10 @@
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
 	import Hero from '$lib/sections/Hero.svelte';
-	import MineReveal from '$lib/sections/MineReveal.svelte';
-	import HumanCost from '$lib/sections/HumanCost.svelte';
-	import YourShare from '$lib/sections/YourShare.svelte';
+	import PlantReveal from '$lib/sections/PlantReveal.svelte';
 	import MapSection from '$lib/sections/MapSection.svelte';
-	import Chat from '$lib/sections/Chat.svelte';
+	import CortexChat from '$lib/sections/CortexChat.svelte';
+	import Ticker from '$lib/sections/Ticker.svelte';
 	import { fetchMineForMe } from '$lib/api.js';
 
 	let mineData = $state(null);
@@ -20,7 +19,7 @@
 		try {
 			mineData = await fetchMineForMe(subregionId);
 			mineData.subregion_id = subregionId;
-			console.log('[unearthed] mine data loaded:', mineData.mine, mineData.mine_state);
+			console.log('[unearthed] loaded:', mineData.mine, '→', mineData.plant);
 		} catch (e) {
 			console.error('[unearthed] trace failed:', e);
 			error = e.message;
@@ -34,7 +33,7 @@
 		const params = new URLSearchParams(window.location.search);
 		const sub = params.get('m');
 		if (sub && /^[A-Za-z0-9]{2,10}$/.test(sub)) {
-			console.log('[unearthed] share URL detected:', sub);
+			console.log('[unearthed] share URL:', sub);
 			onTrace(sub.toUpperCase());
 		}
 	});
@@ -49,16 +48,13 @@
 	<Hero {loading} {error} onTrace={onTrace} />
 {:else}
 	<main class="scroll">
-		<MineReveal data={mineData} />
+		<PlantReveal data={mineData} />
 		<MapSection data={mineData} />
-		<HumanCost data={mineData} />
-		<Chat subregionId={mineData.subregion_id} mineName={mineData.mine} />
-		<YourShare data={mineData} />
+		<CortexChat subregionId={mineData.subregion_id} mineName={mineData.mine} plantName={mineData.plant} />
+		<Ticker data={mineData} />
 	</main>
 {/if}
 
 <style>
-	.scroll {
-		width: 100%;
-	}
+	.scroll { width: 100%; }
 </style>
