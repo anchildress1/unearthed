@@ -129,7 +129,7 @@ def h3_density(resolution: int = 4):
 _EMISSIONS_SQL = """
 SELECT CO2_TONS, SO2_TONS, NOX_TONS
 FROM UNEARTHED_DB.MRT.EMISSIONS_BY_PLANT
-WHERE FACILITY_NAME ILIKE %(plant_name)s
+WHERE UPPER(FACILITY_NAME) = UPPER(%(plant_name)s)
 """
 
 _emissions_cache: dict[str, dict] = {}
@@ -147,7 +147,7 @@ def plant_emissions(plant_name: str):
     conn = _get_connection(role=settings.snowflake_readonly_role)
     cur = conn.cursor(snowflake.connector.DictCursor)
     try:
-        cur.execute(_EMISSIONS_SQL, {"plant_name": plant_name + "%"})
+        cur.execute(_EMISSIONS_SQL, {"plant_name": plant_name})
         row = cur.fetchone()
     finally:
         cur.close()
