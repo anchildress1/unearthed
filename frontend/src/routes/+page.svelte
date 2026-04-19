@@ -40,7 +40,7 @@
 </script>
 
 <svelte:head>
-	<title>unearthed{mineData ? ` — ${mineData.mine}, ${mineData.mine_state}` : ''}</title>
+	<title>Unearthed{mineData ? ` — ${mineData.mine}, ${mineData.mine_state}` : ''}</title>
 	<meta name="description" content="Find the coal mine under contract to your power plant." />
 </svelte:head>
 

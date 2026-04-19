@@ -89,7 +89,7 @@ export async function geocodeAddress(query) {
 		if (!resp.ok) throw new Error('Geocoding unavailable');
 		const results = await resp.json();
 		if (!results.length) return null;
-		return { lat: parseFloat(results[0].lat), lon: parseFloat(results[0].lon) };
+		return { lat: Number.parseFloat(results[0].lat), lon: Number.parseFloat(results[0].lon) };
 	} catch (e) {
 		console.error('[unearthed] geocoding failed:', e);
 		return null;

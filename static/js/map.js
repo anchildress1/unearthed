@@ -88,10 +88,11 @@ export function runRevealSequence(map, params) {
       await hold(1500);
 
       // Draw both flow lines — same style, same animation
-      const stops = [];
-      stops.push(drawFlowLine(map, mine, plant));
-      stops.push(drawFlowLine(map, plant, user));
-      map._stopFlowAnimation = () => stops.forEach((s) => s());
+      const stops = [
+        drawFlowLine(map, mine, plant),
+        drawFlowLine(map, plant, user),
+      ];
+      map._stopFlowAnimation = function stopAll() { stops.forEach((s) => s()); };
       await hold(3500);
 
       // --- Act 4: Look at it ---
@@ -165,10 +166,10 @@ function addMarker(map, position, label, color) {
     },
   });
 
-  const info = new google.maps.InfoWindow({
-    content: `<div style="font-family:system-ui;font-size:13px;font-weight:600;color:#1a1a1a;padding:2px 4px">${label}</div>`,
-    disableAutoPan: true,
-  });
+  const el = document.createElement("div");
+  el.style.cssText = "font-family:system-ui;font-size:13px;font-weight:600;color:#1a1a1a;padding:2px 4px";
+  el.textContent = label;
+  const info = new google.maps.InfoWindow({ content: el, disableAutoPan: true });
   info.open(map, marker);
   return marker;
 }
@@ -185,7 +186,7 @@ function addMarker(map, position, label, color) {
  */
 function drawFlowLine(map, from, to) {
   // Static backing line — always visible
-  new google.maps.Polyline({
+  const backing = new google.maps.Polyline({
     map,
     path: [from, to],
     strokeColor: "#c4956a",
@@ -193,6 +194,7 @@ function drawFlowLine(map, from, to) {
     strokeOpacity: 0.6,
     geodesic: true,
   });
+  void backing;
 
   // Moving symbol — a small arrow that crawls along the line
   const arrow = {

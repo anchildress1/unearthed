@@ -11,7 +11,7 @@ from app.snowflake_client import _get_connection
 
 logger = logging.getLogger(__name__)
 
-_prose_cache: dict[str, str] = {}
+_prose_cache: dict[str, tuple[str, bool]] = {}
 
 _STATS_SQL = """
 SELECT
@@ -66,18 +66,18 @@ def generate_prose(mine_data: dict) -> tuple[str, bool]:
     subregion_id = mine_data.get("subregion_id", "")
 
     if subregion_id and subregion_id in _prose_cache:
-        return _prose_cache[subregion_id], False
+        return _prose_cache[subregion_id]
 
     try:
         prose = _generate(mine_data)
         if subregion_id:
-            _prose_cache[subregion_id] = prose
+            _prose_cache[subregion_id] = (prose, False)
         return prose, False
     except Exception:
         logger.exception("Prose generation failed")
         prose = _FALLBACK_NO_DATA
         if subregion_id:
-            _prose_cache[subregion_id] = prose
+            _prose_cache[subregion_id] = (prose, True)
         return prose, True
 
 

@@ -5,7 +5,7 @@ from pathlib import Path
 import snowflake.connector
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.models import AskRequest, AskResponse, MineForMeRequest, MineForMeResponse
@@ -45,12 +45,7 @@ app.add_middleware(
 
 @app.get("/")
 def index():
-    from app.config import settings
-
-    html = (_PROJECT_ROOT / "static" / "index.html").read_text()
-    key = settings.google_maps_api_key
-    html = html.replace('{v: "weekly"}', f'{{key: "{key}", v: "weekly"}}')
-    return HTMLResponse(html)
+    return FileResponse(_PROJECT_ROOT / "static" / "index.html")
 
 
 app.mount("/static", StaticFiles(directory=_PROJECT_ROOT / "static"), name="static")
@@ -78,12 +73,14 @@ ORDER BY total DESC
 """
 
 
-@app.get("/h3-density")
+@app.get("/h3-density", responses={400: {"description": "Invalid resolution (must be 2-7)"}})
 def h3_density(resolution: int = 4):
     """H3 hexbin mine density — active vs abandoned extraction footprint."""
     if resolution < 2 or resolution > 7:
         raise HTTPException(status_code=400, detail="Resolution must be 2-7")
-    conn = _get_connection()
+    from app.config import settings
+
+    conn = _get_connection(role=settings.snowflake_readonly_role)
     cur = conn.cursor(snowflake.connector.DictCursor)
     try:
         cur.execute(_H3_DENSITY_SQL.format(resolution=int(resolution)))
@@ -118,7 +115,9 @@ WHERE p.FACILITY_NAME ILIKE %(plant_name)s
 @app.get("/emissions/{plant_name}")
 def plant_emissions(plant_name: str):
     """EPA emissions data for a plant — from Snowflake Marketplace (free)."""
-    conn = _get_connection()
+    from app.config import settings
+
+    conn = _get_connection(role=settings.snowflake_readonly_role)
     cur = conn.cursor(snowflake.connector.DictCursor)
     try:
         cur.execute(_EMISSIONS_SQL, {"plant_name": plant_name + "%"})

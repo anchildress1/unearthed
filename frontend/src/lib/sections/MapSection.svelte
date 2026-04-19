@@ -96,25 +96,29 @@
 			map, position: pos, title: name,
 			icon: { path: google.maps.SymbolPath.CIRCLE, scale: 7, fillColor: color, fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 },
 		});
-		const info = new google.maps.InfoWindow({
-			content: `<div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#807b75;text-transform:uppercase;letter-spacing:0.1em;padding:2px 4px">${type}</div><div style="font-family:Newsreader,serif;font-size:13px;color:#1a1a1a;padding:0 4px 2px">${name}</div>`,
-		});
+		const el = document.createElement('div');
+		const typeEl = document.createElement('div');
+		typeEl.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:10px;color:#807b75;text-transform:uppercase;letter-spacing:0.1em;padding:2px 4px";
+		typeEl.textContent = type;
+		const nameEl = document.createElement('div');
+		nameEl.style.cssText = "font-family:Newsreader,serif;font-size:13px;color:#1a1a1a;padding:0 4px 2px";
+		nameEl.textContent = name;
+		el.appendChild(typeEl);
+		el.appendChild(nameEl);
+		const info = new google.maps.InfoWindow({ content: el });
 		info.open(map, marker);
 	}
 
 	function loadGoogleMaps() {
 		return new Promise((resolve, reject) => {
-			fetch('/').then(r => r.text()).then(html => {
-				const match = html.match(/key:\s*"([^"]+)"/);
-				const key = match?.[1] || '';
-				if (!key) { console.warn('[unearthed] no Google Maps key found'); }
-				const s = document.createElement('script');
-				s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&v=weekly&libraries=maps,marker`;
-				s.async = true;
-				s.onload = resolve;
-				s.onerror = () => reject(new Error('Google Maps failed to load'));
-				document.head.appendChild(s);
-			}).catch(reject);
+			const key = import.meta.env.VITE_GOOGLE_MAPS_KEY || '';
+			if (!key) { console.warn('[unearthed] VITE_GOOGLE_MAPS_KEY not set'); }
+			const s = document.createElement('script');
+			s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&v=weekly&libraries=maps,marker`;
+			s.async = true;
+			s.onload = resolve;
+			s.onerror = () => reject(new Error('Google Maps failed to load'));
+			document.head.appendChild(s);
 		});
 	}
 </script>

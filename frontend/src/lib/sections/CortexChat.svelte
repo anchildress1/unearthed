@@ -90,7 +90,9 @@
 						<p class="answer">{entry.answer}</p>
 					{/if}
 
-					{#if entry.results && entry.results.length > 0}
+					{#if entry.results && entry.results.length === 0}
+						<p class="no-results">Query ran successfully but returned no rows.</p>
+					{:else if entry.results && entry.results.length > 0}
 						<div class="results">
 							<table>
 								<thead>

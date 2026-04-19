@@ -140,7 +140,11 @@ def _get_connection(
         conn = _pool.get(effective_role)
         if conn is not None:
             try:
-                conn.cursor().execute("SELECT 1").fetchone()
+                cur = conn.cursor()
+                try:
+                    cur.execute("SELECT 1").fetchone()
+                finally:
+                    cur.close()
                 return conn
             except Exception:
                 logger.info("Pooled connection stale for role %s, reconnecting", effective_role)
