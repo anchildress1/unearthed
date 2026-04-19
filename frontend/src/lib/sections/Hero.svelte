@@ -82,12 +82,17 @@
 
 <section class="hero" aria-label="Find your mine">
 	<div class="hero-inner">
+		<p class="eyebrow"><span class="eye-dot"></span> unearthed · a live data memorial</p>
+
 		<h1>
 			You <span class="rust">came</span> home.<br/>
 			You turned <span class="rust">on</span> <em>a light.</em>
 		</h1>
 
-		<p class="sub">tell us where that light is</p>
+		<p class="lede">
+			Somewhere, a mountain was cut open to keep it burning.<br/>
+			<span class="lede-quiet">Tell us where that light is — we'll trace the wire back.</span>
+		</p>
 
 		<div class="input-group glass">
 			<form class="form" onsubmit={handleSubmit}>
@@ -95,15 +100,15 @@
 					id="address"
 					name="address"
 					type="text"
-					placeholder="Enter address or zip code"
+					placeholder="Address, city, or zip code"
 					aria-label="Enter address or zip code"
 					bind:value={address}
 					maxlength="200"
 					autocomplete="off"
 					disabled={loading}
 				/>
-				<button type="submit" disabled={loading}>
-					{loading ? '...' : 'trace →'}
+				<button class="primary" type="submit" disabled={loading}>
+					{loading ? '…' : 'trace →'}
 				</button>
 			</form>
 
@@ -115,54 +120,99 @@
 
 			{#if showStatePicker}
 				<div class="state-pick">
-					<select bind:value={selectedState}>
-						<option value="">Select a state...</option>
+					<select bind:value={selectedState} aria-label="Select a state">
+						<option value="">Select a state…</option>
 						{#each states as code}
 							<option value={code}>{stateLabels[code] || code}</option>
 						{/each}
 					</select>
-					<button onclick={handleStateGo} disabled={!selectedState || loading}>Show me</button>
+					<button onclick={handleStateGo} disabled={!selectedState || loading}>
+						Show me
+					</button>
 				</div>
 			{/if}
 		</div>
 
-		{#if localError || error}
-			<p class="err">{localError || error}</p>
-		{/if}
-
-		{#if loading}
-			<p class="loading">Following the wire back…</p>
-		{/if}
-
-		<p class="hint">We find the nearest coal-burning power plant on your grid — nothing is stored or shared.</p>
+		<div class="status" aria-live="polite">
+			{#if loading}
+				<p class="loading">Following the wire back…</p>
+			{:else if localError || error}
+				<p class="err">{localError || error}</p>
+			{:else}
+				<p class="hint">
+					We never store your address. The wire we follow is public federal data —
+					<span class="hint-quiet">MSHA, EIA, EPA, eGRID.</span>
+				</p>
+			{/if}
+		</div>
 	</div>
 
 	<a class="credit" href="https://www.flickr.com/photos/nationalmemorialforthemountains/255887679/" target="_blank" rel="noopener">
-		Photo: Kent Kessinger / iLoveMountains.org — Flight courtesy SouthWings
+		Photo: Kent Kessinger · iLoveMountains.org<br/>Flight courtesy SouthWings
 	</a>
 </section>
 
 <style>
 	.hero {
 		min-height: 100vh;
-		display: flex;
+		display: grid;
+		grid-template-rows: 1fr auto;
+		justify-items: center;
 		align-items: center;
-		padding: var(--section-pad);
+		padding: clamp(2.5rem, 6vh, 5rem) clamp(1.5rem, 5vw, 4rem);
 		position: relative;
 	}
 
 	.hero-inner {
-		max-width: 720px;
+		width: 100%;
+		max-width: 640px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		text-align: center;
+		gap: 1.6rem;
+		/* Lift slightly above optical center so the headline sits in the upper third */
+		transform: translateY(-2vh);
 	}
 
+	/* ---- Eyebrow ---- */
+	.eyebrow {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.55rem;
+		font-family: var(--mono);
+		font-size: 0.6rem;
+		text-transform: uppercase;
+		letter-spacing: 0.24em;
+		color: var(--text-ghost);
+		padding: 0.3rem 0.7rem 0.3rem 0.6rem;
+		border: 1px solid rgba(255, 255, 255, 0.06);
+		border-radius: 999px;
+		background: rgba(255, 255, 255, 0.015);
+	}
+	.eye-dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: var(--accent);
+		box-shadow: 0 0 8px var(--accent-glow);
+		animation: pulse 2.4s ease-in-out infinite;
+	}
+	@keyframes pulse {
+		0%, 100% { opacity: 0.6; }
+		50% { opacity: 1; }
+	}
+
+	/* ---- Headline ---- */
 	h1 {
 		font-family: var(--serif);
-		font-size: clamp(3rem, 8vw, 5.8rem);
+		font-size: clamp(2.4rem, 6.4vw, 4.6rem);
 		font-weight: 400;
-		line-height: 1.05;
+		line-height: 1.08;
 		color: var(--text);
-		margin-bottom: 2.5rem;
-		letter-spacing: -0.01em;
+		letter-spacing: -0.015em;
+		margin: 0;
+		max-width: 16ch;
 	}
 	h1 em {
 		font-style: italic;
@@ -172,19 +222,30 @@
 		color: var(--accent);
 	}
 
-	.sub {
-		font-family: var(--mono);
-		font-size: 0.7rem;
-		text-transform: uppercase;
-		letter-spacing: 0.18em;
+	/* ---- Lede ---- */
+	.lede {
+		font-family: var(--serif);
+		font-size: clamp(1rem, 1.4vw, 1.15rem);
+		font-weight: 300;
+		font-style: italic;
+		line-height: 1.65;
 		color: var(--text-dim);
-		margin-bottom: 1.2rem;
+		max-width: 44ch;
+		margin: 0;
+	}
+	.lede-quiet {
+		color: var(--text-ghost);
+		font-style: normal;
+		font-size: 0.92em;
 	}
 
 	/* ---- Glass input group ---- */
 	.input-group {
-		padding: 1.5rem;
-		max-width: 460px;
+		width: 100%;
+		max-width: 520px;
+		padding: 1.25rem 1.25rem 1.4rem;
+		display: flex;
+		flex-direction: column;
 	}
 
 	.form {
@@ -194,14 +255,16 @@
 
 	input[type="text"] {
 		flex: 1;
+		min-width: 0;
 		font-family: var(--serif);
-		font-size: 0.95rem;
-		padding: 0.8rem 1rem;
-		background: rgba(0, 0, 0, 0.4);
+		font-size: 0.98rem;
+		padding: 0.85rem 1rem;
+		background: rgba(0, 0, 0, 0.42);
 		color: var(--text);
-		border: 1px solid rgba(255, 255, 255, 0.06);
+		border: 1px solid rgba(255, 255, 255, 0.07);
 		border-radius: 6px;
 		outline: none;
+		transition: border-color 0.2s, box-shadow 0.2s;
 	}
 	input[type="text"]:focus {
 		border-color: var(--accent);
@@ -214,14 +277,14 @@
 
 	button {
 		font-family: var(--mono);
-		font-size: 0.75rem;
-		padding: 0.8rem 1.2rem;
+		font-size: 0.72rem;
+		padding: 0.85rem 1.1rem;
 		background: transparent;
 		color: var(--accent);
 		border: 1px solid rgba(194, 84, 45, 0.4);
 		border-radius: 6px;
 		cursor: pointer;
-		letter-spacing: 0.08em;
+		letter-spacing: 0.1em;
 		white-space: nowrap;
 		transition: all 0.2s ease;
 	}
@@ -231,31 +294,45 @@
 		border-color: var(--accent);
 	}
 	button:disabled {
-		opacity: 0.3;
+		opacity: 0.35;
 		cursor: not-allowed;
+	}
+	button.primary {
+		background: rgba(194, 84, 45, 0.12);
 	}
 
 	.divider {
 		display: flex;
 		align-items: center;
-		gap: 0.6rem;
-		margin: 0.8rem 0;
-		font-size: 0.7rem;
+		justify-content: center;
+		gap: 0.7rem;
+		margin: 1rem 0;
+		font-family: var(--mono);
+		font-size: 0.6rem;
+		text-transform: uppercase;
+		letter-spacing: 0.2em;
 		color: var(--text-ghost);
 	}
-	.divider::before, .divider::after {
+	.divider::before,
+	.divider::after {
 		content: '';
 		flex: 1;
 		height: 1px;
-		background: rgba(255,255,255,0.05);
+		background: linear-gradient(
+			to right,
+			transparent,
+			rgba(255, 255, 255, 0.08),
+			transparent
+		);
 	}
 
 	.geo-btn {
 		width: 100%;
 		font-family: var(--serif);
-		font-size: 0.9rem;
+		font-size: 0.92rem;
 		font-style: italic;
-		padding: 0.7rem;
+		padding: 0.78rem 1rem;
+		letter-spacing: 0.02em;
 	}
 
 	.state-pick {
@@ -265,59 +342,102 @@
 	}
 	select {
 		flex: 1;
+		min-width: 0;
 		font-family: var(--serif);
-		font-size: 0.9rem;
-		padding: 0.6rem 0.8rem;
-		background: rgba(0,0,0,0.4);
+		font-size: 0.92rem;
+		padding: 0.7rem 0.85rem;
+		background: rgba(0, 0, 0, 0.42) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%239a9490' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E") no-repeat right 0.85rem center;
 		color: var(--text);
-		border: 1px solid rgba(255,255,255,0.06);
+		border: 1px solid rgba(255, 255, 255, 0.07);
 		border-radius: 6px;
 		appearance: none;
 		outline: none;
+		padding-right: 2rem;
+	}
+	select:focus {
+		border-color: var(--accent);
 	}
 
+	/* ---- Status line (reserved space — never shifts layout) ---- */
+	.status {
+		min-height: 3.2rem;
+		display: flex;
+		align-items: flex-start;
+		justify-content: center;
+		width: 100%;
+		max-width: 520px;
+	}
+	.err,
+	.loading,
+	.hint {
+		margin: 0;
+		line-height: 1.6;
+		text-align: center;
+	}
 	.err {
 		color: var(--accent);
-		font-size: 0.85rem;
+		font-size: 0.88rem;
 		font-style: italic;
-		margin-top: 1rem;
-		max-width: 460px;
 	}
-
 	.loading {
 		color: var(--text-dim);
-		font-size: 0.85rem;
+		font-size: 0.88rem;
 		font-style: italic;
-		margin-top: 1rem;
 	}
-
 	.hint {
-		font-size: 0.7rem;
+		font-family: var(--mono);
+		font-size: 0.62rem;
+		text-transform: uppercase;
+		letter-spacing: 0.18em;
 		color: var(--text-ghost);
-		margin-top: 2rem;
-		max-width: 400px;
-		line-height: 1.5;
+		max-width: 48ch;
+	}
+	.hint-quiet {
+		color: rgba(128, 123, 117, 0.6);
 	}
 
+	/* ---- Photo credit ---- */
 	.credit {
-		position: absolute;
-		bottom: 1.2rem;
-		right: var(--section-pad);
+		justify-self: end;
+		align-self: end;
 		font-family: var(--mono);
-		font-size: 0.55rem;
+		font-size: 0.52rem;
 		color: var(--text-ghost);
-		opacity: 0.5;
+		opacity: 0.45;
 		text-decoration: none;
-		max-width: 260px;
 		text-align: right;
-		line-height: 1.4;
-		letter-spacing: 0.02em;
+		line-height: 1.5;
+		letter-spacing: 0.04em;
 		transition: opacity 0.3s;
 	}
-	.credit:hover { opacity: 1; }
+	.credit:hover {
+		opacity: 0.9;
+	}
 
-	@media (max-width: 768px) {
-		.hero { padding: 1.5rem; }
-		.input-group { max-width: 100%; }
+	@media (max-width: 640px) {
+		.hero {
+			padding: 2rem 1.25rem 1.25rem;
+		}
+		.hero-inner {
+			gap: 1.3rem;
+			transform: none;
+		}
+		.form {
+			flex-direction: column;
+		}
+		button {
+			width: 100%;
+		}
+		.credit {
+			justify-self: center;
+			text-align: center;
+			margin-top: 2rem;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.eye-dot {
+			animation: none;
+		}
 	}
 </style>
