@@ -15,7 +15,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "pytest>=8,<9",
+    "pytest>=9.0.3,<10",
     "httpx>=0.28,<1",
     "pytest-timeout>=2,<3",
     "pytest-cov>=6,<7",
