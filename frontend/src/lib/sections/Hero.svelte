@@ -81,8 +81,18 @@
 </script>
 
 <section class="hero" aria-label="Find your mine">
+	<aside class="rail" aria-hidden="true">
+		<span class="rail-top">
+			<span class="eye-dot"></span> N° 01
+		</span>
+		<span class="rail-rule"></span>
+		<span class="rail-label">unearthed · public data memorial</span>
+		<span class="rail-rule"></span>
+		<span class="rail-bottom">MSHA · EIA · EPA · eGRID</span>
+	</aside>
+
 	<div class="hero-inner">
-		<p class="eyebrow"><span class="eye-dot"></span> unearthed · a live data memorial</p>
+		<p class="eyebrow">a public data memorial · 2026</p>
 
 		<h1>
 			You <span class="rust">came</span> home.<br/>
@@ -156,39 +166,94 @@
 	.hero {
 		min-height: 100vh;
 		display: grid;
+		/* Asymmetric editorial split: thin metadata rail, wide content column,
+		   narrow breathing margin on the right for the credit to anchor into. */
+		grid-template-columns:
+			clamp(56px, 8vw, 96px)
+			minmax(0, 1fr)
+			clamp(1rem, 4vw, 3rem);
 		grid-template-rows: 1fr auto;
-		justify-items: center;
-		align-items: center;
-		padding: clamp(2.5rem, 6vh, 5rem) clamp(1.5rem, 5vw, 4rem);
+		column-gap: clamp(1.25rem, 3vw, 2.5rem);
+		padding: clamp(2.5rem, 6vh, 4.5rem) 0 clamp(1.5rem, 4vh, 2.5rem);
+		padding-left: clamp(1.25rem, 4vw, 3rem);
+		padding-right: clamp(1.25rem, 4vw, 3rem);
 		position: relative;
 	}
 
-	.hero-inner {
-		width: 100%;
-		max-width: 640px;
+	/* ---- Left rail: editorial metadata, vertical ---- */
+	.rail {
+		grid-column: 1;
+		grid-row: 1 / -1;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
+		justify-content: flex-start;
+		gap: 1rem;
+		padding-top: clamp(1rem, 4vh, 3rem);
+		font-family: var(--mono);
+		font-size: 0.55rem;
+		letter-spacing: 0.22em;
+		text-transform: uppercase;
+		color: var(--text-ghost);
+	}
+	.rail-top {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.45rem;
+		color: var(--accent);
+		opacity: 0.75;
+	}
+	.rail-rule {
+		flex: 1 1 auto;
+		width: 1px;
+		min-height: 3rem;
+		background: linear-gradient(
+			to bottom,
+			transparent,
+			rgba(255, 255, 255, 0.12),
+			transparent
+		);
+	}
+	.rail-label {
+		writing-mode: vertical-rl;
+		transform: rotate(180deg);
+		white-space: nowrap;
+		padding: 0.5rem 0;
+		color: var(--text-dim);
+		letter-spacing: 0.3em;
+	}
+	.rail-bottom {
+		color: rgba(128, 123, 117, 0.7);
 		text-align: center;
-		gap: 1.6rem;
-		/* Lift slightly above optical center so the headline sits in the upper third */
-		transform: translateY(-2vh);
+		line-height: 1.7;
+	}
+
+	.hero-inner {
+		grid-column: 2;
+		grid-row: 1 / -1;
+		width: 100%;
+		/* Offset slightly from true center by biasing left margin to 0 and
+		   capping max-width — the wide right column reads the negative
+		   space, not the content. */
+		max-width: min(780px, 100%);
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		text-align: left;
+		gap: 1.5rem;
+		align-self: center;
+		padding-bottom: clamp(2rem, 8vh, 5rem);
 	}
 
 	/* ---- Eyebrow ---- */
 	.eyebrow {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.55rem;
+		margin: 0;
 		font-family: var(--mono);
 		font-size: 0.6rem;
 		text-transform: uppercase;
-		letter-spacing: 0.24em;
+		letter-spacing: 0.26em;
 		color: var(--text-ghost);
-		padding: 0.3rem 0.7rem 0.3rem 0.6rem;
-		border: 1px solid rgba(255, 255, 255, 0.06);
-		border-radius: 999px;
-		background: rgba(255, 255, 255, 0.015);
+		padding-left: 0.1rem;
 	}
 	.eye-dot {
 		width: 6px;
@@ -206,13 +271,13 @@
 	/* ---- Headline ---- */
 	h1 {
 		font-family: var(--serif);
-		font-size: clamp(2.4rem, 6.4vw, 4.6rem);
+		font-size: clamp(2.6rem, 6.8vw, 5rem);
 		font-weight: 400;
-		line-height: 1.08;
+		line-height: 1.06;
 		color: var(--text);
 		letter-spacing: -0.015em;
 		margin: 0;
-		max-width: 16ch;
+		max-width: 18ch;
 	}
 	h1 em {
 		font-style: italic;
@@ -396,8 +461,10 @@
 		color: rgba(128, 123, 117, 0.6);
 	}
 
-	/* ---- Photo credit ---- */
+	/* ---- Photo credit: anchored bottom-right of the content column ---- */
 	.credit {
+		grid-column: 2 / 4;
+		grid-row: 2;
 		justify-self: end;
 		align-self: end;
 		font-family: var(--mono);
@@ -406,7 +473,7 @@
 		opacity: 0.45;
 		text-decoration: none;
 		text-align: right;
-		line-height: 1.5;
+		line-height: 1.55;
 		letter-spacing: 0.04em;
 		transition: opacity 0.3s;
 	}
@@ -414,13 +481,19 @@
 		opacity: 0.9;
 	}
 
-	@media (max-width: 640px) {
+	@media (max-width: 720px) {
 		.hero {
-			padding: 2rem 1.25rem 1.25rem;
+			grid-template-columns: minmax(0, 1fr);
+			padding: 2.25rem 1.25rem 1.25rem;
+			column-gap: 0;
+		}
+		.rail {
+			display: none;
 		}
 		.hero-inner {
+			grid-column: 1;
 			gap: 1.3rem;
-			transform: none;
+			max-width: 100%;
 		}
 		.form {
 			flex-direction: column;
@@ -429,6 +502,7 @@
 			width: 100%;
 		}
 		.credit {
+			grid-column: 1;
 			justify-self: center;
 			text-align: center;
 			margin-top: 2rem;
