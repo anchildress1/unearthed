@@ -41,14 +41,13 @@ app.add_middleware(
 )
 
 
-_GMAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY", "")
-
-
 @app.get("/")
 def index():
+    from app.config import settings
+
     html = (_PROJECT_ROOT / "static" / "index.html").read_text()
-    # Inject the API key into the bootstrap loader
-    html = html.replace('{v: "weekly"}', f'{{key: "{_GMAPS_API_KEY}", v: "weekly"}}')
+    key = settings.google_maps_api_key
+    html = html.replace('{v: "weekly"}', f'{{key: "{key}", v: "weekly"}}')
     return HTMLResponse(html)
 
 
