@@ -1,140 +1,138 @@
-"""Generate mine prose using Snowflake Cortex.
+"""Generate mine prose using Snowflake Cortex Complete.
 
-Chain: Analyst pulls fatality/injury stats → Complete writes the grief.
-
-Analyst asks about the mine's human cost — fatalities, injuries, days lost.
-Complete takes those numbers and the mine data and writes prose that makes
-the reader feel the weight. Not a data summary. An accusation with sources.
-
-Falls back to a template if either service is unavailable.
+Direct SQL pulls fatality/injury stats from MSHA_ACCIDENTS.
+Cortex Complete turns those numbers into prose.
+No Analyst for prose — just SQL for facts, LLM for voice.
 """
 
-import json
 import logging
 
-from app.snowflake_client import (
-    _get_connection,
-    execute_analyst_sql,
-    query_cortex_analyst,
-)
+from app.snowflake_client import _get_connection
 
 logger = logging.getLogger(__name__)
 
-# Cache: subregion_id -> prose string. TTL = until next deploy.
 _prose_cache: dict[str, str] = {}
 
-# Question for Analyst — pulls stats NOT on the page.
-_ANALYST_QUESTION = (
-    "For the mine with MSHA ID matching '{mine_name}' operated by "
-    "'{mine_operator}': how many total fatalities, how many total injuries "
-    "that caused days away from work, and how many total days of work were "
-    "lost across all recorded accidents?"
+_STATS_SQL = """
+SELECT
+    COUNT(*) AS total_incidents,
+    SUM(CASE WHEN TRIM(REPLACE(DEGREE_INJURY, '"', '')) = 'FATALITY'
+        THEN 1 ELSE 0 END) AS fatalities,
+    SUM(CASE WHEN TRIM(REPLACE(DEGREE_INJURY, '"', '')) LIKE '%%DAYS%%'
+        THEN 1 ELSE 0 END) AS injuries_lost_time,
+    SUM(TRY_TO_NUMBER(REPLACE(DAYS_LOST, '"', ''))) AS total_days_lost
+FROM UNEARTHED_DB.RAW.MSHA_ACCIDENTS
+WHERE TRY_TO_NUMBER(REPLACE(MINE_ID, '"', '')) IN (
+    SELECT TRY_TO_NUMBER(REPLACE(MINE_ID, '"', ''))
+    FROM UNEARTHED_DB.RAW.MSHA_MINES
+    WHERE TRIM(REPLACE(CURRENT_MINE_NAME, '"', '')) ILIKE %(mine_name)s
+      AND REPLACE(COAL_METAL_IND, '"', '') = 'C'
 )
-
-# Prompt for Complete — turns numbers into grief.
-_COMPLETE_PROMPT = """You are writing for a data visualization that shows people which coal mine
-powers their home. The reader just learned that {mine_name} in {mine_county}, {mine_state}
-sends {tons:,.0f} tons of coal per year to {plant_name} to keep their lights on.
-
-Here are the human costs at this mine from federal MSHA records:
-{facts}
-
-Write 3-4 sentences. Rules:
-- Present tense. This is happening now.
-- Name the mine once. Do not repeat the operator name or plant name — those are already on screen.
-- Lead with the human cost — deaths, injuries, days lost. Not tonnage.
-- No acronyms. Say "federal mine safety records" not "MSHA."
-- No hope. No silver linings. No "however." No hedging.
-- End with the reader. Their electricity. Their demand.
-- Short sentences. Each one is a verdict.
+AND REPLACE(COAL_METAL_IND, '"', '') = 'C'
 """
 
-_FALLBACK_TEMPLATE = (
-    "{mine_name} has been extracting coal from {mine_county}, {mine_state} "
-    "for your power grid. In {tons_year}, {tons:,.0f} tons moved from this "
-    "mine to {plant_name}. The earth does not grow back."
+_COMPLETE_PROMPT = """You are writing 2-3 sentences for a data visualization about US coal.
+The reader just learned their electricity comes from {mine_name} in {mine_county}, {mine_state}.
+
+Federal mine safety records show:
+- {fatalities} workers have died at this mine
+- {injuries} workers were injured badly enough to miss work
+- {days_lost} total days of work lost to injury
+- {incidents} total recorded safety incidents
+
+Write 2-3 SHORT sentences. Rules:
+- Present tense. This is happening now.
+- Lead with deaths if any. Then injuries. Then days lost.
+- No acronyms. No jargon.
+- No hope. No hedging. No "however."
+- Last sentence connects to the reader's electricity.
+- Do NOT name the mine or operator — those are already on screen.
+"""
+
+_FALLBACK = (
+    "{fatalities} workers have died at this mine. "
+    "{injuries} more were injured badly enough to miss work — "
+    "{days_lost:,} days lost in total. "
+    "The coal kept moving to your grid."
+)
+
+_FALLBACK_NO_DATA = (
+    "This mine ships coal to your power grid. "
+    "The earth does not grow back."
 )
 
 
 def generate_prose(mine_data: dict) -> tuple[str, bool]:
-    """Generate prose about a mine using Cortex Analyst + Complete.
-
-    Returns (prose_text, degraded). Degraded is True if Cortex
-    failed and a template fallback was used.
-    """
     subregion_id = mine_data.get("subregion_id", "")
 
     if subregion_id and subregion_id in _prose_cache:
         return _prose_cache[subregion_id], False
 
     try:
-        prose = _generate_from_cortex(mine_data)
+        prose = _generate(mine_data)
         if subregion_id:
             _prose_cache[subregion_id] = prose
         return prose, False
     except Exception:
-        logger.exception("Cortex prose generation failed, using fallback")
-        prose = _fallback_prose(mine_data)
+        logger.exception("Prose generation failed")
+        prose = _FALLBACK_NO_DATA
         if subregion_id:
             _prose_cache[subregion_id] = prose
         return prose, True
 
 
-def _generate_from_cortex(mine_data: dict) -> str:
-    """Analyst pulls the numbers. Complete writes the grief."""
+def _generate(mine_data: dict) -> str:
+    conn = _get_connection()
 
-    # Step 1: Ask Analyst for fatality/injury stats
-    question = _ANALYST_QUESTION.format(
-        mine_name=mine_data["mine"],
-        mine_operator=mine_data["mine_operator"],
-    )
+    # Step 1: Get actual injury/fatality stats via direct SQL
+    cur = conn.cursor()
+    try:
+        cur.execute(_STATS_SQL, {"mine_name": mine_data["mine"] + "%"})
+        row = cur.fetchone()
+    finally:
+        cur.close()
 
-    result = query_cortex_analyst(question)
-    sql = result.get("sql")
+    if not row:
+        return _FALLBACK_NO_DATA
 
-    facts_text = "No accident records found for this mine."
-    if sql:
-        try:
-            rows = execute_analyst_sql(sql)
-            if rows:
-                facts_text = json.dumps(rows[0], default=str)
-        except Exception:
-            logger.warning("Analyst SQL execution failed for prose stats")
+    fatalities = int(row[1] or 0)
+    injuries = int(row[2] or 0)
+    days_lost = int(row[3] or 0)
+    incidents = int(row[0] or 0)
 
-    # Step 2: Feed facts to Complete
+    # If no meaningful data, use simple fallback
+    if fatalities == 0 and injuries == 0:
+        return _FALLBACK_NO_DATA
+
+    # Step 2: Feed real numbers to Cortex Complete
     prompt = _COMPLETE_PROMPT.format(
         mine_name=mine_data["mine"],
         mine_county=mine_data["mine_county"],
         mine_state=mine_data["mine_state"],
-        tons=mine_data["tons"],
-        plant_name=mine_data["plant"],
-        facts=facts_text,
+        fatalities=fatalities,
+        injuries=injuries,
+        days_lost=f"{days_lost:,}",
+        incidents=incidents,
     )
 
-    conn = _get_connection()
-    cur = conn.cursor()
+    cur2 = conn.cursor()
     try:
-        cur.execute(
-            "SELECT SNOWFLAKE.CORTEX.COMPLETE('llama3.1-70b', %s) AS prose",
+        cur2.execute(
+            "SELECT SNOWFLAKE.CORTEX.COMPLETE('llama3.1-70b', %s)",
             (prompt,),
         )
-        row = cur.fetchone()
-        if row and row[0]:
-            prose = row[0].strip().strip('"')
+        result = cur2.fetchone()
+        if result and result[0]:
+            prose = result[0].strip().strip('"')
             if prose:
                 return prose
     finally:
-        cur.close()
+        cur2.close()
 
-    raise RuntimeError("Complete returned empty prose")
-
-
-def _fallback_prose(mine_data: dict) -> str:
-    return _FALLBACK_TEMPLATE.format(
-        mine_name=mine_data["mine"],
-        mine_county=mine_data["mine_county"],
-        mine_state=mine_data["mine_state"],
-        plant_name=mine_data["plant"],
-        tons_year=mine_data["tons_year"],
-        tons=mine_data["tons"],
+    # Complete failed — use template with real numbers
+    return _FALLBACK.format(
+        fatalities=fatalities,
+        injuries=injuries,
+        days_lost=days_lost,
+        incidents=incidents,
     )
