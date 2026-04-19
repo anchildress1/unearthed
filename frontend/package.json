@@ -7,13 +7,26 @@
 		"dev": "vite dev",
 		"build": "vite build",
 		"preview": "vite preview",
-		"prepare": "svelte-kit sync || echo ''"
+		"prepare": "svelte-kit sync || echo ''",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage",
+		"test:e2e": "playwright test",
+		"lhci": "lhci autorun"
 	},
 	"devDependencies": {
+		"@lhci/cli": "^0.15.1",
+		"@playwright/test": "^1.59.1",
 		"@sveltejs/adapter-static": "^3.0.10",
 		"@sveltejs/kit": "^2.57.0",
 		"@sveltejs/vite-plugin-svelte": "^7.0.0",
+		"@testing-library/jest-dom": "^6.9.1",
+		"@testing-library/svelte": "^5.3.1",
+		"@testing-library/user-event": "^14.6.1",
+		"@vitest/coverage-v8": "^4.1.4",
+		"jsdom": "^29.0.2",
 		"svelte": "^5.55.2",
-		"vite": "^8.0.7"
+		"vite": "^8.0.7",
+		"vitest": "^4.1.4"
 	}
 }
