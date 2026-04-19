@@ -1,5 +1,6 @@
 <script>
 	import { fetchAsk } from '$lib/api.js';
+	import { reveal } from '$lib/reveal.js';
 
 	const props = $props();
 	let question = $state('');
@@ -44,19 +45,28 @@
 	}
 </script>
 
-<section class="cortex">
+<section class="cortex" use:reveal>
 	<div class="header">
-		<span class="badge">cortex analyst</span>
-		<span class="live">● live</span>
+		<span class="badge">snowflake cortex analyst</span>
+		<span class="live" aria-label="Live connection">● live</span>
 	</div>
 
-	<h3>Ask the data.</h3>
+	<h3>Interrogate the <em>records</em>.</h3>
 	<p class="sub">
-		Powered by <strong>Snowflake Cortex Analyst</strong>. Your question becomes SQL.
-		The SQL runs against federal mine safety records. The answer comes back with its source.
+		Your question becomes <strong>SQL</strong>. The SQL runs against federal mine data
+		pooled in Snowflake. The answer comes back with the generated query attached —
+		<em>honesty, not hallucination</em>.
 	</p>
 
-	<div class="chips">
+	<div class="pipeline" aria-hidden="true">
+		<span class="p-step"><span class="p-num">01</span> natural language</span>
+		<span class="p-arrow">→</span>
+		<span class="p-step"><span class="p-num">02</span> generated SQL</span>
+		<span class="p-arrow">→</span>
+		<span class="p-step"><span class="p-num">03</span> federal data</span>
+	</div>
+
+	<div class="chips" role="list" aria-label="Suggested questions">
 		{#each chips as chip}
 			<button class="chip" onclick={() => ask(chip)} disabled={asking}>{chip}</button>
 		{/each}
@@ -68,22 +78,45 @@
 			name="question"
 			type="text"
 			bind:value={question}
-			placeholder="Ask anything about this mine, this plant, or your grid..."
+			placeholder="Ask anything about this mine, this plant, or your grid…"
 			aria-label="Ask a question"
 			maxlength="500"
 			disabled={asking}
 		/>
-		<button type="submit" disabled={asking}>{asking ? '...' : 'Ask'}</button>
+		<button type="submit" disabled={asking}>{asking ? 'asking…' : 'ask →'}</button>
 	</form>
 
 	{#if transcript.length > 0}
 		<div class="transcript">
 			{#each transcript as entry}
 				<div class="entry glass">
+					<div class="stage">
+						<span class="stage-num">01</span>
+						<span class="stage-label">question</span>
+					</div>
 					<p class="q">{entry.question}</p>
 
 					{#if entry.error}
+						<div class="stage err-stage">
+							<span class="stage-num">!!</span>
+							<span class="stage-label">couldn't answer</span>
+						</div>
 						<p class="error">{entry.error}</p>
+					{/if}
+
+					{#if entry.sql}
+						<div class="stage">
+							<span class="stage-num">02</span>
+							<span class="stage-label">generated SQL · Cortex Analyst</span>
+						</div>
+						<pre class="sql-pre">{entry.sql}</pre>
+					{/if}
+
+					{#if entry.answer || (entry.results && entry.results.length > 0)}
+						<div class="stage">
+							<span class="stage-num">03</span>
+							<span class="stage-label">federal data · MSHA + EIA</span>
+						</div>
 					{/if}
 
 					{#if entry.answer}
@@ -114,17 +147,6 @@
 							</table>
 						</div>
 					{/if}
-
-					{#if entry.sql}
-						<details class="sql-details">
-							<summary>Show SQL</summary>
-							<pre>{entry.sql}</pre>
-						</details>
-					{/if}
-
-					<div class="source">
-						<span class="source-tag">source: MSHA + EIA federal records via Snowflake</span>
-					</div>
 				</div>
 			{/each}
 		</div>
@@ -170,20 +192,56 @@
 		font-weight: 400;
 		color: var(--text);
 		margin-bottom: 0.5rem;
+		letter-spacing: -0.01em;
 	}
+	h3 em { color: var(--accent); font-style: italic; }
 
 	.sub {
 		font-family: var(--serif);
-		font-size: 0.9rem;
+		font-size: 0.95rem;
 		font-weight: 300;
 		color: var(--text-dim);
-		line-height: 1.7;
-		margin-bottom: 1.5rem;
-		max-width: 560px;
+		line-height: 1.75;
+		margin-bottom: 1.4rem;
+		max-width: 580px;
 	}
 	.sub strong {
+		color: var(--text);
+		font-weight: 400;
+	}
+	.sub em {
+		color: var(--accent);
+		font-style: italic;
+	}
+
+	.pipeline {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.7rem;
+		margin-bottom: 1.4rem;
+		font-family: var(--mono);
+		font-size: 0.55rem;
+		text-transform: uppercase;
+		letter-spacing: 0.16em;
+		color: var(--text-ghost);
+	}
+	.p-step {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		padding: 0.3rem 0.55rem;
+		border: 1px solid rgba(255, 255, 255, 0.06);
+		border-radius: 3px;
+		background: rgba(255, 255, 255, 0.015);
+	}
+	.p-num {
 		color: var(--accent);
 		font-weight: 400;
+	}
+	.p-arrow {
+		color: var(--text-ghost);
+		font-size: 0.8rem;
 	}
 
 	.chips {
@@ -241,41 +299,73 @@
 	}
 	button[type="submit"]:disabled { opacity: 0.3; cursor: not-allowed; }
 
-	.transcript { display: flex; flex-direction: column; gap: 1rem; }
+	.transcript { display: flex; flex-direction: column; gap: 1.2rem; }
 
-	.entry { padding: 1.2rem 1.4rem; }
+	.entry { padding: 1.3rem 1.5rem; }
+
+	.stage {
+		display: flex;
+		align-items: baseline;
+		gap: 0.5rem;
+		margin-top: 0.9rem;
+		margin-bottom: 0.4rem;
+	}
+	.stage:first-child { margin-top: 0; }
+	.stage-num {
+		font-family: var(--mono);
+		font-size: 0.6rem;
+		color: var(--accent);
+		letter-spacing: 0.12em;
+		font-weight: 400;
+	}
+	.stage-label {
+		font-family: var(--mono);
+		font-size: 0.5rem;
+		text-transform: uppercase;
+		letter-spacing: 0.2em;
+		color: var(--text-ghost);
+	}
+	.err-stage .stage-num { color: var(--accent); }
 
 	.q {
 		font-family: var(--serif);
-		font-weight: 600;
-		font-size: 0.9rem;
-		color: var(--accent);
-		margin-bottom: 0.8rem;
+		font-weight: 400;
+		font-style: italic;
+		font-size: 1.05rem;
+		color: var(--text);
+		line-height: 1.5;
+		margin-bottom: 0.2rem;
 	}
 
 	.answer {
 		font-family: var(--serif);
-		font-size: 0.95rem;
+		font-size: 0.98rem;
 		font-weight: 300;
 		line-height: 1.8;
 		color: var(--text);
-		margin-bottom: 0.8rem;
+		margin-bottom: 0.4rem;
 	}
 
 	.error {
 		color: var(--accent);
 		font-size: 0.85rem;
 		font-style: italic;
-		margin-bottom: 0.5rem;
 	}
 
-	.results { margin: 0.8rem 0; overflow-x: auto; }
+	.no-results {
+		font-family: var(--mono);
+		font-size: 0.7rem;
+		color: var(--text-ghost);
+		font-style: italic;
+	}
+
+	.results { margin: 0.4rem 0 0.2rem; overflow-x: auto; }
 	table { width: 100%; border-collapse: collapse; }
 	th, td {
 		text-align: left;
-		padding: 0.4rem 0.6rem;
-		border-bottom: 1px solid rgba(255,255,255,0.04);
-		font-size: 0.8rem;
+		padding: 0.45rem 0.7rem;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+		font-size: 0.82rem;
 	}
 	th {
 		font-family: var(--mono);
@@ -283,44 +373,22 @@
 		text-transform: uppercase;
 		letter-spacing: 0.1em;
 		color: var(--text-ghost);
+		font-weight: 400;
 	}
-	td { color: var(--text-dim); }
+	td { color: var(--text-dim); font-family: var(--serif); }
 
-	.sql-details { margin-top: 0.5rem; }
-	.sql-details summary {
-		font-family: var(--mono);
-		font-size: 0.65rem;
-		text-transform: uppercase;
-		letter-spacing: 0.1em;
-		color: var(--accent);
-		cursor: pointer;
-		padding: 0.3rem 0;
-	}
-	.sql-details pre {
-		margin-top: 0.5rem;
-		padding: 0.8rem;
-		background: rgba(0,0,0,0.4);
+	.sql-pre {
+		margin: 0;
+		padding: 0.9rem 1rem;
+		background: rgba(0, 0, 0, 0.45);
 		border-radius: 6px;
-		border: 1px solid rgba(255,255,255,0.03);
+		border-left: 2px solid var(--accent);
 		font-family: var(--mono);
-		font-size: 0.7rem;
+		font-size: 0.72rem;
 		color: var(--accent);
 		white-space: pre-wrap;
 		word-break: break-word;
-		line-height: 1.5;
+		line-height: 1.55;
 		overflow-x: auto;
-	}
-
-	.source {
-		margin-top: 0.6rem;
-		padding-top: 0.5rem;
-		border-top: 1px solid rgba(255,255,255,0.03);
-	}
-	.source-tag {
-		font-family: var(--mono);
-		font-size: 0.5rem;
-		text-transform: uppercase;
-		letter-spacing: 0.12em;
-		color: var(--text-ghost);
 	}
 </style>
