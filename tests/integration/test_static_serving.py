@@ -28,9 +28,10 @@ class TestIndexRoute:
         resp = client.get("/")
         assert b"/static/style.css" in resp.content
 
-    def test_index_contains_maplibre_cdn(self, client):
+    def test_index_contains_google_maps_loader(self, client):
         resp = client.get("/")
-        assert b"maplibre-gl" in resp.content
+        assert b"google" in resp.content
+        assert b"maps" in resp.content
 
 
 class TestStaticFiles:

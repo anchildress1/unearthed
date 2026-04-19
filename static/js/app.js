@@ -19,12 +19,12 @@ import {
 import { createMap, runRevealSequence } from "./map.js";
 import { startTicker } from "./particles.js";
 
-// --- CDN dependency check ---
-if (typeof maplibregl === "undefined") {
-  const msg = "Required libraries failed to load. Please check your network connection and reload.";
-  document.body.textContent = msg;
-  throw new Error(msg);
-}
+// --- Google Maps API key + library loading ---
+// Key is injected by the backend as a global before this module runs.
+// eslint-disable-next-line no-undef
+google._gmak = window.__GMAPS_KEY || "";
+await google.maps.importLibrary("maps");
+await google.maps.importLibrary("marker");
 
 // --- DOM References ---
 const introSection = document.getElementById("intro");
@@ -292,7 +292,8 @@ function cleanup() {
   }
   if (mapInstance) {
     mapInstance._stopFlowAnimation?.();
-    mapInstance.remove();
+    // Google Maps doesn't have .remove() — clear the container instead
+    mapContainer.replaceChildren();
     mapInstance = null;
   }
   if (shareHandler) {

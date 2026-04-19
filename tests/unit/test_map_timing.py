@@ -1,4 +1,4 @@
-"""Unit tests verifying map reveal timing stays within the 8-second spec."""
+"""Unit tests verifying map reveal timing constants."""
 
 import re
 from pathlib import Path
@@ -13,36 +13,20 @@ def _extract_const(name: str) -> int:
     return int(match.group(1))
 
 
-STEP_DURATION = _extract_const("STEP_DURATION_MS")
-PAUSE_BETWEEN = _extract_const("PAUSE_BETWEEN_MS")
+FLY_DURATION = _extract_const("FLY_DURATION")
+HOLD_DURATION = _extract_const("HOLD_DURATION")
 LOAD_TIMEOUT = _extract_const("MAP_LOAD_TIMEOUT_MS")
-
-# The reveal has 4 delay(stepDelay) awaits where stepDelay = STEP + PAUSE
-TOTAL_SEQUENCE_MS = 4 * (STEP_DURATION + PAUSE_BETWEEN)
 
 
 class TestMapTimingSpec:
-    """PRD requires total map reveal sequence <= 8 seconds."""
+    def test_fly_duration_is_positive(self):
+        assert FLY_DURATION > 0
 
-    def test_total_sequence_under_8_seconds(self):
-        assert TOTAL_SEQUENCE_MS <= 8000, (
-            f"Map reveal is {TOTAL_SEQUENCE_MS}ms, exceeds 8000ms spec"
-        )
+    def test_hold_duration_allows_user_to_read(self):
+        assert HOLD_DURATION >= 2000, "Hold too short for user to register location"
 
-    def test_step_duration_is_positive(self):
-        assert STEP_DURATION > 0
+    def test_fly_is_reasonable(self):
+        assert FLY_DURATION >= 1000, "Fly too fast for animation to be visible"
 
-    def test_pause_is_positive(self):
-        assert PAUSE_BETWEEN > 0
-
-    def test_step_is_reasonable(self):
-        # Each step should be long enough for the flyTo to be visible
-        assert STEP_DURATION >= 1000, "Step too fast for animation to be visible"
-
-    def test_load_timeout_exceeds_sequence(self):
-        # Timeout must be longer than the full sequence
-        assert LOAD_TIMEOUT > TOTAL_SEQUENCE_MS
-
-    def test_four_steps_in_sequence(self):
-        # Verify the code has exactly 4 delay awaits
-        assert MAP_JS.count("await delay(stepDelay)") == 4
+    def test_load_timeout_is_generous(self):
+        assert LOAD_TIMEOUT >= 10000

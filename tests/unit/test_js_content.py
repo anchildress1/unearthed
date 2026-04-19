@@ -155,26 +155,23 @@ class TestMapJsContent:
     def test_exports_run_reveal_sequence(self):
         assert "export function runRevealSequence" in self.src
 
-    def test_uses_maplibregl(self):
-        assert "maplibregl.Map" in self.src
+    def test_uses_google_maps(self):
+        assert "google.maps.Map" in self.src
 
-    def test_uses_maplibre_marker(self):
-        assert "maplibregl.Marker" in self.src
-
-    def test_uses_fly_to(self):
-        assert "flyTo" in self.src
+    def test_uses_google_marker(self):
+        assert "AdvancedMarkerElement" in self.src
 
     def test_uses_fit_bounds(self):
         assert "fitBounds" in self.src
 
     def test_has_flow_line_function(self):
-        assert "addFlowLine" in self.src
+        assert "drawFlowLine" in self.src
 
-    def test_draws_geojson_line(self):
-        assert "LineString" in self.src
+    def test_uses_polyline(self):
+        assert "Polyline" in self.src
 
-    def test_uses_satellite_style(self):
-        assert "satellite" in self.src.lower()
+    def test_uses_hybrid_map_type(self):
+        assert "hybrid" in self.src
 
     def test_has_load_timeout(self):
         assert "MAP_LOAD_TIMEOUT_MS" in self.src
@@ -333,15 +330,15 @@ class TestAppJsContent:
     def test_removes_share_handler_on_re_reveal(self):
         assert "removeEventListener" in self.src
 
-    def test_checks_cdn_dependencies(self):
-        assert "maplibregl" in self.src
+    def test_checks_google_maps_dependency(self):
+        assert "google.maps" in self.src
 
     def test_clipboard_failure_handled(self):
         assert "Could not copy link" in self.src
 
     def test_map_instance_disposed_on_cleanup(self):
         assert "mapInstance" in self.src
-        assert ".remove()" in self.src
+        assert "replaceChildren" in self.src
 
     def test_concurrent_reveal_guard(self):
         assert "revealInProgress" in self.src
