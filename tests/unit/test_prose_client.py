@@ -52,8 +52,22 @@ class TestCompletePrompt:
         fatalities_pos = _COMPLETE_PROMPT.index("{fatalities}")
         assert injuries_pos < fatalities_pos
 
-    def test_prompt_forbids_naming_mine_or_operator(self):
-        assert "Do NOT name the mine or operator" in _COMPLETE_PROMPT
+    def test_prompt_carries_plant_and_mine_context(self):
+        """The full-narrative prompt must receive plant + mine + tonnage fields so
+        the agent can write all three paragraphs without frontend templating."""
+        for placeholder in (
+            "{plant_name}",
+            "{plant_operator}",
+            "{mine_name}",
+            "{mine_operator}",
+            "{mine_type}",
+            "{tons",
+        ):
+            assert placeholder in _COMPLETE_PROMPT, f"missing {placeholder}"
+
+    def test_prompt_requests_three_paragraphs(self):
+        prompt_lower = _COMPLETE_PROMPT.lower()
+        assert "3 short paragraphs" in _COMPLETE_PROMPT or "three paragraphs" in prompt_lower
 
 
 class TestGenerateProse:
@@ -93,8 +107,14 @@ class TestGenerateProse:
             {
                 "mine_id": "9999999",
                 "mine": "Test Mine",
+                "mine_operator": "Test Op",
                 "mine_county": "Test",
                 "mine_state": "WV",
+                "mine_type": "Surface",
+                "plant": "Test Plant",
+                "plant_operator": "Test Utility",
+                "tons": 100000,
+                "tons_year": 2024,
                 "subregion_id": "TEST2",
             }
         )
@@ -116,8 +136,14 @@ class TestGenerateProse:
             {
                 "mine_id": "7777777",
                 "mine": "Another",
+                "mine_operator": "Op",
                 "mine_county": "Kanawha",
                 "mine_state": "WV",
+                "mine_type": "Underground",
+                "plant": "Plant",
+                "plant_operator": "Utility",
+                "tons": 50000,
+                "tons_year": 2024,
                 "subregion_id": "TEST3",
             }
         )
@@ -143,8 +169,14 @@ class TestProseCache:
         payload = {
             "mine_id": "1",
             "mine": "M",
+            "mine_operator": "O",
             "mine_county": "C",
             "mine_state": "WV",
+            "mine_type": "Surface",
+            "plant": "P",
+            "plant_operator": "U",
+            "tons": 1000,
+            "tons_year": 2024,
             "subregion_id": "CACHED",
         }
         first, _ = generate_prose(payload)

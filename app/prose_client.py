@@ -25,23 +25,32 @@ WHERE TRY_TO_NUMBER(REPLACE(MINE_ID, '"', '')) = %(mine_id)s
     AND REPLACE(COAL_METAL_IND, '"', '') = 'C'
 """
 
-_COMPLETE_PROMPT = """You are writing 2-3 sentences for a data visualization about US coal.
-The reader just learned their electricity comes from {mine_name} in {mine_county}, {mine_state}.
+_COMPLETE_PROMPT = """You are writing 3 short paragraphs for a data visualization about US coal.
 
-Federal mine safety records show:
+The reader just learned their electricity comes from {plant_name}, a power plant
+operated by {plant_operator}. That plant receives {tons:,} tons of coal per year
+(in {tons_year}) from {mine_name}, a {mine_type} mine operated by {mine_operator}
+in {mine_county} County, {mine_state}.
+
+Federal mine safety records for that mine show:
 - {injuries} workers were injured badly enough to miss work
 - {days_lost} total days of work lost to injury
 - {fatalities} workers have died at this mine
 - {incidents} total recorded safety incidents
 
-Write 2-3 SHORT sentences. Rules:
-- Present tense. This is happening now.
-- Lead with the injuries — these are daily, specific, bodily. Name days lost.
-- Land the fatalities second, as the weight the injuries accumulate toward.
-- No acronyms. No jargon.
-- No hope. No hedging. No "however."
-- Last sentence connects to the reader's electricity.
-- Do NOT name the mine or operator — those are already on screen.
+Write exactly 3 short paragraphs, 1-2 sentences each, separated by a blank line.
+Rules:
+- Paragraph 1 grounds the reader: the plant, where that electricity meets them,
+  present tense. You may name the plant once.
+- Paragraph 2 is the mine: the tonnage, the operator, the county/state, the mine type.
+  Make the scale of extraction felt.
+- Paragraph 3 is the human cost. Lead with the injuries — daily, specific, bodily,
+  name the days lost. Land the fatalities second, as the weight the injuries
+  accumulate toward. Last sentence connects the extraction back to the reader's
+  electricity.
+- No acronyms. No jargon. No hope. No hedging. No "however." No markdown headers.
+- Do not repeat the data bullets verbatim — write prose that lets the numbers land.
+- If a number is zero, do not mention it at all.
 """
 
 _FALLBACK_NO_DATA = "This mine ships coal to your power grid. The earth does not grow back."
@@ -102,9 +111,15 @@ def _generate(mine_data: dict) -> tuple[str, bool]:
         return _FALLBACK_NO_DATA, True
 
     prompt = _COMPLETE_PROMPT.format(
+        plant_name=mine_data.get("plant", ""),
+        plant_operator=mine_data.get("plant_operator", ""),
         mine_name=mine_data["mine"],
+        mine_operator=mine_data.get("mine_operator", ""),
         mine_county=mine_data["mine_county"],
         mine_state=mine_data["mine_state"],
+        mine_type=mine_data.get("mine_type", ""),
+        tons=int(mine_data.get("tons", 0) or 0),
+        tons_year=mine_data.get("tons_year", ""),
         fatalities=fatalities,
         injuries=injuries,
         days_lost=f"{days_lost:,}",

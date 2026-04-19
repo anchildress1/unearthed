@@ -34,17 +34,17 @@
 	</h2>
 
 	<div class="prose">
-		<p>
-			<strong>{data.plant}</strong> burned the coal that fed your grid zone.
-			{data.mine_county} County, {data.mine_state}.
-			{data.mine_type} mine.
-		</p>
-		<p>
-			It receives <strong class="rust">{Number(data.tons).toLocaleString()} tons</strong> of coal per year
-			from <strong>{data.mine}</strong>, operated by {data.mine_operator}.
-		</p>
 		{#if data.prose}
-			<p>{data.prose}</p>
+			{#each data.prose.split(/\n{2,}/) as paragraph}
+				{#if paragraph.trim()}
+					<p>{paragraph.trim()}</p>
+				{/if}
+			{/each}
+		{:else}
+			<p>
+				{data.plant}, operated by {data.plant_operator}, burns coal shipped from
+				{data.mine} in {data.mine_county} County, {data.mine_state}.
+			</p>
 		{/if}
 	</div>
 
