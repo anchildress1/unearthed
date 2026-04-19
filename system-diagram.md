@@ -8,7 +8,8 @@ flowchart TB
         GEO[Geolocation / Geocoding<br/>→ lat/lon → subregion]
         SCROLL[Scroll sections<br/>glassmorphism data reveals]
         MAP[Google Maps JS API<br/>satellite + animated arc]
-        CHAT[Cortex Analyst chat<br/>chips + expandable SQL]
+        H3UI[H3 density section<br/>SVG hex footprint]
+        CHAT[Cortex Analyst chat<br/>chips + visible SQL per turn]
         GEO --> SCROLL
     end
 
@@ -24,7 +25,7 @@ flowchart TB
         DB[(UNEARTHED_DB<br/>6 tables + 2 views)]
         ACCIDENTS[(MSHA_ACCIDENTS<br/>fatalities + injuries)]
         CORTEX[Cortex Analyst<br/>semantic model YAML]
-        COMPLETE[Cortex Complete<br/>llama3.1-70b prose]
+        COMPLETE[Cortex Complete<br/>openai-gpt-5-chat prose<br/>injuries-first, fatalities-second]
         H3[H3 Geospatial<br/>hexbin density]
         RO_EXEC[SQL Execution<br/>READONLY_ROLE]
     end
@@ -35,8 +36,8 @@ flowchart TB
 
     SCROLL -->|POST subregion_id| MINE_EP
     CHAT -->|POST question| ASK_EP
-    MAP -->|GET| H3_EP
-    SCROLL -->|GET| EMIT_EP
+    H3UI -->|GET| H3_EP
+    SCROLL -->|GET /emissions/:plant| EMIT_EP
     MINE_EP -->|query| DB
     MINE_EP -->|fatality stats| ACCIDENTS
     MINE_EP -->|Snowflake down| FALLBACK

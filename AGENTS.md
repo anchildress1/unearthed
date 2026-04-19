@@ -116,13 +116,24 @@ SNOWFLAKE_PUBLIC_DATA_FREE       — Marketplace (free, no load needed)
 
 ### Cortex AI Usage
 
-One Cortex feature in use:
+Two Cortex features in use:
 
 | Feature | Purpose | Where Used |
 |---|---|---|
 | Cortex Analyst | NL-to-SQL via semantic model YAML | `/ask` endpoint, runtime user questions |
+| Cortex Complete (`openai-gpt-5-chat`) | Short safety prose from MSHA_ACCIDENTS stats | `/mine-for-me` response, in-process cache per subregion |
 
 - **Cortex Analyst semantic model:** Checked into repo as YAML. Covers only the 4-5 chip question patterns — not open-ended.
+- **Cortex Complete prompt:** Injuries lead, fatalities land second — see `app/prose_client.py`. Output is stripped of outer quotes before caching.
+
+### Snowflake-Native Features Beyond Cortex
+
+Two endpoints lean on Snowflake's built-in geospatial / Marketplace story:
+
+| Endpoint | Snowflake capability | UI |
+|---|---|---|
+| `/h3-density` | `H3_LATLNG_TO_CELL_STRING` for hexbin aggregation | `H3Density.svelte` — national footprint section |
+| `/emissions/{plant}` | EPA Clean Air Markets via Snowflake Marketplace (free) | Inline card on `PlantReveal.svelte` |
 
 ### Security
 
