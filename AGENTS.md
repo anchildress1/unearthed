@@ -129,7 +129,7 @@ One Cortex feature in use:
 
 - **Key-pair auth** preferred for Snowflake (password auth requires explicit `ALLOW_PASSWORD_AUTH=true`). Private key stored as Cloud Run Secret Manager secret.
 - **Never hardcode credentials** in source code, environment files, or SQL scripts.
-- **Two roles:** `UNEARTHED_APP_ROLE` for data queries, `UNEARTHED_READONLY_ROLE` (SELECT-only grants on MRT schema) for executing Analyst-generated SQL.
+- **Two roles:** `UNEARTHED_APP_ROLE` (SELECT on RAW + MRT, Cortex function access) for data queries, `UNEARTHED_READONLY_ROLE` (SELECT on RAW + MRT) for executing Analyst-generated SQL. Both roles have USAGE on `UNEARTHED_APP_WH`.
 - **SQL validation:** Analyst SQL is regex-validated before execution — must start with SELECT/WITH, no DML/DDL keywords. **Semicolons:** Cortex Analyst appends a trailing semicolon to generated SQL; `execute_analyst_sql` strips it before validation. After stripping, any remaining semicolons (multi-statement) are rejected. Defense-in-depth on top of the read-only role.
 - **Input validation:** Subregion IDs validated with `^[A-Za-z0-9]{2,10}$` to prevent path traversal. Fallback file paths resolved and verified under `assets/fallback/`.
 - **XS warehouse only.** The free trial has $400 of credits. Do not burn them on oversized warehouses.
