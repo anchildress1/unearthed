@@ -18,9 +18,7 @@
 		rafId = requestAnimationFrame(tick);
 	});
 
-	onDestroy(() => {
-		if (rafId) cancelAnimationFrame(rafId);
-	});
+	onDestroy(() => { if (rafId) cancelAnimationFrame(rafId); });
 </script>
 
 <section class="share">
@@ -31,15 +29,9 @@
 		<span class="share__unit">tons extracted since you opened this page</span>
 	</div>
 
-	<p class="share__line">
-		That coal is leaving <em>{data.mine_county}</em> right now.
-	</p>
-	<p class="share__line">
-		It is being burned at <em>{data.plant}</em> right now.
-	</p>
-	<p class="share__line">
-		Your lights are on right now.
-	</p>
+	<p class="share__line">That coal is leaving <em>{data.mine_county}</em> right now.</p>
+	<p class="share__line">It is being burned at <em>{data.plant}</em> right now.</p>
+	<p class="share__line">Your lights are on right now.</p>
 </section>
 
 <style>
@@ -54,46 +46,41 @@
 	}
 
 	.share__pre {
-		font-family: 'JetBrains Mono', monospace;
-		font-size: 0.75rem;
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
 		letter-spacing: 0.15em;
 		text-transform: uppercase;
-		color: #8a8680;
+		color: var(--text-muted);
 		margin-bottom: 3rem;
 	}
 
-	.share__ticker {
-		margin-bottom: 4rem;
-	}
+	.share__ticker { margin-bottom: 4rem; }
 
 	.share__number {
 		display: block;
-		font-family: 'JetBrains Mono', monospace;
+		font-family: var(--font-mono);
 		font-size: clamp(3rem, 10vw, 6rem);
 		font-weight: 300;
-		color: #c4956a;
+		color: var(--accent);
 		line-height: 1;
 		margin-bottom: 0.5rem;
 	}
 
 	.share__unit {
-		font-family: 'JetBrains Mono', monospace;
-		font-size: 0.75rem;
-		color: #8a8680;
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		color: var(--text-muted);
 		letter-spacing: 0.1em;
 		text-transform: uppercase;
 	}
 
 	.share__line {
-		font-family: 'Playfair Display', serif;
+		font-family: var(--font-serif);
 		font-size: clamp(1.2rem, 3vw, 1.8rem);
-		color: #d4d0c8;
+		color: var(--text);
 		margin-bottom: 1rem;
 		max-width: 500px;
 	}
 
-	.share__line em {
-		color: #c4956a;
-		font-style: italic;
-	}
+	.share__line em { color: var(--accent); font-style: italic; }
 </style>

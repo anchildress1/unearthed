@@ -122,7 +122,7 @@
 		font-size: 0.75rem;
 		letter-spacing: 0.15em;
 		text-transform: uppercase;
-		color: #8a8680;
+		color: var(--text-muted);
 		margin-bottom: 2rem;
 	}
 
@@ -138,16 +138,16 @@
 		font-family: 'Inter', sans-serif;
 		font-size: 0.85rem;
 		padding: 0.5rem 1rem;
-		background: #141414;
-		border: 1px solid #2a2725;
+		background: var(--bg-card);
+		border: 1px solid var(--border);
 		border-radius: 2rem;
-		color: #8a8680;
+		color: var(--text-muted);
 		cursor: pointer;
 	}
 
 	.chat__chip:hover:not(:disabled) {
-		border-color: #c4956a;
-		color: #c4956a;
+		border-color: var(--accent);
+		color: var(--accent);
 	}
 
 	.chat__form {
@@ -162,24 +162,24 @@
 		font-family: 'Inter', sans-serif;
 		font-size: 0.95rem;
 		padding: 0.7rem 1rem;
-		background: #1a1a1a;
-		color: #d4d0c8;
-		border: 1px solid #2a2725;
+		background: var(--bg-card);
+		color: var(--text);
+		border: 1px solid var(--border);
 		border-radius: 4px;
 	}
 
 	.chat__input:focus {
 		outline: none;
-		border-color: #c4956a;
+		border-color: var(--accent);
 	}
 
 	.chat__btn {
 		font-family: 'Inter', sans-serif;
 		font-size: 0.95rem;
 		padding: 0.7rem 1.2rem;
-		background: #c4956a;
-		color: #0a0a0a;
-		border: 1px solid #c4956a;
+		background: var(--accent);
+		color: var(--bg);
+		border: 1px solid var(--accent);
 		border-radius: 4px;
 		cursor: pointer;
 		font-weight: 600;
@@ -194,14 +194,14 @@
 
 	.chat__entry {
 		padding: 1rem;
-		background: #141414;
-		border: 1px solid #2a2725;
+		background: var(--bg-card);
+		border: 1px solid var(--border);
 		border-radius: 6px;
 	}
 
 	.chat__q {
 		font-weight: 600;
-		color: #c4956a;
+		color: var(--accent);
 		margin-bottom: 0.75rem;
 		font-size: 0.95rem;
 	}
@@ -231,14 +231,14 @@
 	.chat__results td {
 		text-align: left;
 		padding: 0.4rem 0.75rem;
-		border-bottom: 1px solid #2a2725;
+		border-bottom: 1px solid var(--border);
 	}
 
 	.chat__results th {
 		font-size: 0.75rem;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
-		color: #8a8680;
+		color: var(--text-muted);
 	}
 
 	.chat__sql-details {
@@ -247,18 +247,18 @@
 
 	.chat__sql-toggle {
 		font-size: 0.8rem;
-		color: #6a8a6a;
+		color: var(--green);
 		cursor: pointer;
 	}
 
 	.chat__sql {
 		margin-top: 0.5rem;
 		padding: 0.75rem;
-		background: #0a0a0a;
+		background: var(--bg);
 		border-radius: 4px;
 		font-family: 'JetBrains Mono', monospace;
 		font-size: 0.8rem;
-		color: #6a8a6a;
+		color: var(--green);
 		white-space: pre-wrap;
 		word-break: break-word;
 		overflow-x: auto;

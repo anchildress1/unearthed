@@ -5,9 +5,11 @@
 <section class="map-section">
 	<p class="map-section__pre">— THE CHAIN</p>
 	<div class="map-section__container" id="map-container">
-		<!-- Google Maps will mount here -->
 		<p class="map-section__placeholder">Map loading...</p>
 	</div>
+	<p class="map-section__caption">
+		{data.mine} → {data.plant} → your grid
+	</p>
 </section>
 
 <style>
@@ -20,11 +22,11 @@
 	}
 
 	.map-section__pre {
-		font-family: 'JetBrains Mono', monospace;
-		font-size: 0.75rem;
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
 		letter-spacing: 0.15em;
 		text-transform: uppercase;
-		color: #8a8680;
+		color: var(--text-muted);
 		margin-bottom: 1.5rem;
 	}
 
@@ -32,9 +34,9 @@
 		width: 100%;
 		max-width: 1000px;
 		height: 500px;
-		background: #141414;
-		border: 1px solid #2a2725;
-		border-radius: 6px;
+		background: var(--bg-card);
+		border: 1px solid var(--border);
+		border-radius: 4px;
 		overflow: hidden;
 		display: flex;
 		align-items: center;
@@ -42,7 +44,15 @@
 	}
 
 	.map-section__placeholder {
-		color: #8a8680;
+		color: var(--text-muted);
 		font-size: 0.9rem;
+	}
+
+	.map-section__caption {
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		color: var(--text-muted);
+		margin-top: 1rem;
+		letter-spacing: 0.05em;
 	}
 </style>
