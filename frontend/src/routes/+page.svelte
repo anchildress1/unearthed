@@ -12,6 +12,13 @@
 	let mineData = $state(null);
 	let loading = $state(false);
 	let error = $state(null);
+	// Per-trace identity. Incremented on every successful trace so the
+	// {#key} block below remounts the reveal tree even when the user
+	// retraces within the same eGRID subregion (e.g., a neighbor's
+	// address feeds the same grid but has different coordinates).
+	// Keying on subregion alone would skip the remount and leave
+	// MapSection / H3Density / CortexChat holding stale onMount state.
+	let traceNonce = $state(0);
 	let resultsEl;
 
 	async function onTrace(subregionId, userCoords = null) {
@@ -21,6 +28,7 @@
 		try {
 			mineData = await fetchMineForMe(subregionId);
 			mineData.subregion_id = subregionId;
+			traceNonce += 1;
 			if (userCoords) {
 				mineData.user_coords = [userCoords.lat, userCoords.lon];
 			}
@@ -64,15 +72,18 @@
 <Hero {loading} {error} onTrace={onTrace} />
 {#if mineData}
 	<!--
-		{#key} forces every section below to unmount + remount when the user
-		traces a second subregion. Without it, components see new props but
-		keep their one-shot onMount state: MapSection's flow overlay stays
-		drawn against the previous coordinates, H3Density keeps the old hex
-		markers, CortexChat holds the stale thread. Remounting is cheaper
-		than teaching every section to reset itself reactively and matches
-		"the second trace should feel like the first trace."
+		{#key} forces every section below to unmount + remount on every
+		new trace. Without it, components see new props but keep their
+		one-shot onMount state: MapSection's flow overlay stays drawn
+		against the previous coordinates, H3Density keeps the old anchor
+		markers, CortexChat holds the stale thread. Keyed on `traceNonce`
+		rather than `subregion_id` because two addresses in the same
+		eGRID subregion share the key — a neighbor's retrace would skip
+		the remount. Remounting is cheaper than teaching every section
+		to reset itself reactively and matches "the second trace should
+		feel like the first trace."
 	-->
-	{#key mineData.subregion_id}
+	{#key traceNonce}
 		<main class="scroll" bind:this={resultsEl}>
 			<PlantReveal data={mineData} />
 			<MapSection data={mineData} />
