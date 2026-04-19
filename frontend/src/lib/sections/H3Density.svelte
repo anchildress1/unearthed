@@ -22,14 +22,18 @@
 	let hovered = $state(null);
 
 	// Projection bounds — auto-fit to whatever the filtered query returns,
-	// padded out so the hexes don't hug the frame edge.
+	// padded out so the hexes don't hug the frame edge. Snowflake's Decimal
+	// type serializes to JSON as a string, so every numeric field gets
+	// coerced through Number() before the comparisons — otherwise
+	// `"37.5" < Infinity` is false and the loop silently falls back to
+	// continental US bounds, leaving a tiny cluster in a huge viewport.
 	const bounds = $derived.by(() => {
 		let minLat = Infinity, maxLat = -Infinity;
 		let minLng = Infinity, maxLng = -Infinity;
 		for (const c of cells) {
-			const lat = c.LAT ?? c.lat;
-			const lng = c.LNG ?? c.lng;
-			if (lat == null || lng == null) continue;
+			const lat = Number(c.LAT ?? c.lat);
+			const lng = Number(c.LNG ?? c.lng);
+			if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
 			if (lat < minLat) minLat = lat;
 			if (lat > maxLat) maxLat = lat;
 			if (lng < minLng) minLng = lng;
@@ -37,34 +41,60 @@
 		}
 		for (const p of [userCoords, mineCoords]) {
 			if (!p) continue;
-			const [lat, lng] = p;
+			const lat = Number(p[0]);
+			const lng = Number(p[1]);
+			if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
 			if (lat < minLat) minLat = lat;
 			if (lat > maxLat) maxLat = lat;
 			if (lng < minLng) minLng = lng;
 			if (lng > maxLng) maxLng = lng;
 		}
-		// Sensible continental US fallback if no cells returned yet.
+		// No data yet → continental US fallback so the SVG isn't blank.
 		if (!Number.isFinite(minLat)) {
 			return { minLat: 24, maxLat: 49.5, minLng: -125, maxLng: -66 };
 		}
-		const padLat = Math.max(0.4, (maxLat - minLat) * 0.12);
-		const padLng = Math.max(0.4, (maxLng - minLng) * 0.12);
-		return {
-			minLat: minLat - padLat,
-			maxLat: maxLat + padLat,
-			minLng: minLng - padLng,
-			maxLng: maxLng + padLng,
-		};
+
+		// Pad to a minimum viewport so a single point doesn't collapse to zero.
+		let padLat = Math.max(0.4, (maxLat - minLat) * 0.12);
+		let padLng = Math.max(0.4, (maxLng - minLng) * 0.12);
+		minLat -= padLat; maxLat += padLat;
+		minLng -= padLng; maxLng += padLng;
+
+		// Preserve the viewBox aspect ratio so tall, narrow states (WV) don't
+		// get stretched across a 1000×520 viewport. Expand whichever axis is
+		// too tight. Longitude in CONUS is compressed by ~cos(lat), so we
+		// adjust for that when comparing geographic span to pixel span.
+		const midLat = (minLat + maxLat) / 2;
+		const lngScale = Math.cos((midLat * Math.PI) / 180);
+		const latSpan = maxLat - minLat;
+		const lngSpan = (maxLng - minLng) * lngScale;
+		const viewAspect = VIEW_W / VIEW_H;
+		const dataAspect = lngSpan / latSpan;
+		if (dataAspect > viewAspect) {
+			// Data is wider than viewport — grow latitude so projection fits.
+			const targetLatSpan = lngSpan / viewAspect;
+			const extra = (targetLatSpan - latSpan) / 2;
+			minLat -= extra; maxLat += extra;
+		} else {
+			// Data is taller than viewport — grow longitude.
+			const targetLngSpan = (latSpan * viewAspect) / lngScale;
+			const extra = (targetLngSpan - (maxLng - minLng)) / 2;
+			minLng -= extra; maxLng += extra;
+		}
+
+		return { minLat, maxLat, minLng, maxLng };
 	});
 
 	const totals = $derived.by(() => {
 		let mines = 0;
 		let active = 0;
 		let abandoned = 0;
+		// Decimal → JSON string again — coerce before summing or
+		// `0 + "5" + "3"` becomes the string "053".
 		for (const c of cells) {
-			mines += c.TOTAL || c.total || 0;
-			active += c.ACTIVE || c.active || 0;
-			abandoned += c.ABANDONED || c.abandoned || 0;
+			mines += Number(c.TOTAL ?? c.total) || 0;
+			active += Number(c.ACTIVE ?? c.active) || 0;
+			abandoned += Number(c.ABANDONED ?? c.abandoned) || 0;
 		}
 		return { mines, active, abandoned };
 	});
