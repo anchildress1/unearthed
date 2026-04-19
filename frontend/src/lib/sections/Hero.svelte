@@ -244,11 +244,14 @@
 	/* ---- Headline ---- */
 	h1 {
 		font-family: var(--serif);
-		font-size: clamp(2.6rem, 6.8vw, 5rem);
+		/* Large desktop cap ≈104px so the opening line reads like a printed
+		   headline, not a UI label. Tracking is tightened past a normal serif
+		   display value because the scale above ~80px starts to feel airy. */
+		font-size: clamp(2.8rem, 7.2vw, 6.5rem);
 		font-weight: 400;
-		line-height: 1.06;
+		line-height: 1.04;
 		color: var(--text);
-		letter-spacing: -0.015em;
+		letter-spacing: -0.025em;
 		margin: 0;
 		max-width: 18ch;
 	}
