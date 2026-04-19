@@ -24,7 +24,7 @@ tables:
       - name: mine_id
         description: MSHA mine identifier (unique per mine)
         expr: MINE_ID
-        data_type: VARCHAR
+        data_type: NUMBER
       - name: mine_name
         description: Current name of the mine
         expr: TRIM(CURRENT_MINE_NAME)
@@ -53,11 +53,11 @@ tables:
         data_type: VARCHAR
       - name: mine_latitude
         description: Latitude of the mine
-        expr: TRY_TO_DOUBLE(LATITUDE)
+        expr: LATITUDE
         data_type: FLOAT
       - name: mine_longitude
         description: Longitude of the mine
-        expr: TRY_TO_DOUBLE(LONGITUDE)
+        expr: LONGITUDE
         data_type: FLOAT
 
   - name: MSHA_QUARTERLY_PRODUCTION
@@ -76,7 +76,7 @@ tables:
       - name: mine_id
         description: MSHA mine identifier, joins to MSHA_MINES
         expr: MINE_ID
-        data_type: VARCHAR
+        data_type: NUMBER
       - name: year
         description: Calendar year
         expr: CAL_YR
@@ -102,7 +102,7 @@ tables:
   - name: EIA_923_FUEL_RECEIPTS
     description: >
       Coal shipments from mines to power plants in 2024, from EIA Form 923.
-      QUANTITY is in short tons (stored as VARCHAR with commas, must be cleaned).
+      QUANTITY is in short tons (NUMBER, pre-cleaned).
       COALMINE_MSHA_ID joins to MSHA_MINES.MINE_ID. PLANT_ID joins to EIA_860_PLANTS.PLANTCODE.
     base_table:
       database: UNEARTHED_DB
@@ -128,7 +128,7 @@ tables:
       - name: coalmine_msha_id
         description: MSHA mine ID of the source mine
         expr: COALMINE_MSHA_ID
-        data_type: VARCHAR
+        data_type: NUMBER
       - name: coalmine_name
         description: Name of the source coal mine
         expr: COALMINE_NAME
@@ -148,7 +148,7 @@ tables:
     measures:
       - name: quantity_tons
         description: Quantity of coal shipped in short tons
-        expr: SUM(TRY_TO_NUMBER(REPLACE(QUANTITY, ',', ''), 18, 1))
+        expr: SUM(QUANTITY)
         data_type: NUMBER
 
   - name: EIA_860_PLANTS
@@ -229,7 +229,7 @@ tables:
       - name: mine_id
         description: MSHA mine identifier, joins to MSHA_MINES
         expr: MINE_ID
-        data_type: VARCHAR
+        data_type: NUMBER
       - name: accident_date
         description: Date of the accident
         expr: TRY_TO_DATE(ACCIDENT_DT, 'MM/DD/YYYY')
@@ -271,7 +271,7 @@ tables:
         data_type: NUMBER
       - name: days_lost
         description: Total days of work lost due to injuries
-        expr: SUM(TRY_TO_NUMBER(DAYS_LOST))
+        expr: SUM(DAYS_LOST)
         data_type: NUMBER
 
 relationships:
@@ -330,7 +330,7 @@ verified_queries:
     question: "What other plants buy from Consol Pennsylvania Coal Company?"
     sql: >
       SELECT DISTINCT fr.PLANT_NAME, fr.PLANT_STATE,
-        SUM(TRY_TO_NUMBER(REPLACE(fr.QUANTITY, ',', ''), 18, 1)) AS total_tons
+        SUM(fr.QUANTITY) AS total_tons
       FROM UNEARTHED_DB.RAW.EIA_923_FUEL_RECEIPTS fr
       JOIN UNEARTHED_DB.RAW.MSHA_MINES m
         ON fr.COALMINE_MSHA_ID = m.MINE_ID
@@ -355,7 +355,7 @@ verified_queries:
     question: "What is the total coal tonnage for SRVC in 2024?"
     sql: >
       SELECT lk.EGRID_SUBREGION,
-        SUM(TRY_TO_NUMBER(REPLACE(fr.QUANTITY, ',', ''), 18, 1)) AS total_tons
+        SUM(fr.QUANTITY) AS total_tons
       FROM UNEARTHED_DB.RAW.EIA_923_FUEL_RECEIPTS fr
       JOIN UNEARTHED_DB.RAW.PLANT_SUBREGION_LOOKUP lk
         ON fr.PLANT_ID = lk.PLANT_CODE
@@ -408,7 +408,7 @@ verified_queries:
     question: "Which mines supply Cross plant in 2024?"
     sql: >
       SELECT DISTINCT fr.COALMINE_NAME, fr.COALMINE_MSHA_ID,
-        SUM(TRY_TO_NUMBER(REPLACE(fr.QUANTITY, ',', ''), 18, 1)) AS total_tons
+        SUM(fr.QUANTITY) AS total_tons
       FROM UNEARTHED_DB.RAW.EIA_923_FUEL_RECEIPTS fr
       WHERE fr.PLANT_NAME ILIKE 'Cross%'
         AND fr.FUEL_GROUP = 'Coal'

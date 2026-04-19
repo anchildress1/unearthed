@@ -1,5 +1,8 @@
 import logging
 import os
+import threading
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import snowflake.connector
@@ -24,9 +27,36 @@ logger = logging.getLogger(__name__)
 
 _enable_docs = os.getenv("ENABLE_DOCS", "").lower() in ("1", "true")
 
+
+def _prewarm_prose_cache() -> None:
+    """Pre-warm the prose cache for all fallback subregions in a background thread.
+
+    Each subregion fires a Snowflake query + Cortex Complete call, so the first
+    visitor to any subregion gets a cached response instead of a 4-27s wait.
+    """
+    from app.snowflake_client import _VALID_FALLBACK_IDS
+
+    for subregion_id in _VALID_FALLBACK_IDS:
+        try:
+            mine_data = query_mine_for_subregion(subregion_id)
+            if mine_data:
+                mine_data = {**mine_data, "subregion_id": subregion_id}
+                generate_prose(mine_data)
+                logger.info("Pre-warmed prose cache for %s", subregion_id)
+        except Exception:
+            logger.debug("Pre-warm skipped for %s", subregion_id, exc_info=True)
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
+    threading.Thread(target=_prewarm_prose_cache, daemon=True).start()
+    yield
+
+
 app = FastAPI(
     title="unearthed",
     version="0.1.0",
+    lifespan=_lifespan,
     docs_url="/docs" if _enable_docs else None,
     redoc_url="/redoc" if _enable_docs else None,
     openapi_url="/openapi.json" if _enable_docs else None,
@@ -47,15 +77,12 @@ _STATIC_DIR = _PROJECT_ROOT / "static"
 if _STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
+
 _H3_DENSITY_SQL = """
 SELECT
-    H3_LATLNG_TO_CELL_STRING(
-        TRY_TO_DOUBLE(LATITUDE),
-        TRY_TO_DOUBLE(LONGITUDE),
-        {resolution}
-    ) AS h3,
-    AVG(TRY_TO_DOUBLE(LATITUDE)) AS lat,
-    AVG(TRY_TO_DOUBLE(LONGITUDE)) AS lng,
+    H3_LATLNG_TO_CELL_STRING(LATITUDE, LONGITUDE, {resolution}) AS h3,
+    AVG(LATITUDE) AS lat,
+    AVG(LONGITUDE) AS lng,
     COUNT(*) AS total,
     SUM(CASE WHEN TRIM(CURRENT_MINE_STATUS) = 'Active'
         THEN 1 ELSE 0 END) AS active,
@@ -63,7 +90,7 @@ SELECT
         THEN 1 ELSE 0 END) AS abandoned
 FROM UNEARTHED_DB.RAW.MSHA_MINES
 WHERE COAL_METAL_IND = 'C'
-    AND TRY_TO_DOUBLE(LATITUDE) IS NOT NULL
+    AND LATITUDE IS NOT NULL
 GROUP BY h3
 HAVING total >= 5
 ORDER BY total DESC

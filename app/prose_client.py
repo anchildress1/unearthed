@@ -19,7 +19,7 @@ SELECT
         THEN 1 ELSE 0 END) AS fatalities,
     SUM(CASE WHEN TRIM(DEGREE_INJURY) LIKE '%%DAYS%%'
         THEN 1 ELSE 0 END) AS injuries_lost_time,
-    SUM(TRY_TO_NUMBER(DAYS_LOST)) AS total_days_lost
+    SUM(DAYS_LOST) AS total_days_lost
 FROM UNEARTHED_DB.RAW.MSHA_ACCIDENTS
 WHERE MINE_ID = %(mine_id)s
     AND COAL_METAL_IND = 'C'
@@ -75,7 +75,7 @@ def _generate(mine_data: dict) -> tuple[str, bool]:
 
     cur = conn.cursor()
     try:
-        cur.execute(_STATS_SQL, {"mine_id": str(mine_data["mine_id"])})
+        cur.execute(_STATS_SQL, {"mine_id": int(mine_data["mine_id"])})
         row = cur.fetchone()
     finally:
         cur.close()
