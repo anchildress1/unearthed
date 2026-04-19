@@ -42,9 +42,7 @@ app.add_middleware(
 )
 
 
-_FRONTEND_DIR = _PROJECT_ROOT / "frontend" / "build"
-
-# Static assets (images, data files) that both old and new frontends need
+# Static assets (images, data files)
 _STATIC_DIR = _PROJECT_ROOT / "static"
 if _STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
@@ -229,3 +227,9 @@ def ask(req: AskRequest):
         suggestions=suggestions,
         results=results,
     )
+
+
+# Serve SvelteKit build output in production (must be AFTER API routes).
+_FRONTEND_DIR = _PROJECT_ROOT / "frontend" / "build"
+if _FRONTEND_DIR.exists():
+    app.mount("/", StaticFiles(directory=_FRONTEND_DIR, html=True), name="frontend")

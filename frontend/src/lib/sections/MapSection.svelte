@@ -112,7 +112,10 @@
 	function loadGoogleMaps() {
 		return new Promise((resolve, reject) => {
 			const key = import.meta.env.VITE_GOOGLE_MAPS_KEY || '';
-			if (!key) { console.warn('[unearthed] VITE_GOOGLE_MAPS_KEY not set'); }
+			if (!key) {
+				reject(new Error('VITE_GOOGLE_MAPS_KEY not set — map cannot load'));
+				return;
+			}
 			const s = document.createElement('script');
 			s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&v=weekly&libraries=maps,marker`;
 			s.async = true;

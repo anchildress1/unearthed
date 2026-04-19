@@ -1,8 +1,7 @@
 """Generate mine prose using Snowflake Cortex Complete.
 
-Direct SQL pulls fatality/injury stats from MSHA_ACCIDENTS.
+Direct SQL pulls fatality/injury stats from MSHA_ACCIDENTS by MINE_ID.
 Cortex Complete turns those numbers into prose.
-No Analyst for prose — just SQL for facts, LLM for voice.
 """
 
 import logging
@@ -61,20 +60,19 @@ def generate_prose(mine_data: dict) -> tuple[str, bool]:
         return _prose_cache[subregion_id]
 
     try:
-        prose = _generate(mine_data)
-        if subregion_id:
-            _prose_cache[subregion_id] = (prose, False)
-        return prose, False
+        prose, degraded = _generate(mine_data)
+        if subregion_id and not degraded:
+            _prose_cache[subregion_id] = (prose, degraded)
+        return prose, degraded
     except Exception:
         logger.exception("Prose generation failed")
-        # Don't cache failures — allow retry on next request
         return _FALLBACK_NO_DATA, True
 
 
-def _generate(mine_data: dict) -> str:
+def _generate(mine_data: dict) -> tuple[str, bool]:
+    """Returns (prose, degraded). degraded=True if Complete failed."""
     conn = _get_connection()
 
-    # Step 1: Get actual injury/fatality stats via direct SQL
     cur = conn.cursor()
     try:
         cur.execute(_STATS_SQL, {"mine_id": int(mine_data["mine_id"])})
@@ -83,18 +81,16 @@ def _generate(mine_data: dict) -> str:
         cur.close()
 
     if not row:
-        return _FALLBACK_NO_DATA
+        return _FALLBACK_NO_DATA, True
 
     fatalities = int(row[1] or 0)
     injuries = int(row[2] or 0)
     days_lost = int(row[3] or 0)
     incidents = int(row[0] or 0)
 
-    # If no meaningful data, use simple fallback
     if fatalities == 0 and injuries == 0:
-        return _FALLBACK_NO_DATA
+        return _FALLBACK_NO_DATA, True
 
-    # Step 2: Feed real numbers to Cortex Complete
     prompt = _COMPLETE_PROMPT.format(
         mine_name=mine_data["mine"],
         mine_county=mine_data["mine_county"],
@@ -115,14 +111,14 @@ def _generate(mine_data: dict) -> str:
         if result and result[0]:
             prose = result[0].strip().strip('"')
             if prose:
-                return prose
+                return prose, False
     finally:
         cur2.close()
 
-    # Complete failed — use template with real numbers
+    # Complete returned empty — use template with real numbers (degraded)
     return _FALLBACK.format(
         fatalities=fatalities,
         injuries=injuries,
         days_lost=days_lost,
         incidents=incidents,
-    )
+    ), True

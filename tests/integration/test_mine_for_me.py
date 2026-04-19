@@ -151,7 +151,7 @@ class TestMineForMeValidation:
 
     def test_get_method_not_allowed(self, client):
         resp = client.get("/mine-for-me")
-        assert resp.status_code == 405
+        assert resp.status_code in (404, 405)
 
     def test_list_subregion_returns_422(self, client):
         resp = client.post("/mine-for-me", json={"subregion_id": ["SRVC"]})

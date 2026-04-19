@@ -18,7 +18,8 @@ export async function fetchAsk(question, subregionId) {
 		body: JSON.stringify({ question, subregion_id: subregionId || undefined }),
 	});
 	if (!resp.ok) {
-		throw new Error('Failed to ask question');
+		const err = await resp.json().catch(() => ({}));
+		throw new Error(err.detail || err.error || `Failed to ask question (${resp.status})`);
 	}
 	return resp.json();
 }
