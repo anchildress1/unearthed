@@ -7,7 +7,7 @@ flowchart TB
     subgraph BROWSER["BROWSER (SvelteKit)"]
         GEO[Geolocation / Geocoding<br/>→ lat/lon → subregion]
         SCROLL[Scroll sections<br/>glassmorphism data reveals]
-        MAP[Google Maps JS API<br/>satellite + animated arc]
+        MAP[MapLibre GL JS<br/>satellite + animated arc]
         CHAT[Cortex Analyst chat<br/>chips + expandable SQL]
         GEO --> SCROLL
     end
@@ -21,16 +21,16 @@ flowchart TB
     end
 
     subgraph SNOW["SNOWFLAKE"]
-        DB[(UNEARTHED_DB<br/>6 tables + 2 views)]
+        DB[(UNEARTHED_DB<br/>6 tables, 1 MRT table, 2 views)]
         ACCIDENTS[(MSHA_ACCIDENTS<br/>fatalities + injuries)]
         CORTEX[Cortex Analyst<br/>semantic model YAML]
-        COMPLETE[Cortex Complete<br/>llama3.1-70b prose]
+        COMPLETE[Cortex Complete<br/>openai-gpt-5-chat prose]
         H3[H3 Geospatial<br/>hexbin density]
         RO_EXEC[SQL Execution<br/>READONLY_ROLE]
     end
 
-    subgraph MKT["SNOWFLAKE MARKETPLACE (free)"]
-        EPA[EPA Clean Air Markets<br/>CO2/SO2/NOx per plant]
+    subgraph MKT["SNOWFLAKE MARKETPLACE (free, source for MRT)"]
+        EPA[EPA Clean Air Markets<br/>CO2/SO2/NOx source data]
     end
 
     SCROLL -->|POST subregion_id| MINE_EP
@@ -48,7 +48,7 @@ flowchart TB
     RO_EXEC -->|rows| ASK_EP
     ASK_EP -->|answer + SQL| CHAT
     H3_EP -->|H3_LATLNG_TO_CELL| H3
-    EMIT_EP -->|JOIN| EPA
+    EMIT_EP -->|SELECT| DB
 
     style DB fill:#29b5e8,color:#fff
     style ACCIDENTS fill:#29b5e8,color:#fff
@@ -72,8 +72,8 @@ flowchart LR
     MSHA3[MSHA Accidents<br/>fatalities + injuries] --> LOAD
     EIA1[EIA-923 Fuel Receipts] --> LOAD
     EIA2[EIA-860 Plants] --> LOAD
-    LOAD[Load via Snowsight<br/>filter to coal] --> DB[(Snowflake<br/>6 tables + 2 views)]
-    MKT[EPA CAM<br/>Snowflake Marketplace] -.->|free, no load| DB
+    LOAD[Load via Snowsight<br/>filter to coal] --> DB[(Snowflake<br/>6 RAW tables, 2 views)]
+    MKT[EPA CAM<br/>Snowflake Marketplace] -.->|CTAS → MRT.EMISSIONS_BY_PLANT| DB
     style DB fill:#29b5e8,color:#fff
     style MKT fill:#29b5e8,color:#fff
 ```

@@ -31,7 +31,7 @@ Subregion IDs validated with `^[A-Za-z0-9]{2,10}$`. Unknown subregions return **
 ### Frontend
 
 - SvelteKit (Vite) with static adapter. Scroll-driven typographic sections.
-- Google Maps JavaScript API for satellite map with animated flow lines.
+- MapLibre GL JS for satellite map with animated flow lines.
 - Chat UI for Cortex Analyst: Svelte component with chips and transcript.
 - Geolocation: Browser API with permission prompt. Point-in-polygon against bundled eGRID GeoJSON runs client-side.
 - State-picker dropdown as fallback when geolocation is denied or user is outside US.
