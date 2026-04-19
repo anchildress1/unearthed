@@ -17,73 +17,27 @@ logger = logging.getLogger(__name__)
 _pool: dict[str, snowflake.connector.SnowflakeConnection] = {}
 _pool_lock = threading.Lock()
 
-# CTE: top mine from the MRT view, then join raw tables for plant details.
-# The view ranks mines per subregion but doesn't carry plant coordinates.
-# latest_year resolves dynamically so we never chase a hardcoded year.
-# Scoped to the subregion to avoid a global EIA_923 full-table scan on every request.
+# Single-row read from the pre-materialized MRT table.
+# MINE_PLANT_FOR_SUBREGION has one row per eGRID subregion with the top mine,
+# its top receiving plant, coords, and data year — no joins at query time.
 MINE_FOR_SUBREGION_SQL = """
-WITH latest_year AS (
-    SELECT MAX(fr.YEAR) AS YEAR
-    FROM UNEARTHED_DB.RAW.EIA_923_FUEL_RECEIPTS fr
-    JOIN UNEARTHED_DB.RAW.PLANT_SUBREGION_LOOKUP lk
-        ON fr.PLANT_ID = lk.PLANT_CODE
-    WHERE fr.FUEL_GROUP = 'Coal'
-        AND lk.EGRID_SUBREGION = %(subregion_id)s
-),
-top_mine AS (
-    SELECT
-        MINE_ID,
-        MINE_NAME,
-        MINE_OPERATOR,
-        MINE_COUNTY,
-        MINE_STATE,
-        MINE_TYPE,
-        MINE_LATITUDE,
-        MINE_LONGITUDE,
-        TOTAL_TONS_TO_SUBREGION
-    FROM UNEARTHED_DB.MRT.V_MINE_FOR_SUBREGION
-    WHERE EGRID_SUBREGION = %(subregion_id)s
-        AND MINE_RANK = 1
-    LIMIT 1
-),
-top_plant AS (
-    SELECT
-        p.PLANTNAME AS PLANT_NAME,
-        p.UTILITYNAME AS PLANT_OPERATOR,
-        p.LATITUDE AS PLANT_LATITUDE,
-        p.LONGITUDE AS PLANT_LONGITUDE,
-        SUM(TRY_TO_NUMBER(REPLACE(fr.QUANTITY, ',', ''), 18, 1)) AS TONS
-    FROM UNEARTHED_DB.RAW.EIA_923_FUEL_RECEIPTS fr
-    JOIN UNEARTHED_DB.RAW.EIA_860_PLANTS p
-        ON fr.PLANT_ID = p.PLANTCODE
-    JOIN UNEARTHED_DB.RAW.PLANT_SUBREGION_LOOKUP lk
-        ON p.PLANTCODE = lk.PLANT_CODE
-    JOIN top_mine tm
-        ON TRY_TO_NUMBER(fr.COALMINE_MSHA_ID) = tm.MINE_ID
-    WHERE fr.FUEL_GROUP = 'Coal'
-        AND fr.YEAR = (SELECT YEAR FROM latest_year)
-        AND lk.EGRID_SUBREGION = %(subregion_id)s
-    GROUP BY p.PLANTNAME, p.UTILITYNAME, p.LATITUDE, p.LONGITUDE
-    QUALIFY ROW_NUMBER() OVER (ORDER BY TONS DESC) = 1
-)
 SELECT
-    tm.MINE_ID,
-    tm.MINE_NAME,
-    tm.MINE_OPERATOR,
-    tm.MINE_COUNTY,
-    tm.MINE_STATE,
-    tm.MINE_TYPE,
-    tm.MINE_LATITUDE,
-    tm.MINE_LONGITUDE,
-    tp.PLANT_NAME,
-    tp.PLANT_OPERATOR,
-    tp.PLANT_LATITUDE,
-    tp.PLANT_LONGITUDE,
-    tm.TOTAL_TONS_TO_SUBREGION AS TOTAL_TONS,
-    ly.YEAR AS DATA_YEAR
-FROM top_mine tm
-LEFT JOIN top_plant tp ON 1 = 1
-CROSS JOIN latest_year ly
+    MINE_ID,
+    MINE_NAME,
+    MINE_OPERATOR,
+    MINE_COUNTY,
+    MINE_STATE,
+    MINE_TYPE,
+    MINE_LATITUDE,
+    MINE_LONGITUDE,
+    PLANT_NAME,
+    PLANT_OPERATOR,
+    PLANT_LATITUDE,
+    PLANT_LONGITUDE,
+    TOTAL_TONS,
+    DATA_YEAR
+FROM UNEARTHED_DB.MRT.MINE_PLANT_FOR_SUBREGION
+WHERE EGRID_SUBREGION = %(subregion_id)s
 """
 
 _MINE_TYPE_LABELS = {"U": "Underground", "S": "Surface", "F": "Facility"}
@@ -133,24 +87,33 @@ def _get_connection(
     *,
     role: str | None = None,
 ) -> snowflake.connector.SnowflakeConnection:
-    """Get a pooled connection for the given role. Reconnects if stale."""
+    """Get a pooled connection for the given role. Reconnects if stale.
+
+    Skips the SELECT 1 health check — the caller's actual query will
+    surface staleness, and ``_reconnect_and_retry`` handles it.
+    """
     effective_role = role or settings.snowflake_role
     with _pool_lock:
         conn = _pool.get(effective_role)
-        if conn is not None:
+        if conn is not None and conn.is_closed():
+            logger.info("Pooled connection closed for role %s, reconnecting", effective_role)
+            conn = None
+        if conn is None:
+            conn = _create_connection(effective_role)
+            _pool[effective_role] = conn
+        return conn
+
+
+def _reconnect(role: str | None = None) -> snowflake.connector.SnowflakeConnection:
+    """Force-replace the pooled connection for a role after a query failure."""
+    effective_role = role or settings.snowflake_role
+    with _pool_lock:
+        old = _pool.pop(effective_role, None)
+        if old is not None:
             try:
-                cur = conn.cursor()
-                try:
-                    cur.execute("SELECT 1").fetchone()
-                finally:
-                    cur.close()
-                return conn
+                old.close()
             except Exception:
-                logger.info("Pooled connection stale for role %s, reconnecting", effective_role)
-                try:
-                    conn.close()
-                except Exception:
-                    pass
+                pass
         conn = _create_connection(effective_role)
         _pool[effective_role] = conn
         return conn
@@ -158,16 +121,24 @@ def _get_connection(
 
 def query_mine_for_subregion(subregion_id: str) -> dict | None:
     """Return the top mine-plant pair for a given eGRID subregion."""
-    conn = _get_connection()
-    cur = conn.cursor(snowflake.connector.DictCursor)
+    params = {"subregion_id": subregion_id.upper()}
     try:
-        cur.execute(
-            MINE_FOR_SUBREGION_SQL,
-            {"subregion_id": subregion_id.upper()},
-        )
-        row = cur.fetchone()
-    finally:
-        cur.close()
+        conn = _get_connection()
+        cur = conn.cursor(snowflake.connector.DictCursor)
+        try:
+            cur.execute(MINE_FOR_SUBREGION_SQL, params)
+            row = cur.fetchone()
+        finally:
+            cur.close()
+    except Exception:
+        logger.info("Query failed, reconnecting and retrying")
+        conn = _reconnect()
+        cur = conn.cursor(snowflake.connector.DictCursor)
+        try:
+            cur.execute(MINE_FOR_SUBREGION_SQL, params)
+            row = cur.fetchone()
+        finally:
+            cur.close()
     if not row:
         return None
 
