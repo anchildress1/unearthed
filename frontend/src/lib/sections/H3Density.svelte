@@ -41,6 +41,10 @@
 	let infoWindow = null;
 	let hexMarkers = [];
 	let subregionPolygons = [];
+	// Mine + user pins. Tracked separately from hexMarkers so the cleanup
+	// pass doesn't have to reason about which dots are data vs. which are
+	// anchors, and so HMR teardown fully detaches them from the map.
+	let anchorMarkers = [];
 
 	let cells = $state([]);
 	let registryTotals = $state({ mines: 0, active: 0, abandoned: 0 });
@@ -155,9 +159,13 @@
 	onDestroy(() => {
 		cancelled = true;
 		for (const m of hexMarkers) m.setMap(null);
+		for (const m of anchorMarkers) m.setMap(null);
 		for (const p of subregionPolygons) p.setMap(null);
+		infoWindow?.close();
 		hexMarkers = [];
+		anchorMarkers = [];
 		subregionPolygons = [];
+		infoWindow = null;
 	});
 
 	function renderSubregions() {
@@ -230,22 +238,22 @@
 		// data the reader came to see (the subregion polygon edge or the
 		// hex cluster). `title` still shows on hover for the curious.
 		if (mineCoords) {
-			new google.maps.Marker({
+			anchorMarkers.push(new google.maps.Marker({
 				map,
 				position: { lat: mineCoords[0], lng: mineCoords[1] },
 				title: mineName || 'your mine',
 				icon: circleIcon({ color: MAP_COLORS.rust, scale: 6 }),
 				zIndex: 20,
-			});
+			}));
 		}
 		if (userCoords) {
-			new google.maps.Marker({
+			anchorMarkers.push(new google.maps.Marker({
 				map,
 				position: { lat: userCoords[0], lng: userCoords[1] },
 				title: 'you',
 				icon: circleIcon({ color: MAP_COLORS.you, scale: 5 }),
 				zIndex: 20,
-			});
+			}));
 		}
 	}
 
@@ -401,8 +409,15 @@
 	<div class="map-wrap glass">
 		{#if !loaded}
 			<p class="loading">mapping the footprint…</p>
-		{:else if errored || cells.length === 0}
+		{:else if errored}
 			<p class="loading">Density map temporarily unavailable.</p>
+		{:else if filteredCells.length === 0}
+			<!-- API answered successfully but no hexes cleared HAVING/bounds at
+			     this resolution. Tallies (from the separate registry totals
+			     query) still render below; the map itself just has nothing to
+			     plot. Keep the message neutral so it doesn't read as an
+			     outage. -->
+			<p class="loading">No density cells at this resolution.</p>
 		{/if}
 		<div
 			class="map-container"
