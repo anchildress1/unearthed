@@ -76,7 +76,11 @@
 
 <SectionRail number="05" label="Ask the records" class="cortex-section">
 	<div class="header">
-		<span class="badge">snowflake cortex analyst</span>
+		<span class="badge">
+			<span class="pulse" aria-hidden="true"></span>
+			<span>snowflake cortex analyst</span>
+			<span class="status" class:active={asking}>{asking ? 'querying' : 'live'}</span>
+		</span>
 	</div>
 
 	<h3>Interrogate the <em>records</em>.</h3>
@@ -116,7 +120,7 @@
 
 	{#if entry}
 		<div class="entry glass">
-			<p class="q"><span class="q-mark">Q.</span> {entry.question}</p>
+			<p class="q"><span class="q-mark">&gt;</span> {entry.question}</p>
 
 			{#if entry.error}
 				<p class="error">{entry.error}</p>
@@ -222,15 +226,52 @@
 	}
 
 	.badge {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
 		font-family: var(--mono);
 		font-size: 0.6rem;
 		text-transform: uppercase;
 		letter-spacing: 0.2em;
 		color: var(--rust);
 		border: 1px solid oklch(58% 0.14 36 / 0.3);
-		padding: 0.25rem 0.6rem;
+		padding: 0.3rem 0.65rem 0.3rem 0.55rem;
 		border-radius: 3px;
 	}
+
+	/* Soft breathing dot. Rust dim → bright tier → dim, matching the two-
+	   tier palette. Reduced-motion fallback keeps the dot visible but still,
+	   since the animation is decorative (the nearby label says "live"). */
+	.pulse {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: var(--rust);
+		box-shadow: 0 0 0 0 var(--rust-glow);
+		animation: cortex-pulse 2.2s ease-in-out infinite;
+	}
+	@keyframes cortex-pulse {
+		0%, 100% {
+			background: var(--rust);
+			box-shadow: 0 0 0 0 oklch(58% 0.14 36 / 0);
+		}
+		50% {
+			background: var(--rust-bright);
+			box-shadow: 0 0 0 4px oklch(58% 0.14 36 / 0.18);
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.pulse { animation: none; }
+	}
+
+	.status {
+		color: var(--text-ghost);
+		font-size: 0.5rem;
+		letter-spacing: 0.18em;
+		padding-left: 0.4rem;
+		border-left: 1px solid oklch(58% 0.14 36 / 0.25);
+	}
+	.status.active { color: var(--rust-bright); }
 
 	/* The form chrome sits too close to the sub paragraph without an extra
 	   breath of space before it—the rest of the sections end their header
