@@ -1,5 +1,6 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
+	import { reveal } from '$lib/reveal.js';
 
 	let { data } = $props();
 	let mapEl;
@@ -126,7 +127,7 @@
 	}
 </script>
 
-<section class="map-section">
+<section class="map-section" use:reveal>
 	<h3>
 		The <em>line</em> — from your meter,<br/>to the stack, to the mountain.
 	</h3>

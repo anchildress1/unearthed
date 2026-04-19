@@ -1,5 +1,6 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
+	import { reveal } from '$lib/reveal.js';
 	const props = $props();
 
 	const SECONDS_IN_YEAR = 365.25 * 24 * 60 * 60;
@@ -19,7 +20,7 @@
 	onDestroy(() => { if (raf) cancelAnimationFrame(raf); });
 </script>
 
-<section class="ticker">
+<section class="ticker" use:reveal>
 	<div class="counter">
 		<span class="number">{tons.toFixed(2)}</span>
 		<span class="unit">tons extracted while you've been here</span>

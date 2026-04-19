@@ -131,7 +131,7 @@
 		{/if}
 
 		{#if loading}
-			<p class="loading">Tracing your grid...</p>
+			<p class="loading">Following the wire back…</p>
 		{/if}
 
 		<p class="hint">We find the nearest coal-burning power plant on your grid — nothing is stored or shared.</p>
