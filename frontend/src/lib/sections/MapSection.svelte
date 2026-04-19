@@ -263,7 +263,7 @@
 	}
 	.dot.mine { background: var(--accent); }
 	.dot.plant { background: var(--green); }
-	.dot.you { background: #e8e0d4; }
+	.dot.you { background: #e8dfcc; }
 
 	.line-sample {
 		width: 20px;

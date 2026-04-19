@@ -319,7 +319,7 @@
 		padding: 0.85rem 1.1rem;
 		background: transparent;
 		color: var(--accent);
-		border: 1px solid rgba(194, 84, 45, 0.4);
+		border: 1px solid rgba(244, 114, 73, 0.4);
 		border-radius: 6px;
 		cursor: pointer;
 		letter-spacing: 0.1em;
@@ -336,7 +336,7 @@
 		cursor: not-allowed;
 	}
 	button.primary {
-		background: rgba(194, 84, 45, 0.12);
+		background: rgba(244, 114, 73, 0.12);
 	}
 
 	.divider {

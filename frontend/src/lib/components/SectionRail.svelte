@@ -176,7 +176,7 @@
 		color: var(--text);
 		margin-top: 1.3rem;
 		padding: 0.8rem 1rem;
-		background: rgba(194, 84, 45, 0.04);
+		background: rgba(244, 114, 73, 0.04);
 		border-left: 2px solid var(--accent);
 		border-radius: 3px;
 	}

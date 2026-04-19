@@ -350,9 +350,9 @@
 	<div class="map-legend">
 		<span class="legend-item">
 			<svg width="56" height="18" viewBox="0 0 56 18" aria-hidden="true">
-				<circle cx="5" cy="9" r="3" fill="#c2542d" fill-opacity="0.5" stroke="#c2542d" />
-				<circle cx="22" cy="9" r="5" fill="#c2542d" fill-opacity="0.45" stroke="#c2542d" />
-				<circle cx="45" cy="9" r="8" fill="#c2542d" fill-opacity="0.4" stroke="#c2542d" />
+				<circle cx="5" cy="9" r="3" fill="#f47249" fill-opacity="0.5" stroke="#f47249" />
+				<circle cx="22" cy="9" r="5" fill="#f47249" fill-opacity="0.45" stroke="#f47249" />
+				<circle cx="45" cy="9" r="8" fill="#f47249" fill-opacity="0.4" stroke="#f47249" />
 			</svg>
 			hex size ∝ mine count
 		</span>
@@ -457,8 +457,8 @@
 	.swatch.rust { background: var(--accent); }
 	.swatch.ash { background: #a89e92; }
 	.swatch.region {
-		background: rgba(194, 84, 45, 0.18);
-		border: 1px solid rgba(194, 84, 45, 0.55);
+		background: rgba(244, 114, 73, 0.18);
+		border: 1px solid rgba(244, 114, 73, 0.55);
 		border-radius: 2px;
 	}
 

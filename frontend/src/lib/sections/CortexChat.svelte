@@ -366,12 +366,12 @@
 	}
 	.proof-toggle:hover {
 		color: var(--accent);
-		border-color: rgba(194, 84, 45, 0.45);
-		background: rgba(194, 84, 45, 0.04);
+		border-color: rgba(244, 114, 73, 0.45);
+		background: rgba(244, 114, 73, 0.04);
 	}
 	.proof-toggle[aria-expanded="true"] {
 		color: var(--accent);
-		border-color: rgba(194, 84, 45, 0.35);
+		border-color: rgba(244, 114, 73, 0.35);
 	}
 	.proof-toggle .caret {
 		font-size: 0.7rem;
@@ -445,7 +445,7 @@
 		line-height: 1.55;
 		margin: 0.4rem 0 0.6rem;
 		padding-left: 0.75rem;
-		border-left: 2px solid rgba(194, 84, 45, 0.4);
+		border-left: 2px solid rgba(244, 114, 73, 0.4);
 	}
 
 	.follow-ups {

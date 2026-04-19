@@ -31,12 +31,12 @@
 	}
 
 	:global(:root) {
-		--bg: #080808;
-		--text: #e8e0d4;
-		--text-dim: #9a9490;
-		--text-ghost: #807b75;
-		--accent: #c2542d;
-		--accent-glow: rgba(194, 84, 45, 0.15);
+		--bg: #070605;
+		--text: #e8dfcc;
+		--text-dim: #7d7466;
+		--text-ghost: #5c554a;
+		--accent: #f47249;
+		--accent-glow: rgba(244, 114, 73, 0.15);
 		--green: #5a7a5a;
 		--border-glass: rgba(255, 255, 255, 0.07);
 		--glass-bg: rgba(255, 255, 255, 0.03);
@@ -77,11 +77,11 @@
 	   palette. Use the site's accent at low opacity with the text kept at
 	   the base fore color so selected text stays legible. */
 	:global(::selection) {
-		background: rgba(194, 84, 45, 0.38);
+		background: rgba(244, 114, 73, 0.38);
 		color: var(--text);
 	}
 	:global(::-moz-selection) {
-		background: rgba(194, 84, 45, 0.38);
+		background: rgba(244, 114, 73, 0.38);
 		color: var(--text);
 	}
 

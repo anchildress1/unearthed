@@ -123,7 +123,7 @@ export const DARK_STATE_STYLES = [
 	{ featureType: 'poi', stylers: [{ visibility: 'off' }] },
 	{ featureType: 'road', stylers: [{ visibility: 'off' }] },
 	{ featureType: 'transit', stylers: [{ visibility: 'off' }] },
-	{ featureType: 'water', stylers: [{ color: '#080808' }] },
+	{ featureType: 'water', stylers: [{ color: '#070605' }] },
 	{ featureType: 'water', elementType: 'labels', stylers: [{ visibility: 'off' }] },
 ];
 
@@ -134,9 +134,9 @@ export const DARK_STATE_STYLES = [
  * that doesn't see CSS vars. Keeping one JS source of truth avoids drift.
  */
 export const MAP_COLORS = Object.freeze({
-	accent: '#c2542d',
+	accent: '#f47249',
 	moss: '#5a7a5a',
-	you: '#e8e0d4',
+	you: '#e8dfcc',
 	ash: '#a89e92',
 	white: '#ffffff',
 });
@@ -181,7 +181,7 @@ export function createLabeledMarker(map, marker, { type, name, pixelOffset = nul
 	el.style.cssText = 'padding:0;min-width:0;line-height:1.15';
 	const typeEl = document.createElement('div');
 	typeEl.style.cssText =
-		"font-family:'JetBrains Mono',monospace;font-size:8px;color:#807b75;text-transform:uppercase;letter-spacing:0.08em";
+		"font-family:'JetBrains Mono',monospace;font-size:8px;color:#5c554a;text-transform:uppercase;letter-spacing:0.08em";
 	typeEl.textContent = type;
 	el.appendChild(typeEl);
 	if (name) {
