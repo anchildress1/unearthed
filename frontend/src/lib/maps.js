@@ -79,7 +79,7 @@ export function loadGoogleMaps() {
 			return;
 		}
 		const s = document.createElement('script');
-		s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&v=weekly&libraries=geometry,places&loading=async`;
+		s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&v=weekly&libraries=geometry`;
 		s.async = true;
 		s.dataset.unearthedMaps = '1';
 		s.onload = () => succeed();

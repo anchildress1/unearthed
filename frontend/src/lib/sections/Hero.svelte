@@ -1,6 +1,6 @@
 <script>
-	import { onMount } from 'svelte';
 	import {
+		geocodeAddress,
 		loadSubregionGeoJSON,
 		findSubregion,
 		hasCoalData,
@@ -8,61 +8,12 @@
 		subregionForState,
 		STATE_TO_SUBREGION,
 	} from '$lib/geo.js';
-	import { loadGoogleMaps } from '$lib/maps.js';
 
 	let { loading, error, onTrace } = $props();
+	let address = $state('');
 	let showStatePicker = $state(false);
 	let selectedState = $state('');
 	let localError = $state(null);
-	// Three-state loader for the Places web component:
-	//   'loading' — Maps script in flight, render a disabled skeleton input
-	//   'ready'   — gmp-place-autocomplete is registered, render it
-	//   'failed'  — script load failed; surface an error and lean on the
-	//               geolocation button + state picker fallbacks below.
-	let autocompleteState = $state('loading');
-
-	onMount(async () => {
-		try {
-			await loadGoogleMaps();
-			autocompleteState = 'ready';
-		} catch (e) {
-			console.error('[unearthed] Places autocomplete unavailable:', e);
-			autocompleteState = 'failed';
-		}
-	});
-
-	// Session tokens are handled internally by PlaceAutocompleteElement, so we
-	// can focus on the selection event and only request the minimum field
-	// mask (`location`) to keep billing on the Autocomplete-Essentials tier.
-	async function handlePlaceSelect(event) {
-		localError = null;
-		const prediction = event.placePrediction;
-		if (!prediction) return;
-		const place = prediction.toPlace();
-		try {
-			await place.fetchFields({ fields: ['location'] });
-			const loc = place.location;
-			if (!loc) {
-				localError = 'Could not resolve that place. Pick another suggestion.';
-				return;
-			}
-			await resolveSubregion(loc.lat(), loc.lng());
-		} catch (e) {
-			console.error('[unearthed] Place fetch failed:', e);
-			localError = 'Could not resolve that place. Try again.';
-		}
-	}
-
-	// Svelte action — wire the custom `gmp-select` event to our handler and
-	// clean up on destroy so hot-reloads don't leak listeners.
-	function bindAutocomplete(node) {
-		node.addEventListener('gmp-select', handlePlaceSelect);
-		return {
-			destroy() {
-				node.removeEventListener('gmp-select', handlePlaceSelect);
-			},
-		};
-	}
 
 	const states = Object.keys(STATE_TO_SUBREGION).sort();
 	const stateLabels = {
@@ -93,6 +44,18 @@
 			return;
 		}
 		onTrace(subregion, { lat, lon });
+	}
+
+	async function handleSubmit(e) {
+		e.preventDefault();
+		if (!address.trim()) return;
+		localError = null;
+		const coords = await geocodeAddress(address.trim());
+		if (!coords) {
+			localError = 'Could not find that location. Try a full address or zip code.';
+			return;
+		}
+		await resolveSubregion(coords.lat, coords.lon);
 	}
 
 	async function handleGeolocate() {
@@ -140,24 +103,22 @@
 		</p>
 
 		<div class="input-group glass">
-			{#if autocompleteState === 'ready'}
-				<gmp-place-autocomplete
-					use:bindAutocomplete
-					included-region-codes="us"
-					requested-language="en"
-					aria-label="Search for an address, city, or zip code"
-				></gmp-place-autocomplete>
-			{:else}
+			<form class="form" onsubmit={handleSubmit}>
 				<input
+					id="address"
+					name="address"
 					type="text"
-					class="skeleton-input"
-					placeholder={autocompleteState === 'failed'
-						? 'Address search unavailable — use location or state picker'
-						: 'Loading address search…'}
-					aria-label="Address search"
-					disabled
+					placeholder="Address, city, or zip code"
+					aria-label="Enter address or zip code"
+					bind:value={address}
+					maxlength="200"
+					autocomplete="off"
+					disabled={loading}
 				/>
-			{/if}
+				<button class="primary" type="submit" disabled={loading}>
+					{loading ? '…' : 'trace →'}
+				</button>
+			</form>
 
 			<div class="divider"><span>or</span></div>
 
@@ -315,20 +276,11 @@
 		flex-direction: column;
 	}
 
-	/* Google Places Autocomplete web component. The element renders its own
-	   internal input and suggestions dropdown; we style the shell so it sits
-	   flush with the rest of the glass input group, and lean on the
-	   browser's default dropdown appearance for the prediction list. */
-	gmp-place-autocomplete {
-		display: block;
-		width: 100%;
-		--gmpx-color-surface: rgba(0, 0, 0, 0.42);
-		--gmpx-color-on-surface: var(--text);
-		--gmpx-color-primary: var(--rust);
-		--gmpx-font-family-base: var(--serif);
+	.form {
+		display: flex;
+		gap: 0.5rem;
 	}
 
-	.skeleton-input,
 	input[type="text"] {
 		flex: 1;
 		min-width: 0;
@@ -505,6 +457,9 @@
 		   let it wrap onto two lines there so the headline is still readable. */
 		h1 .beat {
 			white-space: normal;
+		}
+		.form {
+			flex-direction: column;
 		}
 		button {
 			width: 100%;
