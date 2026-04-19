@@ -6,7 +6,10 @@ from pathlib import Path
 import snowflake.connector
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
+from starlette.routing import Match
 
 from app.models import AskRequest, AskResponse, MineForMeRequest, MineForMeResponse
 from app.prose_client import generate_h3_summary, generate_prose
@@ -364,6 +367,41 @@ def ask(req: AskRequest):
         suggestions=suggestions,
         results=results,
     )
+
+
+# The SPA mount at "/" below is greedy: it matches any path the API routes
+# haven't claimed. That means `GET /mine-for-me` (POST-only API route) would
+# normally bypass Starlette's built-in 405 handling and get served by the SPA
+# mount as a missing static file — which would return 404, not 405. This
+# middleware runs before the mount is reached, checks every request against
+# the registered APIRoute set, and surfaces the correct 405 (with an `Allow`
+# header) when the path matches an API route but the method does not.
+@app.middleware("http")
+async def api_method_guard(request, call_next):
+    # OPTIONS is reserved for the CORS preflight the CORSMiddleware below
+    # intercepts; returning 405 here would swallow that handshake and break
+    # browser-initiated POSTs from the frontend.
+    if request.method == "OPTIONS":
+        return await call_next(request)
+    scope = request.scope
+    matched_methods: set[str] = set()
+    for route in app.routes:
+        if not isinstance(route, APIRoute):
+            continue
+        match, _ = route.matches(scope)
+        if match == Match.PARTIAL:
+            # Path matched but method didn't — record what this route allows.
+            matched_methods.update(route.methods or ())
+        elif match == Match.FULL:
+            matched_methods = set()
+            break
+    if matched_methods:
+        return JSONResponse(
+            status_code=405,
+            content={"detail": "Method Not Allowed"},
+            headers={"Allow": ", ".join(sorted(matched_methods))},
+        )
+    return await call_next(request)
 
 
 # Serve SvelteKit build output in production (must be AFTER API routes).
