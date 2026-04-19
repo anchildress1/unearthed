@@ -15,6 +15,11 @@
 		{#each paragraphs as para}
 			<p>{para}</p>
 		{/each}
+		{#if data.degraded}
+			<p class="degraded-notice">
+				Live narration unavailable — showing summary from cached records.
+			</p>
+		{/if}
 	</div>
 
 	<div class="cards">
@@ -65,6 +70,16 @@
 		line-height: 1.8;
 		color: var(--text-dim);
 		margin-bottom: 0.8rem;
+	}
+	.degraded-notice {
+		font-family: var(--mono);
+		font-size: 0.7rem;
+		text-transform: uppercase;
+		letter-spacing: 0.1em;
+		color: var(--text-ghost);
+		border-left: 2px solid var(--accent);
+		padding-left: 0.8rem;
+		margin-top: 1rem;
 	}
 	.cards {
 		display: grid;
