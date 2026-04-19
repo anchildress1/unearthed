@@ -29,3 +29,6 @@ Thumbs.db
 # Tool caches
 .ruff_cache/
 .playwright-mcp/
+frontend/node_modules
+frontend/build
+frontend/.svelte-kit
