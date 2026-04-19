@@ -2,14 +2,15 @@ import logging
 import os
 from pathlib import Path
 
+import snowflake.connector
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.gemini_client import generate_prose
 from app.models import AskRequest, AskResponse, MineForMeRequest, MineForMeResponse
+from app.prose_client import generate_prose
 from app.snowflake_client import (
+    _get_connection,
     execute_analyst_sql,
     load_fallback_data,
     query_cortex_analyst,
@@ -41,12 +42,95 @@ app.add_middleware(
 )
 
 
-@app.get("/")
-def index():
-    return FileResponse(_PROJECT_ROOT / "static" / "index.html")
+# Static assets (images, data files)
+_STATIC_DIR = _PROJECT_ROOT / "static"
+if _STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
+
+_H3_DENSITY_SQL = """
+SELECT
+    H3_LATLNG_TO_CELL_STRING(
+        TRY_TO_DOUBLE(REPLACE(LATITUDE, '"', '')),
+        TRY_TO_DOUBLE(REPLACE(LONGITUDE, '"', '')),
+        {resolution}
+    ) AS h3,
+    AVG(TRY_TO_DOUBLE(REPLACE(LATITUDE, '"', ''))) AS lat,
+    AVG(TRY_TO_DOUBLE(REPLACE(LONGITUDE, '"', ''))) AS lng,
+    COUNT(*) AS total,
+    SUM(CASE WHEN TRIM(REPLACE(CURRENT_MINE_STATUS, '"', '')) = 'Active'
+        THEN 1 ELSE 0 END) AS active,
+    SUM(CASE WHEN TRIM(REPLACE(CURRENT_MINE_STATUS, '"', '')) != 'Active'
+        THEN 1 ELSE 0 END) AS abandoned
+FROM UNEARTHED_DB.RAW.MSHA_MINES
+WHERE REPLACE(COAL_METAL_IND, '"', '') = 'C'
+    AND TRY_TO_DOUBLE(REPLACE(LATITUDE, '"', '')) IS NOT NULL
+GROUP BY h3
+HAVING total >= 5
+ORDER BY total DESC
+"""
 
 
-app.mount("/static", StaticFiles(directory=_PROJECT_ROOT / "static"), name="static")
+@app.get("/h3-density", responses={400: {"description": "Invalid resolution (must be 2-7)"}})
+def h3_density(resolution: int = 4):
+    """H3 hexbin mine density — active vs abandoned extraction footprint."""
+    if resolution < 2 or resolution > 7:
+        raise HTTPException(status_code=400, detail="Resolution must be 2-7")
+    from app.config import settings
+
+    conn = _get_connection(role=settings.snowflake_readonly_role)
+    cur = conn.cursor(snowflake.connector.DictCursor)
+    try:
+        cur.execute(_H3_DENSITY_SQL.format(resolution=int(resolution)))
+        rows = [dict(r) for r in cur.fetchall()]
+    finally:
+        cur.close()
+    return {"resolution": resolution, "cells": rows}
+
+
+_EMISSIONS_SQL = """
+SELECT
+    SUM(CASE WHEN t.VARIABLE_NAME = 'Carbon Dioxide Mass, Short Tons (Quarterly)'
+        THEN t.VALUE ELSE 0 END) AS co2_tons,
+    SUM(CASE WHEN t.VARIABLE_NAME = 'Sulfur Dioxide Mass, Short Tons (Quarterly)'
+        THEN t.VALUE ELSE 0 END) AS so2_tons,
+    SUM(CASE WHEN t.VARIABLE_NAME = 'Nitrogen Oxide Mass, Short Tons (Quarterly)'
+        THEN t.VALUE ELSE 0 END) AS nox_tons
+FROM SNOWFLAKE_PUBLIC_DATA_FREE.PUBLIC_DATA_FREE.EPA_CAM_PLANT_UNIT_INDEX p
+JOIN SNOWFLAKE_PUBLIC_DATA_FREE.PUBLIC_DATA_FREE.EPA_CAM_TIMESERIES t
+    ON p.PLANT_UNIT_ID = t.PLANT_UNIT_ID
+WHERE p.FACILITY_NAME ILIKE %(plant_name)s
+    AND p.PRIMARY_FUEL_INFO = 'Coal'
+    AND t.VARIABLE_NAME IN (
+        'Carbon Dioxide Mass, Short Tons (Quarterly)',
+        'Sulfur Dioxide Mass, Short Tons (Quarterly)',
+        'Nitrogen Oxide Mass, Short Tons (Quarterly)'
+    )
+    AND t.DATE >= '2020-01-01'
+"""
+
+
+@app.get("/emissions/{plant_name}")
+def plant_emissions(plant_name: str):
+    """EPA emissions data for a plant — from Snowflake Marketplace (free)."""
+    from app.config import settings
+
+    conn = _get_connection(role=settings.snowflake_readonly_role)
+    cur = conn.cursor(snowflake.connector.DictCursor)
+    try:
+        cur.execute(_EMISSIONS_SQL, {"plant_name": plant_name + "%"})
+        row = cur.fetchone()
+    finally:
+        cur.close()
+    if not row or row.get("CO2_TONS") is None:
+        return {"plant": plant_name, "co2_tons": None, "so2_tons": None, "nox_tons": None}
+    return {
+        "plant": plant_name,
+        "co2_tons": float(row["CO2_TONS"] or 0),
+        "so2_tons": float(row["SO2_TONS"] or 0),
+        "nox_tons": float(row["NOX_TONS"] or 0),
+        "source": "EPA Clean Air Markets via Snowflake Marketplace",
+    }
+
 
 DEFAULT_SUGGESTIONS = [
     "How much has Bailey Mine produced since 2020?",
@@ -143,3 +227,9 @@ def ask(req: AskRequest):
         suggestions=suggestions,
         results=results,
     )
+
+
+# Serve SvelteKit build output in production (must be AFTER API routes).
+_FRONTEND_DIR = _PROJECT_ROOT / "frontend" / "build"
+if _FRONTEND_DIR.exists():
+    app.mount("/", StaticFiles(directory=_FRONTEND_DIR, html=True), name="frontend")

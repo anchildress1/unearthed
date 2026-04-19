@@ -11,7 +11,7 @@ from app.config import Settings, _SettingsProxy, get_settings
 _CLEAN_ENV = {
     k: v
     for k, v in os.environ.items()
-    if not k.startswith("SNOWFLAKE_") and not k.startswith("GEMINI_")
+    if not k.startswith("SNOWFLAKE_") and not k.startswith("GOOGLE_MAPS_")
 }
 
 
@@ -27,10 +27,8 @@ class TestSettings:
         assert s.snowflake_readonly_role == "UNEARTHED_READONLY_ROLE"
         assert s.snowflake_warehouse == "UNEARTHED_APP_WH"
         assert s.snowflake_database == "UNEARTHED_DB"
-        assert s.gemini_model == "gemini-3.1-flash-lite-preview"
         assert s.snowflake_password == ""
         assert s.snowflake_private_key_path == ""
-        assert s.gemini_api_key == ""
         assert s.allow_password_auth is False
 
     def test_password_auth_config(self):
@@ -56,19 +54,9 @@ class TestSettings:
 
     @patch.dict(os.environ, _CLEAN_ENV, clear=True)
     def test_constructs_without_snowflake_vars(self):
-        s = Settings(gemini_api_key="AIza-fake", _env_file=None)
+        s = Settings(_env_file=None)
         assert s.snowflake_account == ""
         assert s.snowflake_user == ""
-        assert s.gemini_api_key == "AIza-fake"
-
-    def test_gemini_api_key(self):
-        s = Settings(
-            snowflake_account="test",
-            snowflake_user="user",
-            gemini_api_key="AIza-fake",
-            _env_file=None,
-        )
-        assert s.gemini_api_key == "AIza-fake"
 
     def test_allow_password_auth_explicit_true(self):
         s = Settings(
@@ -87,15 +75,6 @@ class TestSettings:
             _env_file=None,
         )
         assert s.snowflake_readonly_role == "MY_READONLY_ROLE"
-
-    def test_gemini_model_can_be_overridden(self):
-        s = Settings(
-            snowflake_account="test",
-            snowflake_user="user",
-            gemini_model="gemini-pro",
-            _env_file=None,
-        )
-        assert s.gemini_model == "gemini-pro"
 
     def test_private_key_passphrase_defaults_empty(self):
         s = Settings(
@@ -153,16 +132,6 @@ class TestSettings:
         assert s.snowflake_password == ""
         assert s.allow_password_auth is False
 
-    @patch.dict(
-        os.environ,
-        {**_CLEAN_ENV, "GEMINI_API_KEY": "env-key", "GEMINI_MODEL": "env-model"},
-        clear=True,
-    )
-    def test_gemini_fields_from_env(self):
-        s = Settings(_env_file=None)
-        assert s.gemini_api_key == "env-key"
-        assert s.gemini_model == "env-model"
-
 
 class TestGetSettings:
     def test_get_settings_returns_settings_instance(self):
@@ -209,11 +178,13 @@ class TestSettingsProxy:
     def test_module_level_settings_is_proxy(self):
         """The module-level `settings` object must be a _SettingsProxy."""
         from app.config import settings
+
         assert isinstance(settings, _SettingsProxy)
 
     def test_module_level_settings_forwards_snowflake_role(self):
         """Accessing settings.snowflake_role through proxy must not crash."""
         from app.config import settings
+
         # Will read from actual env / defaults — just ensure no AttributeError.
         _ = settings.snowflake_role
 

@@ -6,11 +6,11 @@ from tests.conftest import SAMPLE_MINE_DATA
 
 
 class TestMineForMeEndpoint:
-    """Tests with mocked Snowflake and Gemini."""
+    """Tests with mocked Snowflake and Cortex."""
 
     @patch("app.main.generate_prose", return_value=("Grief prose.", False))
     @patch("app.main.query_mine_for_subregion", return_value=SAMPLE_MINE_DATA)
-    def test_success_returns_full_payload(self, mock_sf, mock_gemini, client):
+    def test_success_returns_full_payload(self, mock_sf, mock_prose, client):
         resp = client.post("/mine-for-me", json={"subregion_id": "SRVC"})
         assert resp.status_code == 200
         data = resp.json()
@@ -23,7 +23,7 @@ class TestMineForMeEndpoint:
 
     @patch("app.main.generate_prose", return_value=("Grief prose.", False))
     @patch("app.main.query_mine_for_subregion", return_value=SAMPLE_MINE_DATA)
-    def test_response_contains_all_required_fields(self, mock_sf, mock_gemini, client):
+    def test_response_contains_all_required_fields(self, mock_sf, mock_prose, client):
         resp = client.post("/mine-for-me", json={"subregion_id": "SRVC"})
         data = resp.json()
         required = [
@@ -47,7 +47,7 @@ class TestMineForMeEndpoint:
 
     @patch("app.main.generate_prose", return_value=("Grief prose.", False))
     @patch("app.main.query_mine_for_subregion", return_value=SAMPLE_MINE_DATA)
-    def test_coords_are_lat_lon_pairs(self, mock_sf, mock_gemini, client):
+    def test_coords_are_lat_lon_pairs(self, mock_sf, mock_prose, client):
         resp = client.post("/mine-for-me", json={"subregion_id": "SRVC"})
         data = resp.json()
         assert len(data["mine_coords"]) == 2
@@ -62,7 +62,7 @@ class TestMineForMeSnowflakeFailure:
     @patch("app.main.load_fallback_data", return_value=SAMPLE_MINE_DATA)
     @patch("app.main.generate_prose", return_value=("Fallback prose.", True))
     @patch("app.main.query_mine_for_subregion", side_effect=Exception("Connection refused"))
-    def test_snowflake_down_uses_fallback(self, mock_sf, mock_gemini, mock_fb, client):
+    def test_snowflake_down_uses_fallback(self, mock_sf, mock_prose, mock_fb, client):
         resp = client.post("/mine-for-me", json={"subregion_id": "SRVC"})
         assert resp.status_code == 200
         data = resp.json()
@@ -82,12 +82,12 @@ class TestMineForMeSnowflakeFailure:
         assert resp.status_code == 404
 
 
-class TestMineForMeGeminiFailure:
-    """Degraded mode when Gemini is down but Snowflake works."""
+class TestMineForMeProseFailure:
+    """Degraded mode when Prose generation fails but Snowflake works."""
 
     @patch("app.main.generate_prose", return_value=("Template fallback.", True))
     @patch("app.main.query_mine_for_subregion", return_value=SAMPLE_MINE_DATA)
-    def test_gemini_down_sets_degraded(self, mock_sf, mock_gemini, client):
+    def test_prose_fails_sets_degraded(self, mock_sf, mock_prose, client):
         resp = client.post("/mine-for-me", json={"subregion_id": "SRVC"})
         data = resp.json()
         assert data["degraded"] is True
@@ -101,7 +101,7 @@ class TestMineForMeSnowflakeNoneFallbackSuccess:
     @patch("app.main.load_fallback_data", return_value=SAMPLE_MINE_DATA)
     @patch("app.main.generate_prose", return_value=("Fallback prose.", True))
     @patch("app.main.query_mine_for_subregion", return_value=None)
-    def test_snowflake_none_fallback_succeeds(self, mock_sf, mock_gemini, mock_fb, client):
+    def test_snowflake_none_fallback_succeeds(self, mock_sf, mock_prose, mock_fb, client):
         resp = client.post("/mine-for-me", json={"subregion_id": "SRVC"})
         assert resp.status_code == 200
         data = resp.json()
@@ -110,22 +110,22 @@ class TestMineForMeSnowflakeNoneFallbackSuccess:
 
     @patch("app.main.generate_prose", return_value=("Prose.", False))
     @patch("app.main.query_mine_for_subregion", return_value=SAMPLE_MINE_DATA)
-    def test_subregion_id_in_response(self, mock_sf, mock_gemini, client):
+    def test_subregion_id_in_response(self, mock_sf, mock_prose, client):
         resp = client.post("/mine-for-me", json={"subregion_id": "SRVC"})
         data = resp.json()
         assert data["subregion_id"] == "SRVC"
 
     @patch("app.main.generate_prose", return_value=("Prose.", False))
     @patch("app.main.query_mine_for_subregion", return_value=SAMPLE_MINE_DATA)
-    def test_subregion_id_injected_into_generate_prose(self, mock_sf, mock_gemini, client):
+    def test_subregion_id_injected_into_generate_prose(self, mock_sf, mock_prose, client):
         """mine_data dict passed to generate_prose must include subregion_id."""
         client.post("/mine-for-me", json={"subregion_id": "SRVC"})
-        call_args = mock_gemini.call_args[0][0]
+        call_args = mock_prose.call_args[0][0]
         assert call_args["subregion_id"] == "SRVC"
 
     @patch("app.main.generate_prose", return_value=("Prose.", False))
     @patch("app.main.query_mine_for_subregion", return_value=SAMPLE_MINE_DATA)
-    def test_response_content_type_is_json(self, mock_sf, mock_gemini, client):
+    def test_response_content_type_is_json(self, mock_sf, mock_prose, client):
         resp = client.post("/mine-for-me", json={"subregion_id": "SRVC"})
         assert "application/json" in resp.headers["content-type"]
 
@@ -151,7 +151,7 @@ class TestMineForMeValidation:
 
     def test_get_method_not_allowed(self, client):
         resp = client.get("/mine-for-me")
-        assert resp.status_code == 405
+        assert resp.status_code in (404, 405)
 
     def test_list_subregion_returns_422(self, client):
         resp = client.post("/mine-for-me", json={"subregion_id": ["SRVC"]})

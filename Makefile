@@ -1,15 +1,21 @@
-.PHONY: install install-dev dev test test-ci test-cov lint clean docker-build docker-run fallbacks
+.PHONY: install install-dev dev server test test-ci test-cov lint clean docker-build docker-run fallbacks
 
 # Install runtime dependencies
 install:
 	uv sync --no-dev
+	cd frontend && pnpm install
 
 # Install all dependencies (runtime + dev)
 install-dev:
 	uv sync
+	cd frontend && pnpm install
 
-# Run the FastAPI dev server with auto-reload
+# Run the SvelteKit frontend (proxies API to backend on 8001)
 dev:
+	cd frontend && pnpm dev
+
+# Run the FastAPI backend
+server:
 	uv run uvicorn app.main:app --reload --port 8001
 
 # Run the full test suite (all tests including e2e)

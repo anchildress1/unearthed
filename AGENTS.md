@@ -17,24 +17,25 @@ These rules govern all code written in this repository. Read fully before contri
 
 ### Endpoints
 
-The backend exposes exactly two FastAPI endpoints:
+The backend exposes these FastAPI endpoints:
 
 | Endpoint | Method | Input | Output |
 |---|---|---|---|
-| `/mine-for-me` | POST | `{subregion_id}` (regex: `[A-Za-z0-9]{2,10}`) | `{mine, plant, tons, prose, mine_coords, plant_coords, degraded}` or 404 |
-| `/ask` | POST | `{question, subregion_id?}` | `{answer, sql?, error?, suggestions?, results?}` |
+| `/mine-for-me` | POST | `{subregion_id}` | Mine + plant data, Cortex Complete prose, coords |
+| `/ask` | POST | `{question, subregion_id?}` | Cortex Analyst answer + SQL + results |
+| `/h3-density` | GET | `?resolution=4` | H3 hexbin mine density (active vs abandoned) |
+| `/emissions/{plant}` | GET | plant name | CO2/SO2/NOx from EPA Marketplace data |
 
-Subregion IDs are validated with `^[A-Za-z0-9]{2,10}$` — rejects path traversal, special chars.
-Unknown subregions return **404**, not placeholder data.
-
-Do not add endpoints without updating the PRD.
+Subregion IDs validated with `^[A-Za-z0-9]{2,10}$`. Unknown subregions return **404**.
 
 ### Frontend
 
-- Vanilla JS (no framework). MapLibre GL JS for the map.
-- Chat UI for Cortex Analyst: plain HTML form + chip buttons + transcript div. No component library.
+- SvelteKit (Vite) with static adapter. Scroll-driven typographic sections.
+- Google Maps JavaScript API for satellite map with animated flow lines.
+- Chat UI for Cortex Analyst: Svelte component with chips and transcript.
 - Geolocation: Browser API with permission prompt. Point-in-polygon against bundled eGRID GeoJSON runs client-side.
 - State-picker dropdown as fallback when geolocation is denied or user is outside US.
+- Dev: `make dev` (frontend :5173) + `make server` (backend :8001). Vite proxies API calls.
 
 ### Backend
 
@@ -81,14 +82,18 @@ UNEARTHED_DB
 ├── RAW          — raw ingested CSVs/XLSX, untransformed
 │   ├── MSHA_MINES
 │   ├── MSHA_QUARTERLY_PRODUCTION
+│   ├── MSHA_ACCIDENTS           (fatalities, injuries, narratives)
 │   ├── EIA_923_FUEL_RECEIPTS
 │   ├── EIA_860_PLANTS
 │   └── PLANT_SUBREGION_LOOKUP
-├── INT          — cleaned, joined, filtered to coal
-│   └── (intermediate transforms)
 └── MRT          — consumption-ready views
     ├── V_MINE_FOR_PLANT        (mine rankings per plant)
     └── V_MINE_FOR_SUBREGION    (mine rankings per eGRID subregion)
+
+SNOWFLAKE_PUBLIC_DATA_FREE       — Marketplace (free, no load needed)
+└── PUBLIC_DATA_FREE
+    ├── EPA_CAM_PLANT_UNIT_INDEX (plant emissions metadata)
+    └── EPA_CAM_TIMESERIES       (CO2/SO2/NOx hourly + quarterly)
 ```
 
 ### SQL Standards
@@ -166,7 +171,7 @@ One Cortex feature in use:
 
 - **Python:** Python 3.12. Follow PEP 8 enforced by `ruff`. Type hints on all function signatures. Use `async def` only if genuinely async; sync is fine for Snowflake connector and Cortex Analyst REST calls.
 - **Dependencies:** `pyproject.toml` with `uv`. Dev deps in `[dependency-groups]`. Run `uv sync` to install, `make lint` / `make fmt` for ruff, `make test` for pytest.
-- **JavaScript:** Vanilla JS, no transpilation. ES modules. No TypeScript for this project (speed over safety for a weekend build).
+- **JavaScript/Svelte:** SvelteKit with Vite. Svelte 5 runes mode. No TypeScript (speed over safety for a weekend build).
 - **SQL:** Uppercase keywords, lowercase only inside string literals. One statement per file when possible. Comment the "why," not the "what."
 - **Secrets:** Never committed. Use `.env` locally (gitignored), Secret Manager in Cloud Run.
 - **Static assets:** Checked into repo under an `assets/` directory. eGRID GeoJSON, hero images, fallback JSON (19 subregions), semantic model YAML.

@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import threading
 from pathlib import Path
 
 import requests
@@ -9,6 +10,12 @@ import snowflake.connector
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+# --- Connection pool ---
+# Two persistent connections: one for APP_ROLE, one for READONLY_ROLE.
+# Reconnects automatically on failure. Thread-safe via lock.
+_pool: dict[str, snowflake.connector.SnowflakeConnection] = {}
+_pool_lock = threading.Lock()
 
 # CTE: top mine from the MRT view, then join raw tables for plant details.
 # The view ranks mines per subregion but doesn't carry plant coordinates.
@@ -62,6 +69,7 @@ top_plant AS (
     QUALIFY ROW_NUMBER() OVER (ORDER BY TONS DESC) = 1
 )
 SELECT
+    tm.MINE_ID,
     tm.MINE_NAME,
     tm.MINE_OPERATOR,
     tm.MINE_COUNTY,
@@ -83,18 +91,17 @@ CROSS JOIN latest_year ly
 _MINE_TYPE_LABELS = {"U": "Underground", "S": "Surface", "F": "Facility"}
 
 
-def _get_connection(
-    *,
-    role: str | None = None,
-) -> snowflake.connector.SnowflakeConnection:
+def _create_connection(role: str) -> snowflake.connector.SnowflakeConnection:
+    """Create a fresh Snowflake connection for the given role."""
     if not settings.snowflake_account or not settings.snowflake_user:
         raise RuntimeError("SNOWFLAKE_ACCOUNT and SNOWFLAKE_USER must be set.")
     connect_args = {
         "account": settings.snowflake_account,
         "user": settings.snowflake_user,
-        "role": role or settings.snowflake_role,
+        "role": role,
         "warehouse": settings.snowflake_warehouse,
         "database": settings.snowflake_database,
+        "client_session_keep_alive": True,
     }
     if settings.snowflake_private_key_path:
         from cryptography.hazmat.primitives import serialization
@@ -124,56 +131,80 @@ def _get_connection(
     return snowflake.connector.connect(**connect_args)
 
 
+def _get_connection(
+    *,
+    role: str | None = None,
+) -> snowflake.connector.SnowflakeConnection:
+    """Get a pooled connection for the given role. Reconnects if stale."""
+    effective_role = role or settings.snowflake_role
+    with _pool_lock:
+        conn = _pool.get(effective_role)
+        if conn is not None:
+            try:
+                cur = conn.cursor()
+                try:
+                    cur.execute("SELECT 1").fetchone()
+                finally:
+                    cur.close()
+                return conn
+            except Exception:
+                logger.info("Pooled connection stale for role %s, reconnecting", effective_role)
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+        conn = _create_connection(effective_role)
+        _pool[effective_role] = conn
+        return conn
+
+
 def query_mine_for_subregion(subregion_id: str) -> dict | None:
     """Return the top mine-plant pair for a given eGRID subregion."""
     conn = _get_connection()
+    cur = conn.cursor(snowflake.connector.DictCursor)
     try:
-        cur = conn.cursor(snowflake.connector.DictCursor)
-        try:
-            cur.execute(
-                MINE_FOR_SUBREGION_SQL,
-                {"subregion_id": subregion_id.upper()},
-            )
-            row = cur.fetchone()
-        finally:
-            cur.close()
-        if not row:
+        cur.execute(
+            MINE_FOR_SUBREGION_SQL,
+            {"subregion_id": subregion_id.upper()},
+        )
+        row = cur.fetchone()
+    finally:
+        cur.close()
+    if not row:
+        return None
+
+    for field in (
+        "MINE_LATITUDE",
+        "MINE_LONGITUDE",
+        "PLANT_LATITUDE",
+        "PLANT_LONGITUDE",
+        "TOTAL_TONS",
+        "DATA_YEAR",
+    ):
+        if row.get(field) is None:
+            logger.error("NULL %s for subregion %s", field, subregion_id)
             return None
 
-        # NULL coordinates, tonnage, or year → fall back to cached JSON.
-        for field in (
-            "MINE_LATITUDE",
-            "MINE_LONGITUDE",
-            "PLANT_LATITUDE",
-            "PLANT_LONGITUDE",
-            "TOTAL_TONS",
-            "DATA_YEAR",
-        ):
-            if row.get(field) is None:
-                logger.error("NULL %s for subregion %s", field, subregion_id)
-                return None
-
-        return {
-            "mine": row["MINE_NAME"],
-            "mine_operator": row["MINE_OPERATOR"],
-            "mine_county": row["MINE_COUNTY"],
-            "mine_state": row["MINE_STATE"],
-            "mine_type": _MINE_TYPE_LABELS.get(row["MINE_TYPE"] or "", "Surface"),
-            "mine_coords": [
-                float(row["MINE_LATITUDE"]),
-                float(row["MINE_LONGITUDE"]),
-            ],
-            "plant": row["PLANT_NAME"],
-            "plant_operator": row["PLANT_OPERATOR"],
-            "plant_coords": [
-                float(row["PLANT_LATITUDE"]),
-                float(row["PLANT_LONGITUDE"]),
-            ],
-            "tons": float(row["TOTAL_TONS"]),
-            "tons_year": int(row["DATA_YEAR"]),
-        }
-    finally:
-        conn.close()
+    return {
+        "mine_id": str(row["MINE_ID"]),
+        "mine": row["MINE_NAME"],
+        "mine_operator": row["MINE_OPERATOR"],
+        "mine_county": row["MINE_COUNTY"],
+        "mine_state": row["MINE_STATE"],
+        "mine_type": _MINE_TYPE_LABELS.get(row["MINE_TYPE"] or "", "Surface"),
+        "mine_coords": [
+            float(row["MINE_LATITUDE"]),
+            float(row["MINE_LONGITUDE"]),
+        ],
+        "plant": row["PLANT_NAME"],
+        "plant_operator": row["PLANT_OPERATOR"],
+        "plant_coords": [
+            float(row["PLANT_LATITUDE"]),
+            float(row["PLANT_LONGITUDE"]),
+        ],
+        "tons": float(row["TOTAL_TONS"]),
+        "tons_year": int(row["DATA_YEAR"]),
+    }
 
 
 _SEMANTIC_MODEL: str = (Path(__file__).parent.parent / "assets" / "semantic_model.yaml").read_text()
@@ -221,10 +252,6 @@ def query_cortex_analyst(question: str) -> dict:
         content = body.get("message", {}).get("content", [])
         has_sql = any(item.get("type") == "sql" for item in content)
 
-        # When SQL is present, text items are the analyst's internal restatement
-        # of the question ("This is our interpretation…"), not the answer.
-        # The answer comes from executing the SQL and rendering the results.
-        # When there is no SQL (out-of-scope, error), text items ARE the answer.
         interpretation_parts: list[str] = []
         answer_parts: list[str] = []
         sql = None
@@ -257,8 +284,6 @@ def query_cortex_analyst(question: str) -> dict:
             "sql": None,
             "error": "We couldn't answer that question right now. Please try again later.",
         }
-    finally:
-        conn.close()
 
 
 _SAFE_SQL_START = re.compile(r"^\s*(SELECT|WITH)\b", re.IGNORECASE)
@@ -295,16 +320,13 @@ def execute_analyst_sql(sql: str) -> list[dict]:
     if not _is_safe_sql(clean_sql):
         raise ValueError("Only single read-only SELECT statements are allowed.")
     conn = _get_connection(role=settings.snowflake_readonly_role)
+    cur = conn.cursor(snowflake.connector.DictCursor)
     try:
-        cur = conn.cursor(snowflake.connector.DictCursor)
-        try:
-            cur.execute("ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = 10")
-            cur.execute(clean_sql)
-            return [dict(row) for row in cur.fetchmany(500)]
-        finally:
-            cur.close()
+        cur.execute("ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = 10")
+        cur.execute(clean_sql)
+        return [dict(row) for row in cur.fetchmany(500)]
     finally:
-        conn.close()
+        cur.close()
 
 
 _FALLBACK_DIR = (Path(__file__).parent.parent / "assets" / "fallback").resolve()
