@@ -15,6 +15,7 @@
 			}
 
 			const { Map } = await google.maps.importLibrary('maps');
+			const { AdvancedMarkerElement } = await google.maps.importLibrary('marker');
 
 			const mine = { lat: data.mine_coords[0], lng: data.mine_coords[1] };
 			const plant = { lat: data.plant_coords[0], lng: data.plant_coords[1] };
@@ -24,11 +25,11 @@
 			bounds.extend(plant);
 
 			const map = new Map(mapEl, {
+				mapId: 'UNEARTHED_MAP',
 				mapTypeId: 'hybrid',
 				disableDefaultUI: true,
 				zoomControl: true,
 				gestureHandling: 'greedy',
-				styles: [{ featureType: 'all', elementType: 'labels', stylers: [{ visibility: 'simplified' }] }],
 			});
 			map.fitBounds(bounds, { top: 100, bottom: 100, left: 100, right: 100 });
 
@@ -46,30 +47,23 @@
 			});
 
 			// Animated dot traversing the arc
-			const dot = new google.maps.Marker({
+			const dot = new AdvancedMarkerElement({
 				map,
 				position: arcPath[0],
-				icon: {
-					path: google.maps.SymbolPath.CIRCLE,
-					scale: 5,
-					fillColor: '#c2542d',
-					fillOpacity: 1,
-					strokeColor: '#fff',
-					strokeWeight: 1.5,
-				},
+				content: buildDotElement('#c2542d'),
 				zIndex: 10,
 			});
 
 			let dotIndex = 0;
 			animInterval = setInterval(() => {
 				dotIndex = (dotIndex + 1) % arcPath.length;
-				dot.setPosition(arcPath[dotIndex]);
+				dot.position = arcPath[dotIndex];
 			}, 80);
 
 			// Mine marker
-			addLabeledMarker(map, mine, 'MINE', data.mine, '#c2542d');
+			addLabeledMarker(map, AdvancedMarkerElement, mine, 'MINE', data.mine, '#c2542d');
 			// Plant marker
-			addLabeledMarker(map, plant, 'PLANT', data.plant, '#5a7a5a');
+			addLabeledMarker(map, AdvancedMarkerElement, plant, 'PLANT', data.plant, '#5a7a5a');
 
 			console.log('[unearthed] map rendered');
 		} catch (e) {
@@ -92,11 +86,17 @@
 		return points;
 	}
 
-	function addLabeledMarker(map, pos, type, name, color) {
-		const marker = new google.maps.Marker({
-			map, position: pos, title: name,
-			icon: { path: google.maps.SymbolPath.CIRCLE, scale: 7, fillColor: color, fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 },
-		});
+	function buildDotElement(color) {
+		const el = document.createElement('div');
+		el.style.cssText = `width:10px;height:10px;border-radius:50%;background:${color};border:1.5px solid #fff;box-shadow:0 0 6px ${color}`;
+		return el;
+	}
+
+	function addLabeledMarker(map, AdvancedMarkerElement, pos, type, name, color) {
+		const pin = document.createElement('div');
+		pin.style.cssText = `width:14px;height:14px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,0.3)`;
+		const marker = new AdvancedMarkerElement({ map, position: pos, title: name, content: pin });
+
 		const el = document.createElement('div');
 		const typeEl = document.createElement('div');
 		typeEl.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:10px;color:#807b75;text-transform:uppercase;letter-spacing:0.1em;padding:2px 4px";
@@ -107,7 +107,7 @@
 		el.appendChild(typeEl);
 		el.appendChild(nameEl);
 		const info = new google.maps.InfoWindow({ content: el });
-		info.open(map, marker);
+		info.open({ map, anchor: marker });
 	}
 
 	function loadGoogleMaps() {
