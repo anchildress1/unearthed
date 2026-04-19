@@ -17,17 +17,16 @@ These rules govern all code written in this repository. Read fully before contri
 
 ### Endpoints
 
-The backend exposes exactly two FastAPI endpoints:
+The backend exposes these FastAPI endpoints:
 
 | Endpoint | Method | Input | Output |
 |---|---|---|---|
-| `/mine-for-me` | POST | `{subregion_id}` (regex: `[A-Za-z0-9]{2,10}`) | `{mine, plant, tons, prose, mine_coords, plant_coords, degraded}` or 404 |
-| `/ask` | POST | `{question, subregion_id?}` | `{answer, sql?, error?, suggestions?, results?}` |
+| `/mine-for-me` | POST | `{subregion_id}` | Mine + plant data, Cortex Complete prose, coords |
+| `/ask` | POST | `{question, subregion_id?}` | Cortex Analyst answer + SQL + results |
+| `/h3-density` | GET | `?resolution=4` | H3 hexbin mine density (active vs abandoned) |
+| `/emissions/{plant}` | GET | plant name | CO2/SO2/NOx from EPA Marketplace data |
 
-Subregion IDs are validated with `^[A-Za-z0-9]{2,10}$` — rejects path traversal, special chars.
-Unknown subregions return **404**, not placeholder data.
-
-Do not add endpoints without updating the PRD.
+Subregion IDs validated with `^[A-Za-z0-9]{2,10}$`. Unknown subregions return **404**.
 
 ### Frontend
 
@@ -83,14 +82,18 @@ UNEARTHED_DB
 ├── RAW          — raw ingested CSVs/XLSX, untransformed
 │   ├── MSHA_MINES
 │   ├── MSHA_QUARTERLY_PRODUCTION
+│   ├── MSHA_ACCIDENTS           (fatalities, injuries, narratives)
 │   ├── EIA_923_FUEL_RECEIPTS
 │   ├── EIA_860_PLANTS
 │   └── PLANT_SUBREGION_LOOKUP
-├── INT          — cleaned, joined, filtered to coal
-│   └── (intermediate transforms)
 └── MRT          — consumption-ready views
     ├── V_MINE_FOR_PLANT        (mine rankings per plant)
     └── V_MINE_FOR_SUBREGION    (mine rankings per eGRID subregion)
+
+SNOWFLAKE_PUBLIC_DATA_FREE       — Marketplace (free, no load needed)
+└── PUBLIC_DATA_FREE
+    ├── EPA_CAM_PLANT_UNIT_INDEX (plant emissions metadata)
+    └── EPA_CAM_TIMESERIES       (CO2/SO2/NOx hourly + quarterly)
 ```
 
 ### SQL Standards
