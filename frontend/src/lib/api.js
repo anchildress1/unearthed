@@ -11,6 +11,22 @@ export async function fetchMineForMe(subregionId) {
 	return resp.json();
 }
 
+export async function fetchEmissions(plantName) {
+	const resp = await fetch(`/emissions/${encodeURIComponent(plantName)}`);
+	if (!resp.ok) {
+		throw new Error(`Failed to load emissions (${resp.status})`);
+	}
+	return resp.json();
+}
+
+export async function fetchH3Density(resolution = 4) {
+	const resp = await fetch(`/h3-density?resolution=${resolution}`);
+	if (!resp.ok) {
+		throw new Error(`Failed to load density (${resp.status})`);
+	}
+	return resp.json();
+}
+
 export async function fetchAsk(question, subregionId) {
 	const resp = await fetch('/ask', {
 		method: 'POST',
