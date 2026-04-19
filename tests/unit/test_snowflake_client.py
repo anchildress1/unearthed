@@ -23,7 +23,9 @@ def _clear_pool():
     yield
     snowflake_client._pool.clear()
 
+
 MOCK_ROW = {
+    "MINE_ID": "3607958",
     "MINE_NAME": "Bailey Mine",
     "MINE_OPERATOR": "Consol Pennsylvania Coal Company LLC",
     "MINE_COUNTY": "Greene",

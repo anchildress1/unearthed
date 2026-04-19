@@ -132,6 +132,7 @@ class TestSettings:
         assert s.snowflake_password == ""
         assert s.allow_password_auth is False
 
+
 class TestGetSettings:
     def test_get_settings_returns_settings_instance(self):
         # Clear lru_cache to ensure a fresh call
@@ -177,11 +178,13 @@ class TestSettingsProxy:
     def test_module_level_settings_is_proxy(self):
         """The module-level `settings` object must be a _SettingsProxy."""
         from app.config import settings
+
         assert isinstance(settings, _SettingsProxy)
 
     def test_module_level_settings_forwards_snowflake_role(self):
         """Accessing settings.snowflake_role through proxy must not crash."""
         from app.config import settings
+
         # Will read from actual env / defaults — just ensure no AttributeError.
         _ = settings.snowflake_role
 

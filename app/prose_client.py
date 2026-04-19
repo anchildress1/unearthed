@@ -22,13 +22,8 @@ SELECT
         THEN 1 ELSE 0 END) AS injuries_lost_time,
     SUM(TRY_TO_NUMBER(REPLACE(DAYS_LOST, '"', ''))) AS total_days_lost
 FROM UNEARTHED_DB.RAW.MSHA_ACCIDENTS
-WHERE TRY_TO_NUMBER(REPLACE(MINE_ID, '"', '')) IN (
-    SELECT TRY_TO_NUMBER(REPLACE(MINE_ID, '"', ''))
-    FROM UNEARTHED_DB.RAW.MSHA_MINES
-    WHERE TRIM(REPLACE(CURRENT_MINE_NAME, '"', '')) ILIKE %(mine_name)s
-      AND REPLACE(COAL_METAL_IND, '"', '') = 'C'
-)
-AND REPLACE(COAL_METAL_IND, '"', '') = 'C'
+WHERE TRY_TO_NUMBER(REPLACE(MINE_ID, '"', '')) = %(mine_id)s
+    AND REPLACE(COAL_METAL_IND, '"', '') = 'C'
 """
 
 _COMPLETE_PROMPT = """You are writing 2-3 sentences for a data visualization about US coal.
@@ -56,10 +51,7 @@ _FALLBACK = (
     "The coal kept moving to your grid."
 )
 
-_FALLBACK_NO_DATA = (
-    "This mine ships coal to your power grid. "
-    "The earth does not grow back."
-)
+_FALLBACK_NO_DATA = "This mine ships coal to your power grid. The earth does not grow back."
 
 
 def generate_prose(mine_data: dict) -> tuple[str, bool]:
@@ -75,10 +67,8 @@ def generate_prose(mine_data: dict) -> tuple[str, bool]:
         return prose, False
     except Exception:
         logger.exception("Prose generation failed")
-        prose = _FALLBACK_NO_DATA
-        if subregion_id:
-            _prose_cache[subregion_id] = (prose, True)
-        return prose, True
+        # Don't cache failures — allow retry on next request
+        return _FALLBACK_NO_DATA, True
 
 
 def _generate(mine_data: dict) -> str:
@@ -87,7 +77,7 @@ def _generate(mine_data: dict) -> str:
     # Step 1: Get actual injury/fatality stats via direct SQL
     cur = conn.cursor()
     try:
-        cur.execute(_STATS_SQL, {"mine_name": mine_data["mine"] + "%"})
+        cur.execute(_STATS_SQL, {"mine_id": int(mine_data["mine_id"])})
         row = cur.fetchone()
     finally:
         cur.close()

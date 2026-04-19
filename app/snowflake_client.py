@@ -69,6 +69,7 @@ top_plant AS (
     QUALIFY ROW_NUMBER() OVER (ORDER BY TONS DESC) = 1
 )
 SELECT
+    tm.MINE_ID,
     tm.MINE_NAME,
     tm.MINE_OPERATOR,
     tm.MINE_COUNTY,
@@ -185,6 +186,7 @@ def query_mine_for_subregion(subregion_id: str) -> dict | None:
             return None
 
     return {
+        "mine_id": str(row["MINE_ID"]),
         "mine": row["MINE_NAME"],
         "mine_operator": row["MINE_OPERATOR"],
         "mine_county": row["MINE_COUNTY"],

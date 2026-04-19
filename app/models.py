@@ -48,8 +48,7 @@ class AskRequest(BaseModel):
 class AskResponse(BaseModel):
     answer: str = Field(
         description=(
-            "Text answer from Cortex Analyst, or empty string "
-            "when SQL results are the answer."
+            "Text answer from Cortex Analyst, or empty string when SQL results are the answer."
         ),
     )
     interpretation: str | None = Field(
