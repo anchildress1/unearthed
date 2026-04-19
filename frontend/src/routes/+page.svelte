@@ -4,6 +4,7 @@
 	import Hero from '$lib/sections/Hero.svelte';
 	import PlantReveal from '$lib/sections/PlantReveal.svelte';
 	import MapSection from '$lib/sections/MapSection.svelte';
+	import H3Density from '$lib/sections/H3Density.svelte';
 	import CortexChat from '$lib/sections/CortexChat.svelte';
 	import Ticker from '$lib/sections/Ticker.svelte';
 	import { fetchMineForMe } from '$lib/api.js';
@@ -50,6 +51,7 @@
 	<main class="scroll">
 		<PlantReveal data={mineData} />
 		<MapSection data={mineData} />
+		<H3Density />
 		<CortexChat subregionId={mineData.subregion_id} mineName={mineData.mine} plantName={mineData.plant} />
 		<Ticker data={mineData} />
 	</main>
