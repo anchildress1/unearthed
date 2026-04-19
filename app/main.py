@@ -99,6 +99,7 @@ SELECT
 FROM UNEARTHED_DB.RAW.MSHA_MINES
 WHERE COAL_METAL_IND = 'C'
     AND LATITUDE IS NOT NULL
+    AND LONGITUDE IS NOT NULL
 GROUP BY h3
 HAVING total >= 5
 ORDER BY total DESC
@@ -161,18 +162,17 @@ def plant_emissions(plant_name: str):
         finally:
             cur.close()
     except Exception:
-        logger.warning("Emissions query failed for %s", plant_name, exc_info=True)
+        logger.warning("Emissions query failed", exc_info=True)
         raise HTTPException(status_code=503, detail="Snowflake unavailable")
     if not row or row.get("CO2_TONS") is None:
-        result = {"plant": plant_name, "co2_tons": None, "so2_tons": None, "nox_tons": None}
-    else:
-        result = {
-            "plant": plant_name,
-            "co2_tons": float(row["CO2_TONS"] or 0),
-            "so2_tons": float(row["SO2_TONS"] or 0),
-            "nox_tons": float(row["NOX_TONS"] or 0),
-            "source": "EPA Clean Air Markets via Snowflake Marketplace",
-        }
+        return {"plant": plant_name, "co2_tons": None, "so2_tons": None, "nox_tons": None}
+    result = {
+        "plant": plant_name,
+        "co2_tons": float(row["CO2_TONS"] or 0),
+        "so2_tons": float(row["SO2_TONS"] or 0),
+        "nox_tons": float(row["NOX_TONS"] or 0),
+        "source": "EPA Clean Air Markets via Snowflake Marketplace",
+    }
     _emissions_cache[cache_key] = result
     return result
 
@@ -209,27 +209,28 @@ def _suggestions_for(subregion_id: str | None) -> list[str]:
 
 @app.post("/mine-for-me", response_model=MineForMeResponse)
 def mine_for_me(req: MineForMeRequest):
+    subregion = req.subregion_id.upper()
     degraded = False
     mine_data = None
 
     try:
-        mine_data = query_mine_for_subregion(req.subregion_id)
+        mine_data = query_mine_for_subregion(subregion)
     except Exception:
         logger.warning("Snowflake query failed, trying fallback", exc_info=True)
         degraded = True
 
     if not mine_data:
-        mine_data = load_fallback_data(req.subregion_id)
+        mine_data = load_fallback_data(subregion)
         degraded = True
 
     if not mine_data:
         raise HTTPException(
             status_code=404,
-            detail=f"No coal data available for subregion '{req.subregion_id}'.",
+            detail=f"No coal data available for subregion '{subregion}'.",
         )
 
-    mine_data = {**mine_data, "subregion_id": req.subregion_id}
-    _mine_context[req.subregion_id.upper()] = mine_data
+    mine_data = {**mine_data, "subregion_id": subregion}
+    _mine_context[subregion] = mine_data
     prose, prose_degraded = generate_prose(mine_data)
     degraded = degraded or prose_degraded
 
@@ -246,7 +247,7 @@ def mine_for_me(req: MineForMeRequest):
         tons=mine_data["tons"],
         tons_year=mine_data["tons_year"],
         prose=prose,
-        subregion_id=req.subregion_id,
+        subregion_id=subregion,
         degraded=degraded,
     )
 

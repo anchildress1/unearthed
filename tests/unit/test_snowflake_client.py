@@ -351,7 +351,7 @@ class TestAuthPolicy:
         mock_settings.snowflake_warehouse = "WH"
         mock_settings.snowflake_database = "DB"
         mock_settings.snowflake_private_key_path = ""
-        mock_settings.snowflake_password = "secret"
+        mock_settings.snowflake_password = "secret"  # NOSONAR — test mock value
         mock_settings.allow_password_auth = False
 
         with pytest.raises(RuntimeError, match="No auth method configured"):
@@ -374,13 +374,13 @@ class TestAuthPolicy:
         mock_settings.snowflake_warehouse = "WH"
         mock_settings.snowflake_database = "DB"
         mock_settings.snowflake_private_key_path = ""
-        mock_settings.snowflake_password = "secret"
+        mock_settings.snowflake_password = "secret"  # NOSONAR — test mock value
         mock_settings.allow_password_auth = True
 
         _get_connection()
         mock_connect.assert_called_once()
         call_kwargs = mock_connect.call_args[1]
-        assert call_kwargs["password"] == "secret"
+        assert call_kwargs["password"] == "secret"  # NOSONAR — test assertion
 
     @patch("app.snowflake_client.snowflake.connector.connect")
     @patch("app.snowflake_client.settings")

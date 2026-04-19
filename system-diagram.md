@@ -7,7 +7,7 @@ flowchart TB
     subgraph BROWSER["BROWSER (SvelteKit)"]
         GEO[Geolocation / Geocoding<br/>→ lat/lon → subregion]
         SCROLL[Scroll sections<br/>glassmorphism data reveals]
-        MAP[MapLibre GL JS<br/>satellite + animated arc]
+        MAP[Google Maps JS API<br/>satellite + animated arc]
         CHAT[Cortex Analyst chat<br/>chips + expandable SQL]
         GEO --> SCROLL
     end

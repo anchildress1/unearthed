@@ -35,10 +35,11 @@ def _build_fallback(args: dict) -> str:
     if args["fatalities"]:
         parts.append(f"{args['fatalities']} workers have died here.")
     if args["injuries"]:
-        parts.append(
-            f"{args['injuries']} more were injured badly enough"
-            f" to miss work — {args['days_lost']} days lost in total."
-        )
+        injury_text = f"{args['injuries']} more were injured badly enough to miss work."
+        days = int(str(args.get("days_lost", 0)).replace(",", "") or 0)
+        if days:
+            injury_text = injury_text[:-1] + f" — {args['days_lost']} days lost in total."
+        parts.append(injury_text)
     parts.append("The coal kept moving to your grid.")
     return " ".join(parts)
 
