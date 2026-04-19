@@ -263,7 +263,7 @@ def summarize_analyst_results(question: str, results: list[dict]) -> str:
     """Use Cortex Complete to turn SQL results into a prose answer."""
     if not results:
         return ""
-    results_text = json.dumps(results[:10], default=str, indent=2)
+    results_text = json.dumps(results[:10], default=str)
     prompt = (
         f'The user asked: "{question}"\n\n'
         f"The database returned:\n{results_text}\n\n"

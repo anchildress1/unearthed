@@ -25,26 +25,13 @@ WHERE MINE_ID = %(mine_id)s
     AND COAL_METAL_IND = 'C'
 """
 
-_COMPLETE_PROMPT = """You are writing one short paragraph for a data visualization about US coal.
+_COMPLETE_PROMPT = """\
+{plant_name} ({plant_operator}) received {tons} tons of coal in {tons_year} from \
+{mine_name}, a {mine_type} mine ({mine_operator}) in {mine_county} County, {mine_state}. \
+Safety record: {fatalities} deaths, {injuries} lost-time injuries, {days_lost} days lost.
 
-The reader just learned their electricity comes from {plant_name}, operated by
-{plant_operator}. In {tons_year}, that plant received {tons} tons of coal from
-{mine_name}, a {mine_type} mine operated by {mine_operator} in {mine_county}
-County, {mine_state}.
-
-Federal mine safety records (cumulative, roughly 1983 to present):
-- {fatalities} workers have died at this mine
-- {injuries} workers injured badly enough to miss work
-- {days_lost} total days of work lost to injury
-
-Write 3-5 sentences in a single paragraph. Rules:
-- Open with the plant and the grid relationship, then the mine and tonnage,
-  then the human cost. One continuous flow.
-- Name the plant, the mine, and the operator once each.
-- End on the reader — their electricity, their demand.
-- No acronyms. No jargon. No hope. No hedging. No "however." No markdown.
-- If a number is zero, do not mention it.
-"""
+Write one paragraph, 3-5 sentences: plant → mine → human cost → the reader's demand. \
+Omit any zero stat. No jargon, no hedging, no markdown."""
 
 _FALLBACK = (
     "{plant_name} burns coal from {mine_name} in {mine_county} County, {mine_state}. "
