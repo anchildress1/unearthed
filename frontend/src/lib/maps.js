@@ -245,3 +245,128 @@ export function createLabeledMarker(map, marker, { type, name, placement = 'abov
 	overlay.setMap(map);
 	return overlay;
 }
+
+/**
+ * Draw a single connected flow line through `waypoints` as an SVG path in
+ * the map's overlay pane. Animates with two distinct beats:
+ *   1. Reveal — stroke-dashoffset falls from totalLength → 0 over `revealMs`,
+ *      so the line draws itself from the first waypoint to the last.
+ *   2. Pulse — once drawn, a small circle rides the path via
+ *      `getPointAtLength`, looping every `pulseMs` so the reader sees the
+ *      coal *moving*, not just sitting there.
+ *
+ * The geodesic between each pair of waypoints is sampled into `arcSegments`
+ * points and concatenated into one SVG `d` string, so the pulse never
+ * teleports across a segment boundary. `draw()` re-projects the path on
+ * every zoom/pan so the SVG stays registered with the map. Animation state
+ * (reveal progress, pulse phase) is stored outside draw() so a redraw
+ * mid-reveal continues from the current progress against the new path
+ * length instead of restarting.
+ *
+ * Returns the OverlayView so the caller can detach via `setMap(null)`; the
+ * internal rAF loop is canceled in `onRemove()`.
+ *
+ * Replaces the old `google.maps.Polyline` + `setInterval`-driven marker,
+ * which drew the path as one static line with an icon bouncing between two
+ * endpoints. The SVG path lets us express the "coal is flowing" metaphor
+ * as motion along the visible line instead of a separate marker.
+ */
+export function createFlowOverlay(
+	map,
+	waypoints,
+	{
+		color = MAP_COLORS.rust,
+		weight = 2.5,
+		revealMs = 1400,
+		pulseMs = 2600,
+		arcSegments = 60,
+	} = {},
+) {
+	const svgNS = 'http://www.w3.org/2000/svg';
+	const svg = document.createElementNS(svgNS, 'svg');
+	svg.setAttribute(
+		'style',
+		'position:absolute;top:0;left:0;width:1px;height:1px;overflow:visible;pointer-events:none',
+	);
+
+	const path = document.createElementNS(svgNS, 'path');
+	path.setAttribute('fill', 'none');
+	path.setAttribute('stroke', color);
+	path.setAttribute('stroke-width', String(weight));
+	path.setAttribute('stroke-opacity', '0.65');
+	path.setAttribute('stroke-linecap', 'round');
+	path.setAttribute('stroke-linejoin', 'round');
+	svg.appendChild(path);
+
+	const pulse = document.createElementNS(svgNS, 'circle');
+	pulse.setAttribute('r', '4');
+	pulse.setAttribute('fill', color);
+	pulse.setAttribute('stroke', '#ffffff');
+	pulse.setAttribute('stroke-width', '1.5');
+	pulse.setAttribute('opacity', '0');
+	svg.appendChild(pulse);
+
+	const latLngs = waypoints.map((w) => new google.maps.LatLng(w.lat, w.lng));
+	let raf = null;
+	let animStart = null;
+	let pathLength = 0;
+
+	class FlowOverlay extends google.maps.OverlayView {
+		onAdd() {
+			this.getPanes().overlayLayer.appendChild(svg);
+		}
+		draw() {
+			const proj = this.getProjection();
+			if (!proj) return;
+
+			const parts = [];
+			for (let i = 0; i < latLngs.length - 1; i++) {
+				const a = latLngs[i];
+				const b = latLngs[i + 1];
+				for (let j = 0; j <= arcSegments; j++) {
+					const p = google.maps.geometry.spherical.interpolate(
+						a,
+						b,
+						j / arcSegments,
+					);
+					const px = proj.fromLatLngToDivPixel(p);
+					parts.push(
+						i === 0 && j === 0 ? `M${px.x},${px.y}` : `L${px.x},${px.y}`,
+					);
+				}
+			}
+			path.setAttribute('d', parts.join(' '));
+			pathLength = path.getTotalLength();
+			path.style.strokeDasharray = String(pathLength);
+
+			if (animStart == null) {
+				path.style.strokeDashoffset = String(pathLength);
+				animStart = performance.now();
+				this.#tick(animStart);
+			}
+		}
+		#tick(now) {
+			const elapsed = now - animStart;
+			const revealT = Math.min(1, elapsed / revealMs);
+			path.style.strokeDashoffset = String(pathLength * (1 - revealT));
+
+			if (revealT >= 1 && pathLength > 0) {
+				pulse.setAttribute('opacity', '1');
+				const phase = ((elapsed - revealMs) % pulseMs) / pulseMs;
+				const pt = path.getPointAtLength(phase * pathLength);
+				pulse.setAttribute('cx', String(pt.x));
+				pulse.setAttribute('cy', String(pt.y));
+			}
+			raf = requestAnimationFrame((t) => this.#tick(t));
+		}
+		onRemove() {
+			if (raf) cancelAnimationFrame(raf);
+			raf = null;
+			svg.remove();
+		}
+	}
+
+	const overlay = new FlowOverlay();
+	overlay.setMap(map);
+	return overlay;
+}

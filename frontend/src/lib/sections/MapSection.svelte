@@ -4,6 +4,7 @@
 	import {
 		loadGoogleMaps,
 		createDarkMap,
+		createFlowOverlay,
 		createLabeledMarker,
 		circleIcon,
 		MAP_COLORS,
@@ -12,16 +13,12 @@
 	let { data } = $props();
 	let mapEl;
 	let mapError = $state(null);
-	let mineDotInterval = null;
-	let userDotInterval = null;
-	// onMount has an `await` before the first setInterval, so the component
-	// can unmount (HMR, fast re-trace) before either interval is assigned.
-	// `cancelled` gates every post-await side-effect so we don't strand
-	// intervals on a dead component.
+	let flowOverlay = null;
+	// onMount has an `await` before overlay attachment, so the component can
+	// unmount (HMR, fast re-trace) before the overlay is assigned. `cancelled`
+	// gates every post-await side-effect so we don't strand animation loops
+	// on a dead component.
 	let cancelled = false;
-
-	const ARC_SEGMENTS = 50;
-	const DOT_TICK_MS = 80;
 
 	onMount(async () => {
 		try {
@@ -41,13 +38,12 @@
 			if (user) bounds.extend(user);
 			map.fitBounds(bounds, { top: 40, bottom: 40, left: 40, right: 40 });
 
-			// One coal flow—mine → plant → user—drawn as one color so the
-			// reader reads it as a single route, not two separate relationships.
-			// The stack doesn't interrupt the coal; it only converts it.
-			mineDotInterval = animateArc(map, mine, plant, MAP_COLORS.rust, 2.5, 0.55);
-			if (user) {
-				userDotInterval = animateArc(map, plant, user, MAP_COLORS.rust, 2.5, 0.55);
-			}
+			// One coal flow—mine → plant → user—drawn as one continuous SVG
+			// path so the reveal and pulse read as a single route, not two
+			// separate relationships. The stack doesn't interrupt the coal;
+			// it only converts it.
+			const waypoints = user ? [mine, plant, user] : [mine, plant];
+			flowOverlay = createFlowOverlay(map, waypoints);
 
 			// Fan the three cards out by relative geography so two close-together
 			// markers don't stack their labels. Northmost floats above, southmost
@@ -81,47 +77,8 @@
 
 	onDestroy(() => {
 		cancelled = true;
-		if (mineDotInterval) clearInterval(mineDotInterval);
-		if (userDotInterval) clearInterval(userDotInterval);
+		if (flowOverlay) flowOverlay.setMap(null);
 	});
-
-	// Sample the same great-circle Google's Polyline (geodesic: true) draws so
-	// the animated dot rides the visible line instead of drifting onto a
-	// synthetic arc.
-	function buildGeodesicArc(from, to) {
-		const fromLL = new google.maps.LatLng(from.lat, from.lng);
-		const toLL = new google.maps.LatLng(to.lat, to.lng);
-		const points = [];
-		for (let i = 0; i <= ARC_SEGMENTS; i++) {
-			const p = google.maps.geometry.spherical.interpolate(fromLL, toLL, i / ARC_SEGMENTS);
-			points.push({ lat: p.lat(), lng: p.lng() });
-		}
-		return points;
-	}
-
-	function animateArc(map, from, to, color, weight, opacity) {
-		const arc = buildGeodesicArc(from, to);
-		new google.maps.Polyline({
-			map,
-			path: [from, to],
-			strokeColor: color,
-			strokeWeight: weight,
-			strokeOpacity: opacity,
-			geodesic: true,
-		});
-		const dot = new google.maps.Marker({
-			map,
-			position: arc[0],
-			icon: circleIcon({ color, scale: 5, strokeWeight: 1.5 }),
-			zIndex: 10,
-			clickable: false,
-		});
-		let idx = 0;
-		return setInterval(() => {
-			idx = (idx + 1) % arc.length;
-			dot.setPosition(arc[idx]);
-		}, DOT_TICK_MS);
-	}
 
 	function anchorMarker(map, pos, color) {
 		return new google.maps.Marker({
