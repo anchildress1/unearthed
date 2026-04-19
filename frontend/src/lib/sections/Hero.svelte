@@ -85,14 +85,13 @@
 </script>
 
 <section class="hero" aria-label="Find your mine">
-	<div class="hero-main">
-		<aside class="rail" aria-hidden="true">
-			<span class="rail-num">N° 01</span>
-			<span class="rail-rule"></span>
-			<span class="rail-label">Locate</span>
-		</aside>
+	<header class="hero-chrome" aria-hidden="true">
+		<span class="rail-num">N° 01</span>
+		<span class="rail-rule"></span>
+		<span class="rail-label">Locate</span>
+	</header>
 
-		<div class="hero-inner">
+	<div class="hero-inner">
 		<h1>
 			<span class="beat">You <span class="rust">came</span> home.</span>
 			<span class="beat">You turned <span class="rust">on</span> <em>a light.</em></span>
@@ -151,7 +150,6 @@
 				<p class="hint">Your address is never stored.</p>
 			{/if}
 		</div>
-		</div>
 	</div>
 
 	<a class="credit" href="https://www.flickr.com/photos/nationalmemorialforthemountains/255887679/" target="_blank" rel="noopener">
@@ -165,40 +163,19 @@
 		display: flex;
 		flex-direction: column;
 		justify-content: center;
-		/* Asymmetric editorial split is handled by .hero-main so the rail
-		   and content share a grid row—the rail's height tracks the text
-		   block rather than floating independently. */
-		padding: clamp(2.5rem, 6vh, 4.5rem) clamp(1.25rem, 4vw, 3rem)
+		padding: clamp(2.5rem, 6vh, 4.5rem) clamp(1.5rem, 5vw, 4rem)
 			clamp(3rem, 10vh, 5rem);
 		position: relative;
 	}
 
-	.hero-main {
-		display: grid;
-		grid-template-columns:
-			clamp(56px, 8vw, 96px)
-			minmax(0, 1fr);
-		column-gap: clamp(1.25rem, 3vw, 2.5rem);
-		width: 100%;
-		/* The content column widens past the 780px lede/input cap so the
-		   headline can run full-bleed at an editorial scale — each beat
-		   gets a single row, no mid-sentence wrap. Supporting copy below
-		   still caps to its own narrower measure. */
-		max-width: min(1280px, 100%);
-	}
-
-	/* ---- Left rail: shared editorial chrome (matches SectionRail) ----
-	   grid-row unset → inherits the single implicit row, which stretches
-	   to the height of the tallest cell (the content column). The rail
-	   therefore runs top-of-text to bottom-of-text, per design. */
-	.rail {
-		grid-column: 1;
+	/* Horizontal chrome strip — a quiet editorial marker above the hero
+	   copy. Matches SectionRail's top-of-section chrome so every section
+	   on the page (Hero through Ticker) reads the same way. */
+	.hero-chrome {
 		display: flex;
-		flex-direction: column;
 		align-items: center;
-		justify-content: space-between;
-		padding: 0.2rem 0;
 		gap: 0.9rem;
+		margin-bottom: clamp(1.5rem, 3vh, 2.5rem);
 	}
 	.rail-num {
 		font-family: var(--mono);
@@ -209,14 +186,10 @@
 		white-space: nowrap;
 	}
 	.rail-rule {
-		/* Fills the space between N° 01 and the label; because the rail row
-		   stretches to the hero-copy height, the rule lands exactly from the
-		   top of the headline to the bottom of the status line. */
-		width: 1px;
-		flex: 1 1 auto;
-		min-height: 4rem;
+		height: 1px;
+		flex: 0 0 clamp(2.5rem, 6vw, 5rem);
 		background: linear-gradient(
-			to bottom,
+			to right,
 			rgba(255, 255, 255, 0.18),
 			rgba(255, 255, 255, 0.02)
 		);
@@ -231,8 +204,12 @@
 		white-space: nowrap;
 	}
 
+	/* Full-bleed hero content — no two-column grid, no middle-of-page
+	   measure cap. Headline runs edge-to-edge with the section's gutter
+	   padding as its only constraint. Supporting copy (lede, input group,
+	   status) keeps its own narrower measure below so prose stays
+	   readable even while the layout feels open. */
 	.hero-inner {
-		grid-column: 2;
 		width: 100%;
 		display: flex;
 		flex-direction: column;
@@ -240,8 +217,6 @@
 		text-align: left;
 		gap: 1.5rem;
 	}
-	/* Supporting copy (lede, input group, status) keeps the narrower
-	   measure so it doesn't outrun the headline's new full-bleed width. */
 	.hero-inner > :not(h1) {
 		max-width: min(780px, 100%);
 		width: 100%;
@@ -468,15 +443,13 @@
 		.hero {
 			padding: 2.25rem 1.25rem 4rem;
 		}
-		.hero-main {
-			grid-template-columns: minmax(0, 1fr);
-			column-gap: 0;
+		.hero-chrome {
+			margin-bottom: 1.25rem;
 		}
-		.rail {
-			display: none;
+		.rail-rule {
+			flex: 0 0 2rem;
 		}
 		.hero-inner {
-			grid-column: 1;
 			gap: 1.3rem;
 			max-width: 100%;
 		}

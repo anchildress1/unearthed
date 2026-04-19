@@ -66,13 +66,12 @@
 </SectionRail>
 
 <style>
-	/* Left-anchored to the rail like the other sections. Keeping it
-	   vertically generous so the counter still has room to breathe, but
-	   horizontally it flows from column-2's left edge the same as
-	   PlantReveal / MapSection / H3 / Cortex. */
+	/* Vertically generous so the closing counter has room to breathe; the
+	   content flows full-bleed horizontally to match the rest of the
+	   stacked sections. Internal typography (counter, unit labels) caps
+	   its own measure on each element below. */
 	:global(.section-rail.ticker-section > .rail-content) {
 		min-height: 60vh;
-		max-width: 760px;
 	}
 
 	.counter { margin-bottom: 2.5rem; padding-top: 2rem; }

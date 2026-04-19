@@ -477,13 +477,6 @@
 </SectionRail>
 
 <style>
-	/* The rail handles outer padding + grid. Give the section's content
-	   column a wider max-width than PlantReveal because the map benefits
-	   from more horizontal room. */
-	:global(.section-rail.h3-section > .rail-content) {
-		max-width: 1100px;
-	}
-
 	.h3-header {
 		max-width: 720px;
 		margin-bottom: 2rem;

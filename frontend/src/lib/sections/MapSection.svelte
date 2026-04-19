@@ -152,10 +152,6 @@
 </SectionRail>
 
 <style>
-	:global(.section-rail.map-section > .rail-content) {
-		max-width: 1100px;
-	}
-
 	.map-header {
 		max-width: 720px;
 		margin-bottom: 2rem;
@@ -163,7 +159,6 @@
 
 	.map-frame {
 		width: 100%;
-		max-width: 1000px;
 		overflow: hidden;
 		padding: 0;
 	}

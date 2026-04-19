@@ -11,21 +11,21 @@
 </script>
 
 <!--
-	Editorial two-column section wrapper.
+	Editorial section wrapper. Horizontal chrome strip at the top sets the
+	section's identity (N° + verb/noun); content flows full-bleed beneath
+	it with generous gutters only. No two-column grid — the page no longer
+	reads as "rail + column," it reads as full-width stacked sections with
+	quiet editorial markers.
 
-	Left rail: thin vertical column of chrome—a rust section number and a
-	short verb/noun that names the section. aria-hidden because it is
-	decorative metadata; the real section heading inside the content column
-	is what assistive tech reads.
-
-	Right column: where content lives, left-aligned on a wider max-width.
+	aria-hidden on the chrome because it's decorative; the real section
+	heading inside the content is what assistive tech reads.
 -->
 <section class="section-rail {className}" use:reveal={revealOptions}>
-	<aside class="rail" aria-hidden="true">
+	<header class="rail-chrome" aria-hidden="true">
 		<span class="rail-num">N° {number}</span>
 		<span class="rail-rule"></span>
 		<span class="rail-label">{label}</span>
-	</aside>
+	</header>
 	<div class="rail-content">
 		{@render children()}
 	</div>
@@ -33,23 +33,18 @@
 
 <style>
 	.section-rail {
-		display: grid;
-		grid-template-columns:
-			clamp(64px, 7vw, 104px)
-			minmax(0, 1fr);
-		column-gap: clamp(1.25rem, 3vw, 2.5rem);
-		padding: clamp(3rem, 7vh, 5.5rem) clamp(1.25rem, 4vw, 3rem);
+		display: block;
+		padding: clamp(3rem, 7vh, 5.5rem) clamp(1.5rem, 5vw, 4rem);
 		position: relative;
 	}
 
-	/* ---- Left rail ---- */
-	.rail {
-		grid-column: 1;
+	/* ---- Horizontal chrome strip ---- */
+	.rail-chrome {
 		display: flex;
-		flex-direction: column;
 		align-items: center;
-		padding-top: clamp(0.5rem, 2vh, 1.5rem);
 		gap: 0.9rem;
+		margin-bottom: clamp(1.5rem, 3vh, 2.5rem);
+		width: 100%;
 	}
 
 	.rail-num {
@@ -62,12 +57,14 @@
 	}
 
 	.rail-rule {
-		/* Matches the text-column height roughly—long enough to bracket
-		   the section copy, short enough not to run into the next section. */
-		width: 1px;
-		flex: 0 0 clamp(16rem, 52vh, 30rem);
+		/* Horizontal hairline between the number and the label. Does not
+		   claim a fixed width — it expands to bracket the chrome pair and
+		   stops well before the content edge so prose doesn't read as
+		   fenced by it. */
+		height: 1px;
+		flex: 0 0 clamp(2.5rem, 6vw, 5rem);
 		background: linear-gradient(
-			to bottom,
+			to right,
 			rgba(255, 255, 255, 0.18),
 			rgba(255, 255, 255, 0.02)
 		);
@@ -83,11 +80,13 @@
 		white-space: nowrap;
 	}
 
-	/* ---- Content column (global so sections can extend it) ---- */
+	/* ---- Content (global so sections can extend it) ----
+	   Full-bleed inside the section's gutter padding. Individual sections
+	   cap prose paragraphs on `.sub` (640px) and decorative blocks like
+	   tallies on their own max-widths, so reading measure stays comfortable
+	   without framing the whole section as a column. */
 	.section-rail > :global(.rail-content) {
-		grid-column: 2;
 		width: 100%;
-		max-width: 900px;
 		min-width: 0;
 	}
 
@@ -204,15 +203,13 @@
 
 	@media (max-width: 720px) {
 		.section-rail {
-			grid-template-columns: minmax(0, 1fr);
-			column-gap: 0;
 			padding: clamp(2.5rem, 6vh, 4rem) 1.25rem;
 		}
-		.rail {
-			display: none;
+		.rail-chrome {
+			margin-bottom: 1.25rem;
 		}
-		.section-rail > :global(.rail-content) {
-			grid-column: 1;
+		.rail-rule {
+			flex: 0 0 2rem;
 		}
 	}
 </style>

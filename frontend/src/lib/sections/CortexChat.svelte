@@ -212,12 +212,6 @@
 </SectionRail>
 
 <style>
-	/* SectionRail owns outer padding/grid. Cap the content column so the
-	   reading width matches the rest of the site. */
-	:global(.section-rail.cortex-section > .rail-content) {
-		max-width: 740px;
-	}
-
 	.header {
 		display: flex;
 		align-items: center;
