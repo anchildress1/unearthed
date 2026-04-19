@@ -5,15 +5,11 @@
 		findSubregion,
 		hasCoalData,
 		requestLocation,
-		subregionForState,
-		STATE_TO_SUBREGION,
 	} from '$lib/geo.js';
 	import { loadGoogleMaps } from '$lib/maps.js';
 
 	let { loading, error, onTrace } = $props();
 	let address = $state('');
-	let showStatePicker = $state(false);
-	let selectedState = $state('');
 	let localError = $state(null);
 
 	// Google Places autocomplete — adds a suggestion dropdown beneath the
@@ -40,8 +36,7 @@
 			placesReady = true;
 		} catch (e) {
 			console.error('[unearthed] Places library unavailable:', e);
-			localError = 'Address search is temporarily unavailable. Use your location or pick a state.';
-			showStatePicker = true;
+			localError = 'Address search is temporarily unavailable. Try the location button.';
 		}
 	});
 
@@ -113,8 +108,7 @@
 			return;
 		}
 		if (!placesReady) {
-			localError = 'Address search is temporarily unavailable. Use your location or pick a state.';
-			showStatePicker = true;
+			localError = 'Address search is temporarily unavailable. Try the location button.';
 			return;
 		}
 		// No cached pick — ask Places for the top match on whatever the user
@@ -138,32 +132,15 @@
 		}
 	}
 
-	const states = Object.keys(STATE_TO_SUBREGION).sort();
-	const stateLabels = {
-		AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'California',
-		CO:'Colorado',CT:'Connecticut',DE:'Delaware',DC:'District of Columbia',
-		FL:'Florida',GA:'Georgia',HI:'Hawaii',ID:'Idaho',IL:'Illinois',
-		IN:'Indiana',IA:'Iowa',KS:'Kansas',KY:'Kentucky',LA:'Louisiana',
-		ME:'Maine',MD:'Maryland',MA:'Massachusetts',MI:'Michigan',MN:'Minnesota',
-		MS:'Mississippi',MO:'Missouri',MT:'Montana',NE:'Nebraska',NV:'Nevada',
-		NH:'New Hampshire',NJ:'New Jersey',NM:'New Mexico',NY:'New York',
-		NC:'North Carolina',ND:'North Dakota',OH:'Ohio',OK:'Oklahoma',
-		OR:'Oregon',PA:'Pennsylvania',RI:'Rhode Island',SC:'South Carolina',
-		SD:'South Dakota',TN:'Tennessee',TX:'Texas',UT:'Utah',VT:'Vermont',
-		VA:'Virginia',WA:'Washington',WV:'West Virginia',WI:'Wisconsin',WY:'Wyoming',
-	};
-
 	async function resolveSubregion(lat, lon) {
 		const geojson = await loadSubregionGeoJSON();
 		const subregion = findSubregion(lat, lon, geojson);
 		if (!subregion) {
 			localError = 'That location is outside the US grid coverage area.';
-			showStatePicker = true;
 			return;
 		}
 		if (!hasCoalData(subregion)) {
 			localError = `Your grid subregion (${subregion}) has no active coal supply chain.`;
-			showStatePicker = true;
 			return;
 		}
 		onTrace(subregion, { lat, lon });
@@ -181,24 +158,9 @@
 		const coords = await requestLocation();
 		if (!coords) {
 			localError = 'Location access denied.';
-			showStatePicker = true;
 			return;
 		}
 		await resolveSubregion(coords.lat, coords.lon);
-	}
-
-	function handleStateGo() {
-		if (!selectedState) return;
-		// Clear any stale error from an earlier address/geolocation attempt
-		// so the user isn't told "CA is outside the US grid" after they've
-		// already picked California from the dropdown.
-		localError = null;
-		const sub = subregionForState(selectedState);
-		if (!sub || !hasCoalData(sub)) {
-			localError = `No coal data for ${stateLabels[selectedState]}.`;
-			return;
-		}
-		onTrace(sub);
 	}
 </script>
 
@@ -274,20 +236,6 @@
 			<button class="geo-btn" onclick={handleGeolocate} disabled={loading}>
 				Use my location
 			</button>
-
-			{#if showStatePicker}
-				<div class="state-pick">
-					<select bind:value={selectedState} aria-label="Select a state">
-						<option value="">Select a state…</option>
-						{#each states as code}
-							<option value={code}>{stateLabels[code] || code}</option>
-						{/each}
-					</select>
-					<button onclick={handleStateGo} disabled={!selectedState || loading}>
-						Show me
-					</button>
-				</div>
-			{/if}
 		</div>
 
 		<div class="status" aria-live="polite">
@@ -569,29 +517,6 @@
 		font-style: italic;
 		padding: 0.78rem 1rem;
 		letter-spacing: 0.02em;
-	}
-
-	.state-pick {
-		display: flex;
-		gap: 0.5rem;
-		margin-top: 0.8rem;
-	}
-	select {
-		flex: 1;
-		min-width: 0;
-		font-family: var(--serif);
-		font-size: 0.92rem;
-		padding: 0.7rem 0.85rem;
-		background: rgba(0, 0, 0, 0.42) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%239a9490' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E") no-repeat right 0.85rem center;
-		color: var(--text);
-		border: 1px solid rgba(255, 255, 255, 0.07);
-		border-radius: 6px;
-		appearance: none;
-		outline: none;
-		padding-right: 2rem;
-	}
-	select:focus {
-		border-color: var(--rust);
 	}
 
 	/* ---- Status line (reserved space—never shifts layout) ---- */
