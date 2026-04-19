@@ -121,7 +121,7 @@ Two Cortex features in use:
 | Feature | Purpose | Where Used |
 |---|---|---|
 | Cortex Analyst | NL-to-SQL via semantic model YAML | `/ask` endpoint, runtime user questions |
-| Cortex Complete (`openai-gpt-5-chat`) | Short safety prose from MSHA_ACCIDENTS stats | `/mine-for-me` response, in-process cache per subregion |
+| Cortex Complete (`openai-gpt-5.2`) | Short safety prose from MSHA_ACCIDENTS stats | `/mine-for-me` response, in-process cache per subregion |
 
 - **Cortex Analyst semantic model:** Checked into repo as YAML. Covers only the 4-5 chip question patterns — not open-ended.
 - **Cortex Complete prompt:** Injuries lead, fatalities land second — see `app/prose_client.py`. Output is stripped of outer quotes before caching.

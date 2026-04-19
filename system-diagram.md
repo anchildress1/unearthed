@@ -25,7 +25,7 @@ flowchart TB
         DB[(UNEARTHED_DB<br/>6 tables + 2 views)]
         ACCIDENTS[(MSHA_ACCIDENTS<br/>fatalities + injuries)]
         CORTEX[Cortex Analyst<br/>semantic model YAML]
-        COMPLETE[Cortex Complete<br/>openai-gpt-5-chat prose<br/>injuries-first, fatalities-second]
+        COMPLETE[Cortex Complete<br/>openai-gpt-5.2 prose<br/>injuries-first, fatalities-second]
         H3[H3 Geospatial<br/>hexbin density]
         RO_EXEC[SQL Execution<br/>READONLY_ROLE]
     end

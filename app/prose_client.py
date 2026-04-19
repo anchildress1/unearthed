@@ -114,7 +114,7 @@ def _generate(mine_data: dict) -> tuple[str, bool]:
     cur2 = conn.cursor()
     try:
         cur2.execute(
-            "SELECT SNOWFLAKE.CORTEX.COMPLETE('openai-gpt-5-chat', %s)",
+            "SELECT SNOWFLAKE.CORTEX.COMPLETE('openai-gpt-5.2', %s)",
             (prompt,),
         )
         result = cur2.fetchone()

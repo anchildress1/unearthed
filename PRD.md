@@ -181,7 +181,7 @@ Public federal data (MSHA Mines, MSHA Quarterly Production, EIA-923 Fuel Receipt
 | Question | Owner | Blocking? |
 |---|---|---|
 | Snowflake free-trial account confirmed | Ashley | **Resolved** — $400 / 30-day trial active |
-| ~~Which Cortex LLM model for COMPLETE?~~ | Ashley | **Resolved** — Gemini removed. Cortex Complete re-introduced on `openai-gpt-5-chat` for short safety prose (injuries-first, fatalities-second). Cortex Analyst drives the `/ask` NL→SQL chat. |
+| ~~Which Cortex LLM model for COMPLETE?~~ | Ashley | **Resolved** — Gemini removed. Cortex Complete re-introduced on `openai-gpt-5.2` for short safety prose (injuries-first, fatalities-second). Swapped from `openai-gpt-5-chat` after its 2026-03-01 Snowflake deprecation. Cortex Analyst drives the `/ask` NL→SQL chat. |
 | Semantic model YAML scope: which 4-6 question patterns do we explicitly support in Cortex Analyst? | Ashley | Blocking — must draft Friday prep so chip labels and YAML match |
 | ~~Which specific hero images?~~ | Ashley | **Resolved** — hero images removed from UI; OG meta only |
 | Does the "dragon smelter" FastAPI pattern work as-is for Snowflake's Python connector + Cortex Analyst REST API, or does it need an async wrapper? | Ashley | Non-blocking — sync is fine; Cortex Analyst is a plain REST POST |
