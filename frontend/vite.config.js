@@ -7,6 +7,8 @@ export default defineConfig({
 		proxy: {
 			'/mine-for-me': 'http://localhost:8001',
 			'/ask': 'http://localhost:8001',
+			'/h3-density': 'http://localhost:8001',
+			'/emissions': 'http://localhost:8001',
 		},
 	},
 });
