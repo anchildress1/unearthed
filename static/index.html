@@ -18,9 +18,8 @@
         imagesrcset="/static/img/westva-strip-mine-768.webp 768w, /static/img/westva-strip-mine.webp 1920w"
         imagesizes="100vw">
 
-  <!-- MapLibre GL JS -->
-  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <!-- Google Maps JavaScript API (key served from env via backend) -->
+  <script>(g=>{var h,a,k,p="The Google Maps JavaScript API",c="google",l="importLibrary",q="__aw",r="__gmp",t="__na",u="s",v=".",w="=",x="/maps/api/js?v=weekly&callback=__gmcb",y=document,z=y.createElement("script");g[c]||(g[c]={});var m=g[c];m.maps||(m.maps={});var e=new Set,d=new URLSearchParams;m.maps[l]?console.warn(p+" was already loaded"):m.maps[l]=(f,...n)=>e.add(f)&&d.set(f.replace(/\s/g,""),"")&&(h||(h=new Promise((i,j)=>{a=i;k=j;d.set("key",m._gmak||"");d.set("libraries",[...e].join(","));z.src=`https://maps.googleapis.com/${x}&`+d;z.nonce=y.querySelector("script[nonce]")?.nonce||"";z.onerror=()=>j(Error(p+" could not load."));y.head.append(z);m.__gmcb=()=>{a();delete m.__gmcb};}))).then(()=>m.maps[l](f,...n))})(window);</script>
 
   <link rel="stylesheet" href="/static/style.css">
 </head>

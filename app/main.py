@@ -4,7 +4,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.gemini_client import generate_prose
@@ -41,9 +41,16 @@ app.add_middleware(
 )
 
 
+_GMAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY", "")
+
+
 @app.get("/")
 def index():
-    return FileResponse(_PROJECT_ROOT / "static" / "index.html")
+    html = (_PROJECT_ROOT / "static" / "index.html").read_text()
+    # Inject the Maps API key before the closing </head> so it's available to app.js
+    key_script = f'<script>window.__GMAPS_KEY="{_GMAPS_API_KEY}";</script>'
+    html = html.replace("</head>", f"  {key_script}\n</head>")
+    return HTMLResponse(html)
 
 
 app.mount("/static", StaticFiles(directory=_PROJECT_ROOT / "static"), name="static")
