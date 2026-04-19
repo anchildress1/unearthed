@@ -94,8 +94,8 @@
 
 		<div class="hero-inner">
 		<h1>
-			You <span class="rust">came</span> home.<br/>
-			You turned <span class="rust">on</span> <em>a light.</em>
+			<span class="beat">You <span class="rust">came</span> home.</span>
+			<span class="beat">You turned <span class="rust">on</span> <em>a light.</em></span>
 		</h1>
 
 		<p class="lede">
@@ -180,10 +180,11 @@
 			minmax(0, 1fr);
 		column-gap: clamp(1.25rem, 3vw, 2.5rem);
 		width: 100%;
-		max-width: calc(
-			min(780px, 100%) + clamp(56px, 8vw, 96px) +
-				clamp(1.25rem, 3vw, 2.5rem)
-		);
+		/* The content column widens past the 780px lede/input cap so the
+		   headline can run full-bleed at an editorial scale — each beat
+		   gets a single row, no mid-sentence wrap. Supporting copy below
+		   still caps to its own narrower measure. */
+		max-width: min(1280px, 100%);
 	}
 
 	/* ---- Left rail: shared editorial chrome (matches SectionRail) ----
@@ -233,27 +234,38 @@
 	.hero-inner {
 		grid-column: 2;
 		width: 100%;
-		max-width: min(780px, 100%);
 		display: flex;
 		flex-direction: column;
 		align-items: flex-start;
 		text-align: left;
 		gap: 1.5rem;
 	}
+	/* Supporting copy (lede, input group, status) keeps the narrower
+	   measure so it doesn't outrun the headline's new full-bleed width. */
+	.hero-inner > :not(h1) {
+		max-width: min(780px, 100%);
+		width: 100%;
+	}
 
-	/* ---- Headline ---- */
+	/* ---- Headline ----
+	   Each sentence is one emotional beat and gets its own single row —
+	   no column cap, no mid-sentence wrap. The desktop scale runs up to
+	   ~104px and tightens tracking because a display serif at that size
+	   otherwise reads airy. Small screens drop `nowrap` so the beat wraps
+	   instead of overflowing the viewport. */
 	h1 {
 		font-family: var(--serif);
-		/* Large desktop cap ≈104px so the opening line reads like a printed
-		   headline, not a UI label. Tracking is tightened past a normal serif
-		   display value because the scale above ~80px starts to feel airy. */
-		font-size: clamp(2.8rem, 7.2vw, 6.5rem);
+		font-size: clamp(2.6rem, 7.8vw, 7rem);
 		font-weight: 400;
 		line-height: 1.04;
 		color: var(--text);
 		letter-spacing: -0.025em;
 		margin: 0;
-		max-width: 18ch;
+		width: 100%;
+	}
+	h1 .beat {
+		display: block;
+		white-space: nowrap;
 	}
 	h1 em {
 		font-style: italic;
@@ -467,6 +479,11 @@
 			grid-column: 1;
 			gap: 1.3rem;
 			max-width: 100%;
+		}
+		/* On narrow screens each beat would overflow the viewport at nowrap —
+		   let it wrap onto two lines there so the headline is still readable. */
+		h1 .beat {
+			white-space: normal;
 		}
 		.form {
 			flex-direction: column;
