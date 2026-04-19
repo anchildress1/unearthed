@@ -1,19 +1,20 @@
 {
-  "mine": "North Antelope Rochelle Mine",
-  "mine_operator": "Peabody Powder River Mining LLC",
-  "mine_county": "Campbell",
-  "mine_state": "WY",
-  "mine_type": "Surface",
-  "mine_coords": [
-    43.522778,
-    -105.272222
-  ],
-  "plant": "Weston",
-  "plant_operator": "Wisconsin Public Service Corp",
-  "plant_coords": [
-    44.8606,
-    -89.6553
-  ],
-  "tons": 1520878.0,
-  "tons_year": 2024
+    "mine_id": "4801353",
+    "mine": "North Antelope Rochelle Mine",
+    "mine_operator": "Peabody Powder River Mining LLC",
+    "mine_county": "Campbell",
+    "mine_state": "WY",
+    "mine_type": "Surface",
+    "mine_coords": [
+        43.522778,
+        -105.272222
+    ],
+    "plant": "Weston",
+    "plant_operator": "Wisconsin Public Service Corp",
+    "plant_coords": [
+        44.8606,
+        -89.6553
+    ],
+    "tons": 1520878.0,
+    "tons_year": 2024
 }

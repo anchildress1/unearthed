@@ -1,19 +1,20 @@
 {
-  "mine": "Oaktown Fuels Mine No. 1",
-  "mine_operator": "Sunrise Coal, LLC",
-  "mine_county": "Knox",
-  "mine_state": "IN",
-  "mine_type": "Underground",
-  "mine_coords": [
-    38.806944,
-    -87.409722
-  ],
-  "plant": "Stanton Energy Center",
-  "plant_operator": "Orlando Utilities Comm",
-  "plant_coords": [
-    28.4822,
-    -81.1678
-  ],
-  "tons": 858337.0,
-  "tons_year": 2024
+    "mine_id": "1202394",
+    "mine": "Oaktown Fuels Mine No. 1",
+    "mine_operator": "Sunrise Coal, LLC",
+    "mine_county": "Knox",
+    "mine_state": "IN",
+    "mine_type": "Underground",
+    "mine_coords": [
+        38.806944,
+        -87.409722
+    ],
+    "plant": "Stanton Energy Center",
+    "plant_operator": "Orlando Utilities Comm",
+    "plant_coords": [
+        28.4822,
+        -81.1678
+    ],
+    "tons": 858337.0,
+    "tons_year": 2024
 }

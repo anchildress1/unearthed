@@ -1,19 +1,20 @@
 {
-  "mine": "Black Thunder",
-  "mine_operator": "Thunder Basin Coal Company LLC",
-  "mine_county": "Campbell",
-  "mine_state": "WY",
-  "mine_type": "Surface",
-  "mine_coords": [
-    42.693611,
-    -105.266667
-  ],
-  "plant": "James H Miller Jr",
-  "plant_operator": "Alabama Power Co",
-  "plant_coords": [
-    33.6319,
-    -87.0597
-  ],
-  "tons": 4092867.0,
-  "tons_year": 2024
+    "mine_id": "4800977",
+    "mine": "Black Thunder",
+    "mine_operator": "Thunder Basin Coal Company LLC",
+    "mine_county": "Campbell",
+    "mine_state": "WY",
+    "mine_type": "Surface",
+    "mine_coords": [
+        42.693611,
+        -105.266667
+    ],
+    "plant": "James H Miller Jr",
+    "plant_operator": "Alabama Power Co",
+    "plant_coords": [
+        33.6319,
+        -87.0597
+    ],
+    "tons": 4092867.0,
+    "tons_year": 2024
 }

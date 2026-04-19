@@ -77,29 +77,27 @@ def _generate(mine_data: dict) -> tuple[str, bool]:
     """Returns (prose, degraded). degraded=True if Complete failed."""
     conn = _get_connection()
 
-    cur = conn.cursor()
-    try:
-        cur.execute(_STATS_SQL, {"mine_id": int(mine_data["mine_id"])})
-        row = cur.fetchone()
-    finally:
-        cur.close()
-
-    if not row:
-        return _FALLBACK_NO_DATA, True
-
-    fatalities = int(row[1] or 0)
-    injuries = int(row[2] or 0)
-    days_lost = int(row[3] or 0)
-    incidents = int(row[0] or 0)
-
-    if fatalities == 0 and injuries == 0:
-        return _FALLBACK_NO_DATA, True
+    # Pull safety stats if mine_id is available; default to zeros otherwise.
+    fatalities = injuries = days_lost = incidents = 0
+    mine_id = mine_data.get("mine_id")
+    if mine_id is not None:
+        cur = conn.cursor()
+        try:
+            cur.execute(_STATS_SQL, {"mine_id": int(mine_id)})
+            row = cur.fetchone()
+            if row:
+                incidents = int(row[0] or 0)
+                fatalities = int(row[1] or 0)
+                injuries = int(row[2] or 0)
+                days_lost = int(row[3] or 0)
+        finally:
+            cur.close()
 
     format_args = {
-        "mine_name": mine_data["mine"],
+        "mine_name": mine_data.get("mine", ""),
         "mine_operator": mine_data.get("mine_operator", ""),
-        "mine_county": mine_data["mine_county"],
-        "mine_state": mine_data["mine_state"],
+        "mine_county": mine_data.get("mine_county", ""),
+        "mine_state": mine_data.get("mine_state", ""),
         "mine_type": mine_data.get("mine_type", ""),
         "plant_name": mine_data.get("plant", ""),
         "plant_operator": mine_data.get("plant_operator", ""),

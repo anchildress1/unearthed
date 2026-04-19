@@ -1,19 +1,20 @@
 {
-  "mine": "CARDINAL",
-  "mine_operator": "WARRIOR COAL LLC",
-  "mine_county": "Hopkins",
-  "mine_state": "KY",
-  "mine_type": "Underground",
-  "mine_coords": [
-    37.405278,
-    -87.535278
-  ],
-  "plant": "Mill Creek (KY)",
-  "plant_operator": "Louisville Gas & Electric Co",
-  "plant_coords": [
-    38.0525,
-    -85.9103
-  ],
-  "tons": 1898235.0,
-  "tons_year": 2024
+    "mine_id": "1519374",
+    "mine": "CARDINAL",
+    "mine_operator": "WARRIOR COAL LLC",
+    "mine_county": "Hopkins",
+    "mine_state": "KY",
+    "mine_type": "Underground",
+    "mine_coords": [
+        37.405278,
+        -87.535278
+    ],
+    "plant": "Mill Creek (KY)",
+    "plant_operator": "Louisville Gas & Electric Co",
+    "plant_coords": [
+        38.0525,
+        -85.9103
+    ],
+    "tons": 1898235.0,
+    "tons_year": 2024
 }

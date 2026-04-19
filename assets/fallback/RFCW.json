@@ -1,19 +1,20 @@
 {
-  "mine": "Harrison County Mine",
-  "mine_operator": "Harrison County Coal Resources, Inc.",
-  "mine_county": "Wetzel",
-  "mine_state": "WV",
-  "mine_type": "Underground",
-  "mine_coords": [
-    39.475278,
-    -80.496389
-  ],
-  "plant": "FirstEnergy Harrison Power Station",
-  "plant_operator": "Monongahela Power Co",
-  "plant_coords": [
-    39.384167,
-    -80.3325
-  ],
-  "tons": 4210003.0,
-  "tons_year": 2024
+    "mine_id": "1519374",
+    "mine": "Harrison County Mine",
+    "mine_operator": "Harrison County Coal Resources, Inc.",
+    "mine_county": "Wetzel",
+    "mine_state": "WV",
+    "mine_type": "Underground",
+    "mine_coords": [
+        39.475278,
+        -80.496389
+    ],
+    "plant": "FirstEnergy Harrison Power Station",
+    "plant_operator": "Monongahela Power Co",
+    "plant_coords": [
+        39.384167,
+        -80.3325
+    ],
+    "tons": 4210003.0,
+    "tons_year": 2024
 }

@@ -1,19 +1,20 @@
 {
-  "mine": "Falkirk Mine",
-  "mine_operator": "Falkirk Mining Company",
-  "mine_county": "Mclean",
-  "mine_state": "ND",
-  "mine_type": "Surface",
-  "mine_coords": [
-    47.133056,
-    -101.675
-  ],
-  "plant": "Coal Creek",
-  "plant_operator": "Rainbow Energy Center",
-  "plant_coords": [
-    47.377743,
-    -101.157058
-  ],
-  "tons": 7510413.0,
-  "tons_year": 2024
+    "mine_id": "3200491",
+    "mine": "Falkirk Mine",
+    "mine_operator": "Falkirk Mining Company",
+    "mine_county": "Mclean",
+    "mine_state": "ND",
+    "mine_type": "Surface",
+    "mine_coords": [
+        47.133056,
+        -101.675
+    ],
+    "plant": "Coal Creek",
+    "plant_operator": "Rainbow Energy Center",
+    "plant_coords": [
+        47.377743,
+        -101.157058
+    ],
+    "tons": 7510413.0,
+    "tons_year": 2024
 }

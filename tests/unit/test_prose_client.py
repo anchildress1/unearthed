@@ -67,8 +67,12 @@ class TestGenerateProse:
         assert call_args[0][1]["mine_id"] == 3607958
 
     @patch("app.prose_client._get_connection")
-    def test_no_stats_returns_fallback_no_data(self, mock_get_conn):
-        mock_conn, _, _ = self._mock_connection(stats_row=None)
+    def test_no_stats_still_calls_complete(self, mock_get_conn):
+        """Even without accident data, Cortex Complete runs with zero stats."""
+        mock_conn, _, complete_cur = self._mock_connection(
+            stats_row=None,
+            complete_result=("Prose without safety data.",),
+        )
         mock_get_conn.return_value = mock_conn
 
         prose, degraded = generate_prose(
@@ -77,18 +81,24 @@ class TestGenerateProse:
             )
         )
 
-        assert prose == _FALLBACK_NO_DATA
-        assert degraded is True
+        assert prose == "Prose without safety data."
+        assert degraded is False
+        complete_cur.execute.assert_called_once()
 
     @patch("app.prose_client._get_connection")
-    def test_zero_fatalities_zero_injuries_returns_no_data(self, mock_get_conn):
-        mock_conn, _, _ = self._mock_connection(stats_row=(5, 0, 0, 0))
+    def test_zero_stats_still_calls_complete(self, mock_get_conn):
+        """Zero fatalities/injuries — Complete still runs, prompt says omit zeros."""
+        mock_conn, _, complete_cur = self._mock_connection(
+            stats_row=(5, 0, 0, 0),
+            complete_result=("Prose about the mine and plant.",),
+        )
         mock_get_conn.return_value = mock_conn
 
         prose, degraded = generate_prose(_make_mine_data(mine_id="123"))
 
-        assert prose == _FALLBACK_NO_DATA
-        assert degraded is True
+        assert prose == "Prose about the mine and plant."
+        assert degraded is False
+        complete_cur.execute.assert_called_once()
 
     @patch("app.prose_client._get_connection")
     def test_complete_success_returns_prose(self, mock_get_conn):
@@ -135,12 +145,18 @@ class TestGenerateProse:
 
     @patch("app.prose_client._get_connection")
     def test_null_stats_values_default_to_zero(self, mock_get_conn):
-        mock_conn, _, _ = self._mock_connection(stats_row=(None, None, None, None))
+        """NULL stat columns default to zero; Complete still runs."""
+        mock_conn, _, complete_cur = self._mock_connection(
+            stats_row=(None, None, None, None),
+            complete_result=None,
+        )
         mock_get_conn.return_value = mock_conn
 
         prose, degraded = generate_prose(_make_mine_data())
 
-        assert prose == _FALLBACK_NO_DATA
+        # Complete was called (nulls don't skip it), but returned nothing → template fallback
+        complete_cur.execute.assert_called_once()
+        assert "Test Mine" in prose
         assert degraded is True
 
     @patch("app.prose_client._get_connection", side_effect=Exception("Connection refused"))
@@ -227,7 +243,9 @@ class TestProseCache:
         mock_conn = MagicMock()
         stats_cursor = MagicMock()
         stats_cursor.fetchone.return_value = None
-        mock_conn.cursor.side_effect = [stats_cursor]
+        complete_cursor = MagicMock()
+        complete_cursor.fetchone.return_value = None
+        mock_conn.cursor.side_effect = [stats_cursor, complete_cursor]
         mock_get_conn.return_value = mock_conn
 
         generate_prose(_make_mine_data(subregion_id="TNVA"))
