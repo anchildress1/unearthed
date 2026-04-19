@@ -11,6 +11,7 @@
 	/>
 </svelte:head>
 
+<div class="bg-fixed"></div>
 {@render children()}
 
 <style>
@@ -50,5 +51,35 @@
 	:global(a) {
 		color: var(--accent);
 		text-decoration: none;
+	}
+
+	.bg-fixed {
+		position: fixed;
+		inset: 0;
+		z-index: -1;
+		background-image: url('/img/westva-strip-mine.webp');
+		background-size: cover;
+		background-position: center 40%;
+		background-repeat: no-repeat;
+		opacity: 0.3;
+	}
+
+	/* Radial fade — edges bleed into black */
+	.bg-fixed::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		background: radial-gradient(
+			ellipse 80% 70% at 50% 40%,
+			transparent 20%,
+			var(--bg) 100%
+		);
+	}
+
+	@media (max-width: 768px) {
+		.bg-fixed {
+			background-image: url('/img/westva-strip-mine-768.webp');
+			opacity: 0.2;
+		}
 	}
 </style>

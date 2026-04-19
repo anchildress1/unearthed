@@ -81,7 +81,6 @@
 </script>
 
 <section class="hero">
-	<div class="hero__bg"></div>
 	<div class="hero__content">
 		<h1 class="hero__title">
 			You came home.<br />
@@ -157,18 +156,6 @@
 		justify-content: center;
 		padding: 2rem;
 		position: relative;
-		overflow: hidden;
-	}
-
-	.hero__bg {
-		position: absolute;
-		inset: 0;
-		background-image: url('/img/westva-strip-mine.webp');
-		background-size: cover;
-		background-position: center 40%;
-		opacity: 0.35;
-		-webkit-mask-image: radial-gradient(ellipse 85% 80% at 50% 45%, black 30%, transparent 100%);
-		mask-image: radial-gradient(ellipse 85% 80% at 50% 45%, black 30%, transparent 100%);
 	}
 
 	.hero__content {
