@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 
 class TestAskEndpoint:
+    @patch("app.main.summarize_analyst_results", return_value="The total is 42 tons.")
     @patch("app.main.execute_analyst_sql", return_value=[{"TOTAL": 42}])
     @patch(
         "app.main.query_cortex_analyst",
@@ -14,11 +15,13 @@ class TestAskEndpoint:
             "error": None,
         },
     )
-    def test_success_returns_interpretation_and_results(self, mock_cortex, mock_exec, client):
+    def test_success_returns_interpretation_and_results(
+        self, mock_cortex, mock_exec, mock_summary, client
+    ):
         resp = client.post("/ask", json={"question": "How much coal?"})
         assert resp.status_code == 200
         data = resp.json()
-        assert data["answer"] == ""
+        assert data["answer"] == "The total is 42 tons."
         expected = "This is our interpretation of your question: How much coal?"
         assert data["interpretation"] == expected
         assert data["sql"] == "SELECT ..."
@@ -93,6 +96,10 @@ class TestAskSuggestions:
 
 
 class TestAskSqlExecution:
+    @patch(
+        "app.main.summarize_analyst_results",
+        return_value="The total tonnage is 5,000,000 tons.",
+    )
     @patch("app.main.execute_analyst_sql", return_value=[{"TOTAL": 5000000}])
     @patch(
         "app.main.query_cortex_analyst",
@@ -103,12 +110,13 @@ class TestAskSqlExecution:
             "error": None,
         },
     )
-    def test_sql_results_included(self, mock_cortex, mock_exec, client):
+    def test_sql_results_included(self, mock_cortex, mock_exec, mock_summary, client):
         resp = client.post("/ask", json={"question": "Total tonnage?"})
         data = resp.json()
         assert data["results"] == [{"TOTAL": 5000000}]
         assert data["sql"] == "SELECT SUM(TOTAL_TONS) AS TOTAL FROM ..."
         assert data["interpretation"] == "This is our interpretation: total tonnage?"
+        assert data["answer"] == "The total tonnage is 5,000,000 tons."
         mock_exec.assert_called_once_with("SELECT SUM(TOTAL_TONS) AS TOTAL FROM ...")
 
     @patch("app.main.execute_analyst_sql", side_effect=Exception("DB error"))
@@ -232,6 +240,7 @@ class TestAskSqlExecutionDetails:
         assert data["interpretation"] is None
         assert data["error"] is not None
 
+    @patch("app.main.summarize_analyst_results", return_value="Summary.")
     @patch("app.main.execute_analyst_sql", return_value=[{"X": 1}])
     @patch(
         "app.main.query_cortex_analyst",
@@ -243,7 +252,7 @@ class TestAskSqlExecutionDetails:
             "suggestions": ["Follow up?"],
         },
     )
-    def test_suggestions_from_cortex_preserved(self, mock_cortex, mock_exec, client):
+    def test_suggestions_from_cortex_preserved(self, mock_cortex, mock_exec, mock_summary, client):
         """Cortex-provided suggestions must be passed through."""
         resp = client.post("/ask", json={"question": "test"})
         data = resp.json()

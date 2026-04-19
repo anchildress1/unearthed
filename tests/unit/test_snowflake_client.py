@@ -13,6 +13,7 @@ from app.snowflake_client import (
     load_fallback_data,
     query_cortex_analyst,
     query_mine_for_subregion,
+    summarize_analyst_results,
 )
 
 
@@ -874,3 +875,52 @@ class TestExecuteAnalystSql:
         # Second execute call is the actual SQL (first is ALTER SESSION)
         actual_sql = cursor.execute.call_args_list[1][0][0]
         assert actual_sql == "SELECT 1"
+
+
+class TestSummarizeAnalystResults:
+    @patch("app.snowflake_client._get_connection")
+    def test_returns_prose_from_complete(self, mock_get_conn):
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = ("Black Thunder is an active mine.",)
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_get_conn.return_value = mock_conn
+
+        result = summarize_analyst_results(
+            "Is Black Thunder still active?",
+            [{"MINE_NAME": "Black Thunder", "MINE_STATUS": "Active"}],
+        )
+        assert result == "Black Thunder is an active mine."
+        mock_cursor.close.assert_called_once()
+
+    @patch("app.snowflake_client._get_connection")
+    def test_empty_results_returns_empty_string(self, mock_get_conn):
+        result = summarize_analyst_results("test?", [])
+        assert result == ""
+        mock_get_conn.assert_not_called()
+
+    @patch("app.snowflake_client._get_connection")
+    def test_complete_returns_none_falls_back(self, mock_get_conn):
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = None
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_get_conn.return_value = mock_conn
+
+        result = summarize_analyst_results("test?", [{"X": 1}])
+        assert result == ""
+        mock_cursor.close.assert_called_once()
+
+    @patch("app.snowflake_client._get_connection")
+    def test_prompt_includes_question_and_data(self, mock_get_conn):
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = ("Summary.",)
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_get_conn.return_value = mock_conn
+
+        summarize_analyst_results("How many fatalities?", [{"FATALITIES": 5}])
+
+        prompt = mock_cursor.execute.call_args[0][1][0]
+        assert "How many fatalities?" in prompt
+        assert "FATALITIES" in prompt

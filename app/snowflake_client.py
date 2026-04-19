@@ -259,6 +259,34 @@ def query_cortex_analyst(question: str) -> dict:
         }
 
 
+def summarize_analyst_results(question: str, results: list[dict]) -> str:
+    """Use Cortex Complete to turn SQL results into a prose answer."""
+    if not results:
+        return ""
+    results_text = json.dumps(results[:10], default=str, indent=2)
+    prompt = (
+        f'The user asked: "{question}"\n\n'
+        f"The database returned:\n{results_text}\n\n"
+        "The user can already see the raw table. Do NOT restate values the table shows. "
+        "Instead, write 1-2 sentences that explain what the data means — context, "
+        "significance, or implications the numbers alone do not convey. "
+        "Be direct. No hedging, no markdown."
+    )
+    conn = _get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT SNOWFLAKE.CORTEX.COMPLETE('openai-gpt-5.2', %s)",
+            (prompt,),
+        )
+        row = cur.fetchone()
+        if row and row[0]:
+            return row[0].strip().strip('"')
+    finally:
+        cur.close()
+    return ""
+
+
 _SAFE_SQL_START = re.compile(r"^\s*(SELECT|WITH)\b", re.IGNORECASE)
 _DANGEROUS_KEYWORDS = re.compile(
     r"\b(INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|TRUNCATE|MERGE|"

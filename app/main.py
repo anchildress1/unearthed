@@ -18,6 +18,7 @@ from app.snowflake_client import (
     load_fallback_data,
     query_cortex_analyst,
     query_mine_for_subregion,
+    summarize_analyst_results,
 )
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -270,6 +271,12 @@ def ask(req: AskRequest):
             )
             result["answer"] = "I could not answer that confidently."
             interpretation = None
+
+    if results and not result.get("answer"):
+        try:
+            result["answer"] = summarize_analyst_results(req.question, results)
+        except Exception:
+            logger.debug("Analyst summary generation failed", exc_info=True)
 
     suggestions = result.get("suggestions") or _suggestions_for(req.subregion_id)
 
