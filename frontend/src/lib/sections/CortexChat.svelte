@@ -79,7 +79,9 @@
 		<span class="badge">
 			<span class="pulse" aria-hidden="true"></span>
 			<span>snowflake cortex analyst</span>
-			<span class="status" class:active={asking}>{asking ? 'querying' : 'live'}</span>
+			{#if asking}
+				<span class="status active">querying</span>
+			{/if}
 		</span>
 	</div>
 
@@ -234,8 +236,8 @@
 	}
 
 	/* Soft breathing dot. Rust dim → bright tier → dim, matching the two-
-	   tier palette. Reduced-motion fallback keeps the dot visible but still,
-	   since the animation is decorative (the nearby label says "live"). */
+	   tier palette. Reduced-motion fallback keeps the dot visible but still
+	   — the animation is purely decorative and nothing depends on it. */
 	.pulse {
 		width: 6px;
 		height: 6px;
