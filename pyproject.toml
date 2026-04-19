@@ -6,7 +6,6 @@ dependencies = [
     "fastapi>=0.115,<1",
     "uvicorn[standard]>=0.34,<1",
     "snowflake-connector-python>=3.12,<4",
-    "google-genai>=1.14,<2",
     "pydantic>=2,<3",
     "pydantic-settings>=2,<3",
     "cryptography>=44,<45",

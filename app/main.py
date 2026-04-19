@@ -7,8 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.gemini_client import generate_prose
 from app.models import AskRequest, AskResponse, MineForMeRequest, MineForMeResponse
+from app.prose_client import generate_prose
 from app.snowflake_client import (
     execute_analyst_sql,
     load_fallback_data,

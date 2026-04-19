@@ -19,7 +19,7 @@ class TestMineForMePerformance:
     @pytest.mark.timeout(2)
     @patch("app.main.generate_prose", return_value=("Prose.", False))
     @patch("app.main.query_mine_for_subregion", return_value=SAMPLE_MINE_DATA)
-    def test_mine_for_me_under_200ms_mocked(self, mock_sf, mock_gemini, client):
+    def test_mine_for_me_under_200ms_mocked(self, mock_sf, mock_prose, client):
         start = time.perf_counter()
         resp = client.post("/mine-for-me", json={"subregion_id": "SRVC"})
         elapsed = time.perf_counter() - start
@@ -102,7 +102,7 @@ class TestFallbackPerformance:
     @patch("app.main.generate_prose", return_value=("Fallback.", True))
     @patch("app.main.load_fallback_data", return_value=SAMPLE_MINE_DATA)
     @patch("app.main.query_mine_for_subregion", side_effect=Exception("Down"))
-    def test_fallback_under_200ms(self, mock_sf, mock_fb, mock_gemini, client):
+    def test_fallback_under_200ms(self, mock_sf, mock_fb, mock_prose, client):
         start = time.perf_counter()
         resp = client.post("/mine-for-me", json={"subregion_id": "SRVC"})
         elapsed = time.perf_counter() - start

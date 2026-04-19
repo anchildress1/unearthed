@@ -13,8 +13,6 @@ class Settings(BaseSettings):
     snowflake_readonly_role: str = "UNEARTHED_READONLY_ROLE"
     snowflake_warehouse: str = "UNEARTHED_APP_WH"
     snowflake_database: str = "UNEARTHED_DB"
-    gemini_api_key: str = ""
-    gemini_model: str = "gemini-3.1-flash-lite-preview"
     allow_password_auth: bool = False
     google_maps_api_key: str = ""
 
