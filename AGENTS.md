@@ -159,7 +159,8 @@ Two endpoints lean on Snowflake's built-in geospatial / Marketplace story:
 
 ### Map (Google Maps JavaScript API)
 
-- Loader lives in `frontend/src/lib/maps.js` — one idempotent script tag shared by `MapSection` (mine→plant→meter) and `H3Density` (hexbin), with a 15s watchdog and poll-for-ready so a cached script can't hang the promise forever.
+- Loader lives in `frontend/src/lib/maps.js` — one idempotent script tag shared by `Hero` (Places autocomplete), `MapSection` (mine→plant→meter), and `H3Density` (hexbin), loaded with `libraries=geometry,places&loading=async` and a 15s watchdog + poll-for-ready so a cached script can't hang the promise forever.
+- **Hero address search** uses `<gmp-place-autocomplete>` (Places API new) restricted to `included-region-codes="us"`. Only the `location` field is fetched per selection to stay on the Autocomplete-Essentials billing tier. Geolocation and state-picker fallbacks remain the backstop when the script fails to load.
 - `DARK_STATE_STYLES` + `MAP_COLORS` are the single source of truth for both maps. No cloud-registered `mapId` — that would silently disable the local style array.
 - `MapSection` arc: mine → plant → your meter, one rust color, animated dot rides the geodesic. Labels fan out (above / below / side) to avoid InfoWindow stacking.
 - `H3Density`: resolution-5 hexbins, bigger dot = more mines, rust→ash gradient for active→abandoned. SQL filters null-island and ocean outliers at the query layer.
