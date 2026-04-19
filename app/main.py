@@ -33,6 +33,8 @@ def _prewarm_prose_cache() -> None:
 
     Each subregion fires a Snowflake query + Cortex Complete call, so the first
     visitor to any subregion gets a cached response instead of a 4-27s wait.
+    Bails out entirely after the first failure — if Snowflake is unreachable
+    there is no point hammering it 19 times.
     """
     from app.snowflake_client import _VALID_FALLBACK_IDS
 
@@ -44,7 +46,8 @@ def _prewarm_prose_cache() -> None:
                 generate_prose(mine_data)
                 logger.info("Pre-warmed prose cache for %s", subregion_id)
         except Exception:
-            logger.debug("Pre-warm skipped for %s", subregion_id, exc_info=True)
+            logger.warning("Pre-warm failed on %s — aborting remaining subregions", subregion_id)
+            return
 
 
 @asynccontextmanager

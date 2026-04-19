@@ -134,8 +134,8 @@ def query_mine_for_subregion(subregion_id: str) -> dict | None:
             row = cur.fetchone()
         finally:
             cur.close()
-    except Exception:
-        logger.info("Query failed, reconnecting and retrying")
+    except Exception as exc:
+        logger.info("Query failed (%s), reconnecting and retrying", exc)
         conn = _reconnect()
         cur = conn.cursor(snowflake.connector.DictCursor)
         try:
