@@ -43,7 +43,7 @@
 			showStatePicker = true;
 			return;
 		}
-		onTrace(subregion);
+		onTrace(subregion, { lat, lon });
 	}
 
 	async function handleSubmit(e) {

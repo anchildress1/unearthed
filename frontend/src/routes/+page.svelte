@@ -13,13 +13,16 @@
 	let loading = $state(false);
 	let error = $state(null);
 
-	async function onTrace(subregionId) {
+	async function onTrace(subregionId, userCoords = null) {
 		loading = true;
 		error = null;
 		console.log('[unearthed] tracing subregion:', subregionId);
 		try {
 			mineData = await fetchMineForMe(subregionId);
 			mineData.subregion_id = subregionId;
+			if (userCoords) {
+				mineData.user_coords = [userCoords.lat, userCoords.lon];
+			}
 			console.log('[unearthed] loaded:', mineData.mine, '→', mineData.plant);
 		} catch (e) {
 			console.error('[unearthed] trace failed:', e);

@@ -5,7 +5,8 @@
 	let { data } = $props();
 	let mapEl;
 	let mapError = $state(null);
-	let animInterval = null;
+	let mineDotInterval = null;
+	let userDotInterval = null;
 
 	onMount(async () => {
 		try {
@@ -19,50 +20,76 @@
 
 			const mine = { lat: data.mine_coords[0], lng: data.mine_coords[1] };
 			const plant = { lat: data.plant_coords[0], lng: data.plant_coords[1] };
+			const user = data.user_coords
+				? { lat: data.user_coords[0], lng: data.user_coords[1] }
+				: null;
 
 			const bounds = new google.maps.LatLngBounds();
 			bounds.extend(mine);
 			bounds.extend(plant);
+			if (user) bounds.extend(user);
 
 			const map = new Map(mapEl, {
 				mapId: 'UNEARTHED_MAP',
 				mapTypeId: 'hybrid',
 				disableDefaultUI: true,
-				zoomControl: true,
-				gestureHandling: 'greedy',
+				zoomControl: false,
+				scrollwheel: false,
+				disableDoubleClickZoom: true,
+				keyboardShortcuts: false,
+				gestureHandling: 'none',
 			});
 			map.fitBounds(bounds, { top: 100, bottom: 100, left: 100, right: 100 });
 
-			// Build curved arc path
-			const arcPath = buildArc(mine, plant, 50);
-
-			// Static arc line
+			// Arc 1: mine → plant (the supply chain)
+			const mineArc = buildArc(mine, plant, 50);
 			new google.maps.Polyline({
 				map,
-				path: arcPath,
+				path: mineArc,
 				strokeColor: '#c2542d',
 				strokeWeight: 2.5,
 				strokeOpacity: 0.5,
 				geodesic: false,
 			});
-
-			// Animated dot traversing the arc
-			const dot = new AdvancedMarkerElement({
+			const mineDot = new AdvancedMarkerElement({
 				map,
-				position: arcPath[0],
+				position: mineArc[0],
 				content: buildDotElement('#c2542d'),
 				zIndex: 10,
 			});
-
-			let dotIndex = 0;
-			animInterval = setInterval(() => {
-				dotIndex = (dotIndex + 1) % arcPath.length;
-				dot.position = arcPath[dotIndex];
+			let mineIdx = 0;
+			mineDotInterval = setInterval(() => {
+				mineIdx = (mineIdx + 1) % mineArc.length;
+				mineDot.position = mineArc[mineIdx];
 			}, 80);
 
-			// Mine marker
+			// Arc 2: plant → user (the grid delivery)
+			if (user) {
+				const userArc = buildArc(plant, user, 50);
+				new google.maps.Polyline({
+					map,
+					path: userArc,
+					strokeColor: '#5a7a5a',
+					strokeWeight: 2,
+					strokeOpacity: 0.55,
+					geodesic: false,
+				});
+				const userDot = new AdvancedMarkerElement({
+					map,
+					position: userArc[0],
+					content: buildDotElement('#5a7a5a'),
+					zIndex: 10,
+				});
+				let userIdx = 0;
+				userDotInterval = setInterval(() => {
+					userIdx = (userIdx + 1) % userArc.length;
+					userDot.position = userArc[userIdx];
+				}, 80);
+
+				addLabeledMarker(map, AdvancedMarkerElement, user, 'YOU', 'your meter', '#e8e0d4');
+			}
+
 			addLabeledMarker(map, AdvancedMarkerElement, mine, 'MINE', data.mine, '#c2542d');
-			// Plant marker
 			addLabeledMarker(map, AdvancedMarkerElement, plant, 'PLANT', data.plant, '#5a7a5a');
 
 			console.log('[unearthed] map rendered');
@@ -72,7 +99,10 @@
 		}
 	});
 
-	onDestroy(() => { if (animInterval) clearInterval(animInterval); });
+	onDestroy(() => {
+		if (mineDotInterval) clearInterval(mineDotInterval);
+		if (userDotInterval) clearInterval(userDotInterval);
+	});
 
 	function buildArc(from, to, segments) {
 		const points = [];
@@ -142,7 +172,13 @@
 	<div class="legend">
 		<span class="legend-item"><span class="dot mine"></span> coal mine</span>
 		<span class="legend-item"><span class="dot plant"></span> power plant</span>
-		<span class="legend-item"><span class="line-sample"></span> coal supply route</span>
+		{#if data.user_coords}
+			<span class="legend-item"><span class="dot you"></span> you</span>
+		{/if}
+		<span class="legend-item"><span class="line-sample rust"></span> coal supply</span>
+		{#if data.user_coords}
+			<span class="legend-item"><span class="line-sample moss"></span> grid delivery</span>
+		{/if}
 	</div>
 </section>
 
@@ -210,11 +246,13 @@
 	}
 	.dot.mine { background: var(--accent); }
 	.dot.plant { background: var(--green); }
+	.dot.you { background: #e8e0d4; }
 
 	.line-sample {
 		width: 20px;
 		height: 2px;
-		background: var(--accent);
 		opacity: 0.6;
 	}
+	.line-sample.rust { background: var(--accent); }
+	.line-sample.moss { background: var(--green); }
 </style>
