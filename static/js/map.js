@@ -18,9 +18,8 @@ const FLY_DURATION = 2000;
 const HOLD_DURATION = 2500;
 const FLOW_ANIM_INTERVAL = 40;
 
-// Load Google Maps libraries up front — must complete before createMap is called.
+// Load Google Maps core library.
 const { Map: GMap } = await google.maps.importLibrary("maps");
-const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
 
 /**
  * Initialize a Google Map in the given container.
@@ -32,7 +31,6 @@ export function createMap(container) {
     center: { lat: 39.8, lng: -98.5 },
     zoom: 4,
     mapTypeId: "hybrid",
-    mapId: "unearthed",
     disableDefaultUI: true,
     zoomControl: true,
     gestureHandling: "greedy",
@@ -134,32 +132,27 @@ function delay(ms) {
  * Add a labeled marker.
  */
 function addMarker(map, position, label, color) {
-  const marker = new AdvancedMarkerElement({
+  const marker = new google.maps.Marker({
     map,
     position,
     title: label,
-    content: buildMarkerElement(color),
+    icon: {
+      path: google.maps.SymbolPath.CIRCLE,
+      scale: 8,
+      fillColor: color,
+      fillOpacity: 1,
+      strokeColor: "#ffffff",
+      strokeWeight: 2,
+    },
   });
 
   const info = new google.maps.InfoWindow({
     content: `<div style="font-family:system-ui;font-size:13px;font-weight:600;color:#1a1a1a;padding:2px 4px">${label}</div>`,
     disableAutoPan: true,
   });
-  info.open({ anchor: marker, map });
+  info.open(map, marker);
 
   return marker;
-}
-
-function buildMarkerElement(color) {
-  const el = document.createElement("div");
-  el.style.cssText = `
-    width: 16px; height: 16px;
-    background: ${color};
-    border: 2px solid #ffffff;
-    border-radius: 50%;
-    box-shadow: 0 0 10px ${color}80;
-  `;
-  return el;
 }
 
 /**

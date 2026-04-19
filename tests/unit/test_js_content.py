@@ -159,7 +159,7 @@ class TestMapJsContent:
         assert "google.maps.Map" in self.src
 
     def test_uses_google_marker(self):
-        assert "AdvancedMarkerElement" in self.src
+        assert "google.maps.Marker" in self.src
 
     def test_uses_fit_bounds(self):
         assert "fitBounds" in self.src
