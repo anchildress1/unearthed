@@ -10,7 +10,7 @@ export function reveal(node, options = {}) {
 
 	// Respect prefers-reduced-motion — no animation, just show.
 	const prefersReduced =
-		typeof globalThis.window !== 'undefined' &&
+		globalThis.window !== undefined &&
 		globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 	if (prefersReduced) return { destroy() {} };

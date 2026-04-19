@@ -23,7 +23,7 @@ export function loadGoogleMaps() {
 	if (_scriptPromise) return _scriptPromise;
 
 	_scriptPromise = new Promise((resolve, reject) => {
-		if (typeof globalThis.window === 'undefined') {
+		if (globalThis.window === undefined) {
 			reject(new Error('loadGoogleMaps can only run in the browser'));
 			return;
 		}
