@@ -72,13 +72,40 @@
 		color: var(--text);
 	}
 
-	/* ---- Fixed mountain scar ---- */
+	/* Override the browser's default blue text-selection highlight, which
+	   reads as accessibility-failing chrome against the site's rust/ash
+	   palette. Use the site's accent at low opacity with the text kept at
+	   the base fore color so selected text stays legible. */
+	:global(::selection) {
+		background: rgba(194, 84, 45, 0.38);
+		color: var(--text);
+	}
+	:global(::-moz-selection) {
+		background: rgba(194, 84, 45, 0.38);
+		color: var(--text);
+	}
+
+	/* ---- Fixed mountain scar ----
+	   position:fixed + inset:0 is not enough on its own: on iOS Safari the
+	   address bar collapsing during scroll changes the viewport height, and
+	   on some desktop browsers the sibling-scroll compositor repaints the
+	   layer, both of which show up as a tiny visible shift. Promoting the
+	   element to its own GPU layer via translate3d + will-change pins it so
+	   the painter never touches it on scroll. Height is locked in pixels at
+	   page load (the svh unit holds the initial viewport height) so the
+	   browser UI collapse can't drag the gradient with it. */
 	.bg-fixed {
 		position: fixed;
-		inset: 0;
+		top: 0;
+		left: 0;
+		width: 100vw;
+		height: 100svh;
 		z-index: -2;
 		background: url('/img/westva-strip-mine.webp') center 35% / cover no-repeat;
 		opacity: 0.38;
+		will-change: transform;
+		transform: translate3d(0, 0, 0);
+		backface-visibility: hidden;
 	}
 	.bg-fixed::after {
 		content: '';
@@ -92,16 +119,22 @@
 			linear-gradient(to right, var(--bg) 0%, transparent 35%);
 	}
 
-	/* Film grain texture */
+	/* Film grain texture—same GPU-layer trick as the scar image. */
 	.bg-grain {
 		position: fixed;
-		inset: 0;
+		top: 0;
+		left: 0;
+		width: 100vw;
+		height: 100svh;
 		z-index: -1;
 		opacity: 0.035;
 		pointer-events: none;
 		background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
 		background-repeat: repeat;
 		background-size: 256px;
+		will-change: transform;
+		transform: translate3d(0, 0, 0);
+		backface-visibility: hidden;
 	}
 
 	@media (max-width: 768px) {

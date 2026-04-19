@@ -1,11 +1,18 @@
 <script>
 	import { fetchAsk } from '$lib/api.js';
-	import { reveal } from '$lib/reveal.js';
+	import SectionRail from '$lib/components/SectionRail.svelte';
 
 	const props = $props();
 	let question = $state('');
-	let transcript = $state([]);
+	// Single-entry view—asking a new question replaces the prior one so the
+	// page stays focused on the latest answer instead of growing a scrolling
+	// transcript the user has to hunt through.
+	let entry = $state(null);
 	let asking = $state(false);
+	// SQL + interpretation are *proof* (for judges, for skeptics), but most
+	// users just want the answer. Collapsed by default; expanded per-entry
+	// via this flag when the user clicks "show how Cortex got there".
+	let showProof = $state(false);
 
 	const chips = $derived([
 		`How much has ${props.mineName} produced since 2020?`,
@@ -18,29 +25,33 @@
 	async function ask(q) {
 		if (asking || !q.trim()) return;
 		asking = true;
+		showProof = false;
 		console.log('[unearthed] cortex query:', q);
-		const entry = { question: q, answer: null, error: null, sql: null, results: null };
-		transcript = [...transcript, entry];
+		entry = {
+			question: q,
+			answer: null,
+			interpretation: null,
+			error: null,
+			sql: null,
+			results: null,
+			suggestions: [],
+		};
 		question = '';
 		try {
 			const result = await fetchAsk(q, props.subregionId);
-			// Merge into a new array so Svelte 5 proxy reactivity fires for every field.
-			const updated = {
+			entry = {
 				...entry,
-				answer: result.answer || result.interpretation || '',
+				answer: result.answer || '',
+				interpretation: result.interpretation || '',
 				sql: result.sql,
 				error: result.error,
 				results: result.results,
 				suggestions: !result.sql ? result.suggestions || [] : [],
 			};
-			transcript = [...transcript.slice(0, -1), updated];
-			console.log('[unearthed] cortex response:', updated.answer?.slice(0, 100));
+			console.log('[unearthed] cortex response:', entry.answer?.slice(0, 100));
 		} catch (e) {
 			console.error('[unearthed] cortex error:', e);
-			transcript = [
-				...transcript.slice(0, -1),
-				{ ...entry, error: 'Could not reach the data assistant.' },
-			];
+			entry = { ...entry, error: 'Could not reach the data assistant.' };
 		} finally {
 			asking = false;
 		}
@@ -50,12 +61,22 @@
 		e.preventDefault();
 		ask(question);
 	}
+
+	// Cortex result rows are arbitrary JSON — a nested struct or variant cell
+	// would render as "[object Object]" via default coercion, which looks
+	// broken next to formatted numbers. JSON-stringify objects so the raw
+	// shape is visible instead of the coercion artifact.
+	function formatCell(val) {
+		if (val == null) return '';
+		if (typeof val === 'number') return val.toLocaleString();
+		if (typeof val === 'object') return JSON.stringify(val);
+		return val;
+	}
 </script>
 
-<section class="cortex" use:reveal>
+<SectionRail number="05" label="Ask the records" class="cortex-section">
 	<div class="header">
 		<span class="badge">snowflake cortex analyst</span>
-		<span class="live" aria-label="Live connection">● live</span>
 	</div>
 
 	<h3>Interrogate the <em>records</em>.</h3>
@@ -93,95 +114,104 @@
 		<button type="submit" disabled={asking}>{asking ? 'asking…' : 'ask →'}</button>
 	</form>
 
-	{#if transcript.length > 0}
-		<div class="transcript">
-			{#each transcript as entry}
-				<div class="entry glass">
-					<div class="stage">
-						<span class="stage-num">01</span>
-						<span class="stage-label">question</span>
-					</div>
-					<p class="q">{entry.question}</p>
+	{#if entry}
+		<div class="entry glass">
+			<p class="q"><span class="q-mark">Q.</span> {entry.question}</p>
 
-					{#if entry.error}
-						<div class="stage err-stage">
-							<span class="stage-num">!!</span>
-							<span class="stage-label">couldn't answer</span>
-						</div>
-						<p class="error">{entry.error}</p>
-					{/if}
+			{#if entry.error}
+				<p class="error">{entry.error}</p>
+			{/if}
 
-					{#if entry.sql}
-						<div class="stage">
-							<span class="stage-num">02</span>
-							<span class="stage-label">generated SQL · Cortex Analyst</span>
-						</div>
-						<pre class="sql-pre">{entry.sql}</pre>
-					{/if}
+			{#if entry.answer}
+				<p class="answer">{entry.answer}</p>
+			{/if}
 
-					{#if entry.answer || (entry.results && entry.results.length > 0)}
-						<div class="stage">
-							<span class="stage-num">03</span>
-							<span class="stage-label">federal data · MSHA + EIA</span>
-						</div>
-					{/if}
-
-					{#if entry.answer}
-						<p class="answer">{entry.answer}</p>
-					{/if}
-
-					{#if !entry.sql && !entry.error && entry.answer}
-						<p class="hint">
-							Cortex answered from its interpretation layer without running a query.
-							Try rephrasing with a specific mine, plant, operator, or state name — or pick one below.
-						</p>
-					{/if}
-
-					{#if entry.suggestions && entry.suggestions.length > 0}
-						<div class="follow-ups">
-							{#each entry.suggestions as suggestion}
-								<button class="chip" onclick={() => ask(suggestion)} disabled={asking}>
-									{suggestion}
-								</button>
-							{/each}
-						</div>
-					{/if}
-
-					{#if entry.results && entry.results.length === 0}
-						<p class="no-results">Query ran successfully but returned no rows.</p>
-					{:else if entry.results && entry.results.length > 0}
-						<div class="results">
-							<table>
-								<thead>
-									<tr>
-										{#each Object.keys(entry.results[0]) as col}
-											<th>{col.replace(/_/g, ' ')}</th>
-										{/each}
-									</tr>
-								</thead>
-								<tbody>
-									{#each entry.results as row}
-										<tr>
-											{#each Object.values(row) as val}
-												<td>{typeof val === 'number' ? val.toLocaleString() : val}</td>
-											{/each}
-										</tr>
+			{#if entry.results && entry.results.length === 0 && !entry.error}
+				<p class="no-results">Query ran successfully but returned no rows.</p>
+			{:else if entry.results && entry.results.length > 0}
+				<div class="results">
+					<table>
+						<thead>
+							<tr>
+								{#each Object.keys(entry.results[0]) as col}
+									<th>{col.replace(/_/g, ' ')}</th>
+								{/each}
+							</tr>
+						</thead>
+						<tbody>
+							{#each entry.results as row}
+								<tr>
+									{#each Object.values(row) as val}
+										<td>{formatCell(val)}</td>
 									{/each}
-								</tbody>
-							</table>
-						</div>
-					{/if}
+								</tr>
+							{/each}
+						</tbody>
+					</table>
 				</div>
-			{/each}
+			{/if}
+
+			{#if !entry.sql && !entry.error && entry.answer}
+				<p class="hint">
+					Cortex answered from its interpretation layer without running a query.
+					Try rephrasing with a specific mine, plant, operator, or state name—or pick one below.
+				</p>
+			{/if}
+
+			{#if entry.suggestions && entry.suggestions.length > 0}
+				<div class="follow-ups">
+					{#each entry.suggestions as suggestion}
+						<button class="chip" onclick={() => ask(suggestion)} disabled={asking}>
+							{suggestion}
+						</button>
+					{/each}
+				</div>
+			{/if}
+
+			{#if entry.sql || entry.interpretation}
+				<!--
+					Proof drawer. Everyday readers want the answer; judges and
+					skeptics want to see Cortex's work. Hidden by default,
+					expanded on click—the tag below doubles as the affordance.
+				-->
+				<button
+					type="button"
+					class="proof-toggle"
+					aria-expanded={showProof}
+					aria-controls="cortex-proof"
+					onclick={() => (showProof = !showProof)}
+				>
+					<span class="caret" aria-hidden="true">{showProof ? '▾' : '▸'}</span>
+					{showProof ? 'hide' : 'show'} how Cortex got there
+				</button>
+				{#if showProof}
+					<div class="proof" id="cortex-proof">
+						{#if entry.sql}
+							<div class="proof-stage">
+								<span class="stage-num">02</span>
+								<span class="stage-label">generated SQL · Cortex Analyst</span>
+							</div>
+							<pre class="sql-pre">{entry.sql}</pre>
+						{/if}
+						{#if entry.interpretation}
+							<div class="proof-stage">
+								<span class="stage-num">03</span>
+								<span class="stage-label">Cortex interpretation</span>
+							</div>
+							<p class="interp">{entry.interpretation}</p>
+						{/if}
+					</div>
+				{/if}
+			{/if}
 		</div>
 	{/if}
-</section>
+</SectionRail>
 
 <style>
-	.cortex {
-		padding: var(--section-pad);
+	/* SectionRail owns outer padding/grid. Cap the content column so the
+	   reading width matches the rest of the site. */
+	:global(.section-rail.cortex-section > .rail-content) {
 		max-width: 740px;
-		margin: 0 auto;
 	}
 
 	.header {
@@ -202,40 +232,11 @@
 		border-radius: 3px;
 	}
 
-	.live {
-		font-family: var(--mono);
-		font-size: 0.55rem;
-		text-transform: uppercase;
-		letter-spacing: 0.15em;
-		color: var(--green);
-	}
-
-	h3 {
-		font-family: var(--serif);
-		font-size: clamp(2rem, 4vw, 3rem);
-		font-weight: 400;
-		color: var(--text);
-		margin-bottom: 0.5rem;
-		letter-spacing: -0.01em;
-	}
-	h3 em { color: var(--accent); font-style: italic; }
-
+	/* The form chrome sits too close to the sub paragraph without an extra
+	   breath of space before it—the rest of the sections end their header
+	   on the h3 or a summary block, so this nudge is specific to CortexChat. */
 	.sub {
-		font-family: var(--serif);
-		font-size: 0.95rem;
-		font-weight: 300;
-		color: var(--text-dim);
-		line-height: 1.75;
 		margin-bottom: 1.4rem;
-		max-width: 580px;
-	}
-	.sub strong {
-		color: var(--text);
-		font-weight: 400;
-	}
-	.sub em {
-		color: var(--accent);
-		font-style: italic;
 	}
 
 	.pipeline {
@@ -323,18 +324,74 @@
 	}
 	button[type="submit"]:disabled { opacity: 0.3; cursor: not-allowed; }
 
-	.transcript { display: flex; flex-direction: column; gap: 1.2rem; }
-
 	.entry { padding: 1.3rem 1.5rem; }
 
-	.stage {
+	.q {
+		font-family: var(--serif);
+		font-weight: 400;
+		font-style: italic;
+		font-size: 1.05rem;
+		color: var(--text);
+		line-height: 1.5;
+		margin-bottom: 0.6rem;
+	}
+	.q-mark {
+		font-family: var(--mono);
+		font-style: normal;
+		font-size: 0.65rem;
+		color: var(--accent);
+		letter-spacing: 0.1em;
+		margin-right: 0.4rem;
+	}
+
+	/* Pill-style toggle so the caret + border read unmistakably as "this is
+	   a button that toggles". The caret flips between ▸ (collapsed) and ▾
+	   (expanded) to reinforce the two-way affordance. */
+	.proof-toggle {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-top: 0.9rem;
+		padding: 0.4rem 0.8rem;
+		background: rgba(255, 255, 255, 0.02);
+		border: 1px solid var(--border-glass);
+		border-radius: 2rem;
+		font-family: var(--mono);
+		font-size: 0.6rem;
+		text-transform: uppercase;
+		letter-spacing: 0.15em;
+		color: var(--text-ghost);
+		cursor: pointer;
+		transition: color 0.15s, border-color 0.15s, background 0.15s;
+	}
+	.proof-toggle:hover {
+		color: var(--accent);
+		border-color: rgba(194, 84, 45, 0.45);
+		background: rgba(194, 84, 45, 0.04);
+	}
+	.proof-toggle[aria-expanded="true"] {
+		color: var(--accent);
+		border-color: rgba(194, 84, 45, 0.35);
+	}
+	.proof-toggle .caret {
+		font-size: 0.7rem;
+		line-height: 1;
+		transform: translateY(-0.5px);
+	}
+
+	.proof {
+		margin-top: 0.6rem;
+		padding-top: 0.8rem;
+		border-top: 1px solid rgba(255, 255, 255, 0.05);
+	}
+	.proof-stage {
 		display: flex;
 		align-items: baseline;
 		gap: 0.5rem;
 		margin-top: 0.9rem;
 		margin-bottom: 0.4rem;
 	}
-	.stage:first-child { margin-top: 0; }
+	.proof-stage:first-child { margin-top: 0; }
 	.stage-num {
 		font-family: var(--mono);
 		font-size: 0.6rem;
@@ -349,16 +406,13 @@
 		letter-spacing: 0.2em;
 		color: var(--text-ghost);
 	}
-	.err-stage .stage-num { color: var(--accent); }
-
-	.q {
+	.interp {
 		font-family: var(--serif);
-		font-weight: 400;
+		font-size: 0.9rem;
+		font-weight: 300;
+		line-height: 1.7;
+		color: var(--text-dim);
 		font-style: italic;
-		font-size: 1.05rem;
-		color: var(--text);
-		line-height: 1.5;
-		margin-bottom: 0.2rem;
 	}
 
 	.answer {

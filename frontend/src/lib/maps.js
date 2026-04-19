@@ -1,0 +1,204 @@
+/**
+ * Shared Google Maps loader + style tokens.
+ *
+ * One loader so both map sections get the same script (idempotent — a repeat
+ * call while the script is already attached resolves on the existing tag's
+ * load event). One style array so both maps share the same identity: dark
+ * empty canvas, state outlines only, no roads, no place labels, no POIs.
+ *
+ * Advanced Markers would require a cloud-registered mapId, which would move
+ * the style decision out of this repo and into the Google Cloud Console.
+ * We use legacy google.maps.Marker here so the `styles` array below is the
+ * single source of truth for how both maps look.
+ */
+
+let _scriptPromise = null;
+
+// Hard cap so a missing/blocked Google Maps response can't hang the UI
+// indefinitely. 15s is comfortably above typical cold-load times and well
+// below anything a user would wait without assuming the page is broken.
+const MAPS_LOAD_TIMEOUT_MS = 15000;
+
+export function loadGoogleMaps() {
+	if (_scriptPromise) return _scriptPromise;
+
+	_scriptPromise = new Promise((resolve, reject) => {
+		if (typeof window === 'undefined') {
+			reject(new Error('loadGoogleMaps can only run in the browser'));
+			return;
+		}
+		if (window.google?.maps) {
+			resolve();
+			return;
+		}
+		const key = import.meta.env.VITE_GOOGLE_MAPS_KEY || '';
+		if (!key) {
+			reject(new Error('VITE_GOOGLE_MAPS_KEY not set — map cannot load'));
+			return;
+		}
+
+		// A single shared script tag: if another component added it before us
+		// and it's already loaded, `load` will not fire again and an
+		// addEventListener('load', …) listener would hang forever. Poll
+		// briefly for `window.google.maps` to cover the "already loaded
+		// between the readiness check above and the querySelector below"
+		// race. The timeout below bounds every path so a genuinely stuck
+		// load still surfaces to the caller.
+		const watchdog = setTimeout(
+			() => reject(new Error('Google Maps script timed out')),
+			MAPS_LOAD_TIMEOUT_MS,
+		);
+		const succeed = () => {
+			clearTimeout(watchdog);
+			resolve();
+		};
+		const fail = (err) => {
+			clearTimeout(watchdog);
+			reject(err);
+		};
+
+		const existing = document.querySelector('script[data-unearthed-maps]');
+		if (existing) {
+			const poll = setInterval(() => {
+				if (window.google?.maps) {
+					clearInterval(poll);
+					succeed();
+				}
+			}, 50);
+			existing.addEventListener('load', () => {
+				clearInterval(poll);
+				succeed();
+			});
+			existing.addEventListener('error', () => {
+				clearInterval(poll);
+				fail(new Error('Google Maps failed to load'));
+			});
+			// Give the watchdog responsibility for stopping the poll if
+			// neither event fires and google never appears.
+			setTimeout(() => clearInterval(poll), MAPS_LOAD_TIMEOUT_MS);
+			return;
+		}
+		const s = document.createElement('script');
+		s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&v=weekly&libraries=geometry`;
+		s.async = true;
+		s.dataset.unearthedMaps = '1';
+		s.onload = () => succeed();
+		s.onerror = () => fail(new Error('Google Maps failed to load'));
+		document.head.appendChild(s);
+	}).catch((err) => {
+		// Reset so the next caller can retry after a transient failure
+		// (network blip, ad-blocker toggled off, etc.) instead of being
+		// locked onto a permanently-rejected promise for the page lifetime.
+		_scriptPromise = null;
+		throw err;
+	});
+
+	return _scriptPromise;
+}
+
+/**
+ * A styled roadmap with state (province) outlines only.
+ *
+ * Every feature type is set to `visibility: off` except
+ * `administrative.province` (US state borders) and `administrative.country`
+ * (national border). Water uses near-black so oceans read as emptiness, not
+ * maps. Stroke colors are muted but still readable against the #141210
+ * landscape fill — anything darker disappears.
+ */
+export const DARK_STATE_STYLES = [
+	{ elementType: 'geometry', stylers: [{ color: '#141210' }] },
+	{ elementType: 'labels', stylers: [{ visibility: 'off' }] },
+	{ featureType: 'administrative', stylers: [{ visibility: 'off' }] },
+	{
+		featureType: 'administrative.country',
+		elementType: 'geometry.stroke',
+		stylers: [{ visibility: 'on' }, { color: '#6e6359' }, { weight: 1.2 }],
+	},
+	{
+		featureType: 'administrative.province',
+		elementType: 'geometry.stroke',
+		stylers: [{ visibility: 'on' }, { color: '#4a423a' }, { weight: 0.9 }],
+	},
+	{ featureType: 'landscape', stylers: [{ color: '#141210' }] },
+	{ featureType: 'poi', stylers: [{ visibility: 'off' }] },
+	{ featureType: 'road', stylers: [{ visibility: 'off' }] },
+	{ featureType: 'transit', stylers: [{ visibility: 'off' }] },
+	{ featureType: 'water', stylers: [{ color: '#080808' }] },
+	{ featureType: 'water', elementType: 'labels', stylers: [{ visibility: 'off' }] },
+];
+
+/**
+ * Palette shared across both maps. The CSS layer uses the same tokens as
+ * custom properties (`--accent`, `--green`, …), but Google Maps icons and
+ * polylines need raw hex strings — icons are drawn on a separate canvas
+ * that doesn't see CSS vars. Keeping one JS source of truth avoids drift.
+ */
+export const MAP_COLORS = Object.freeze({
+	accent: '#c2542d',
+	moss: '#5a7a5a',
+	you: '#e8e0d4',
+	ash: '#a89e92',
+	white: '#ffffff',
+});
+
+export function circleIcon({ color, scale = 7, strokeWeight = 2, strokeColor = MAP_COLORS.white }) {
+	return {
+		path: google.maps.SymbolPath.CIRCLE,
+		scale,
+		fillColor: color,
+		fillOpacity: 1,
+		strokeColor,
+		strokeWeight,
+	};
+}
+
+/**
+ * Build a map element with the site's shared visual identity. Local styles
+ * are the source of truth, so no `mapId` — setting one disables the styles
+ * array silently.
+ */
+export function createDarkMap(el, extra = {}) {
+	return new google.maps.Map(el, {
+		mapTypeId: 'roadmap',
+		styles: DARK_STATE_STYLES,
+		backgroundColor: '#141210',
+		disableDefaultUI: true,
+		zoomControl: true,
+		scrollwheel: false,
+		disableDoubleClickZoom: true,
+		keyboardShortcuts: false,
+		...extra,
+	});
+}
+
+/**
+ * Attach a small type/name label to a marker via InfoWindow. Returns the
+ * InfoWindow so the caller can close or repoint it later. Used by both map
+ * sections so the legend chrome stays identical.
+ */
+export function createLabeledMarker(map, marker, { type, name, pixelOffset = null }) {
+	const el = document.createElement('div');
+	el.style.cssText = 'padding:0;min-width:0;line-height:1.15';
+	const typeEl = document.createElement('div');
+	typeEl.style.cssText =
+		"font-family:'JetBrains Mono',monospace;font-size:8px;color:#807b75;text-transform:uppercase;letter-spacing:0.08em";
+	typeEl.textContent = type;
+	el.appendChild(typeEl);
+	if (name) {
+		const nameEl = document.createElement('div');
+		nameEl.style.cssText =
+			"font-family:Newsreader,serif;font-size:11px;color:#1a1a1a;margin-top:1px";
+		nameEl.textContent = name;
+		el.appendChild(nameEl);
+	}
+	const options = {
+		content: el,
+		disableAutoPan: true,
+		headerDisabled: true,
+	};
+	if (pixelOffset) options.pixelOffset = pixelOffset;
+	const info = new google.maps.InfoWindow(options);
+	info.open({ map, anchor: marker });
+	marker.addListener('click', () => info.open({ map, anchor: marker }));
+	return info;
+}

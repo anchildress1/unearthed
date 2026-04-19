@@ -71,6 +71,10 @@
 
 	function handleStateGo() {
 		if (!selectedState) return;
+		// Clear any stale error from an earlier address/geolocation attempt
+		// so the user isn't told "CA is outside the US grid" after they've
+		// already picked California from the dropdown.
+		localError = null;
 		const sub = subregionForState(selectedState);
 		if (!sub || !hasCoalData(sub)) {
 			localError = `No coal data for ${stateLabels[selectedState]}.`;
@@ -81,19 +85,14 @@
 </script>
 
 <section class="hero" aria-label="Find your mine">
-	<aside class="rail" aria-hidden="true">
-		<span class="rail-top">
-			<span class="eye-dot"></span> N° 01
-		</span>
-		<span class="rail-rule"></span>
-		<span class="rail-label">unearthed · public data memorial</span>
-		<span class="rail-rule"></span>
-		<span class="rail-bottom">MSHA · EIA · EPA · eGRID</span>
-	</aside>
+	<div class="hero-main">
+		<aside class="rail" aria-hidden="true">
+			<span class="rail-num">N° 01</span>
+			<span class="rail-rule"></span>
+			<span class="rail-label">Locate</span>
+		</aside>
 
-	<div class="hero-inner">
-		<p class="eyebrow">a public data memorial · 2026</p>
-
+		<div class="hero-inner">
 		<h1>
 			You <span class="rust">came</span> home.<br/>
 			You turned <span class="rust">on</span> <em>a light.</em>
@@ -101,7 +100,7 @@
 
 		<p class="lede">
 			Somewhere, a mountain was cut open to keep it burning.<br/>
-			<span class="lede-quiet">Tell us where that light is — we'll trace the wire back.</span>
+			<span class="lede-quiet">Tell us where that light is—we'll trace the wire back.</span>
 		</p>
 
 		<div class="input-group glass">
@@ -149,11 +148,9 @@
 			{:else if localError || error}
 				<p class="err">{localError || error}</p>
 			{:else}
-				<p class="hint">
-					We never store your address. The wire we follow is public federal data —
-					<span class="hint-quiet">MSHA, EIA, EPA, eGRID.</span>
-				</p>
+				<p class="hint">Your address is never stored.</p>
 			{/if}
+		</div>
 		</div>
 	</div>
 
@@ -165,107 +162,83 @@
 <style>
 	.hero {
 		min-height: 100vh;
-		display: grid;
-		/* Asymmetric editorial split: thin metadata rail, wide content column,
-		   narrow breathing margin on the right for the credit to anchor into. */
-		grid-template-columns:
-			clamp(56px, 8vw, 96px)
-			minmax(0, 1fr)
-			clamp(1rem, 4vw, 3rem);
-		grid-template-rows: 1fr auto;
-		column-gap: clamp(1.25rem, 3vw, 2.5rem);
-		padding: clamp(2.5rem, 6vh, 4.5rem) 0 clamp(1.5rem, 4vh, 2.5rem);
-		padding-left: clamp(1.25rem, 4vw, 3rem);
-		padding-right: clamp(1.25rem, 4vw, 3rem);
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		/* Asymmetric editorial split is handled by .hero-main so the rail
+		   and content share a grid row—the rail's height tracks the text
+		   block rather than floating independently. */
+		padding: clamp(2.5rem, 6vh, 4.5rem) clamp(1.25rem, 4vw, 3rem)
+			clamp(3rem, 10vh, 5rem);
 		position: relative;
 	}
 
-	/* ---- Left rail: editorial metadata, vertical ---- */
+	.hero-main {
+		display: grid;
+		grid-template-columns:
+			clamp(56px, 8vw, 96px)
+			minmax(0, 1fr);
+		column-gap: clamp(1.25rem, 3vw, 2.5rem);
+		width: 100%;
+		max-width: calc(
+			min(780px, 100%) + clamp(56px, 8vw, 96px) +
+				clamp(1.25rem, 3vw, 2.5rem)
+		);
+	}
+
+	/* ---- Left rail: shared editorial chrome (matches SectionRail) ----
+	   grid-row unset → inherits the single implicit row, which stretches
+	   to the height of the tallest cell (the content column). The rail
+	   therefore runs top-of-text to bottom-of-text, per design. */
 	.rail {
 		grid-column: 1;
-		grid-row: 1 / -1;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		justify-content: flex-start;
-		gap: 1rem;
-		padding-top: clamp(1rem, 4vh, 3rem);
-		font-family: var(--mono);
-		font-size: 0.55rem;
-		letter-spacing: 0.22em;
-		text-transform: uppercase;
-		color: var(--text-ghost);
+		justify-content: space-between;
+		padding: 0.2rem 0;
+		gap: 0.9rem;
 	}
-	.rail-top {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.45rem;
+	.rail-num {
+		font-family: var(--mono);
+		font-size: 0.7rem;
+		font-weight: 400;
+		letter-spacing: 0.14em;
 		color: var(--accent);
-		opacity: 0.75;
+		white-space: nowrap;
 	}
 	.rail-rule {
-		flex: 1 1 auto;
+		/* Fills the space between N° 01 and the label; because the rail row
+		   stretches to the hero-copy height, the rule lands exactly from the
+		   top of the headline to the bottom of the status line. */
 		width: 1px;
-		min-height: 3rem;
+		flex: 1 1 auto;
+		min-height: 4rem;
 		background: linear-gradient(
 			to bottom,
-			transparent,
-			rgba(255, 255, 255, 0.12),
-			transparent
+			rgba(255, 255, 255, 0.18),
+			rgba(255, 255, 255, 0.02)
 		);
 	}
 	.rail-label {
-		writing-mode: vertical-rl;
-		transform: rotate(180deg);
-		white-space: nowrap;
-		padding: 0.5rem 0;
+		font-family: var(--mono);
+		font-size: 0.68rem;
+		font-weight: 400;
+		letter-spacing: 0.22em;
+		text-transform: uppercase;
 		color: var(--text-dim);
-		letter-spacing: 0.3em;
-	}
-	.rail-bottom {
-		color: rgba(128, 123, 117, 0.7);
-		text-align: center;
-		line-height: 1.7;
+		white-space: nowrap;
 	}
 
 	.hero-inner {
 		grid-column: 2;
-		grid-row: 1 / -1;
 		width: 100%;
-		/* Offset slightly from true center by biasing left margin to 0 and
-		   capping max-width — the wide right column reads the negative
-		   space, not the content. */
 		max-width: min(780px, 100%);
 		display: flex;
 		flex-direction: column;
 		align-items: flex-start;
 		text-align: left;
 		gap: 1.5rem;
-		align-self: center;
-		padding-bottom: clamp(2rem, 8vh, 5rem);
-	}
-
-	/* ---- Eyebrow ---- */
-	.eyebrow {
-		margin: 0;
-		font-family: var(--mono);
-		font-size: 0.6rem;
-		text-transform: uppercase;
-		letter-spacing: 0.26em;
-		color: var(--text-ghost);
-		padding-left: 0.1rem;
-	}
-	.eye-dot {
-		width: 6px;
-		height: 6px;
-		border-radius: 50%;
-		background: var(--accent);
-		box-shadow: 0 0 8px var(--accent-glow);
-		animation: pulse 2.4s ease-in-out infinite;
-	}
-	@keyframes pulse {
-		0%, 100% { opacity: 0.6; }
-		50% { opacity: 1; }
 	}
 
 	/* ---- Headline ---- */
@@ -423,7 +396,7 @@
 		border-color: var(--accent);
 	}
 
-	/* ---- Status line (reserved space — never shifts layout) ---- */
+	/* ---- Status line (reserved space—never shifts layout) ---- */
 	.status {
 		min-height: 3.2rem;
 		display: flex;
@@ -457,16 +430,11 @@
 		color: var(--text-ghost);
 		max-width: 48ch;
 	}
-	.hint-quiet {
-		color: rgba(128, 123, 117, 0.6);
-	}
-
-	/* ---- Photo credit: anchored bottom-right of the content column ---- */
+	/* ---- Photo credit: anchored bottom-right of the hero ---- */
 	.credit {
-		grid-column: 2 / 4;
-		grid-row: 2;
-		justify-self: end;
-		align-self: end;
+		position: absolute;
+		bottom: clamp(1rem, 3vh, 1.8rem);
+		right: clamp(1.25rem, 4vw, 3rem);
 		font-family: var(--mono);
 		font-size: 0.52rem;
 		color: var(--text-ghost);
@@ -483,8 +451,10 @@
 
 	@media (max-width: 720px) {
 		.hero {
+			padding: 2.25rem 1.25rem 4rem;
+		}
+		.hero-main {
 			grid-template-columns: minmax(0, 1fr);
-			padding: 2.25rem 1.25rem 1.25rem;
 			column-gap: 0;
 		}
 		.rail {
@@ -502,16 +472,11 @@
 			width: 100%;
 		}
 		.credit {
-			grid-column: 1;
-			justify-self: center;
+			position: static;
 			text-align: center;
 			margin-top: 2rem;
+			display: block;
 		}
 	}
 
-	@media (prefers-reduced-motion: reduce) {
-		.eye-dot {
-			animation: none;
-		}
-	}
 </style>

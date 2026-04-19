@@ -1,22 +1,32 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
-	import { reveal } from '$lib/reveal.js';
+	import SectionRail from '$lib/components/SectionRail.svelte';
+	import {
+		loadGoogleMaps,
+		createDarkMap,
+		createLabeledMarker,
+		circleIcon,
+		MAP_COLORS,
+	} from '$lib/maps.js';
 
 	let { data } = $props();
 	let mapEl;
 	let mapError = $state(null);
 	let mineDotInterval = null;
 	let userDotInterval = null;
+	// onMount has an `await` before the first setInterval, so the component
+	// can unmount (HMR, fast re-trace) before either interval is assigned.
+	// `cancelled` gates every post-await side-effect so we don't strand
+	// intervals on a dead component.
+	let cancelled = false;
+
+	const ARC_SEGMENTS = 50;
+	const DOT_TICK_MS = 80;
 
 	onMount(async () => {
 		try {
-			if (!window.google?.maps) {
-				console.log('[unearthed] loading Google Maps...');
-				await loadGoogleMaps();
-			}
-
-			const { Map } = await google.maps.importLibrary('maps');
-			const { AdvancedMarkerElement } = await google.maps.importLibrary('marker');
+			await loadGoogleMaps();
+			if (cancelled) return;
 
 			const mine = { lat: data.mine_coords[0], lng: data.mine_coords[1] };
 			const plant = { lat: data.plant_coords[0], lng: data.plant_coords[1] };
@@ -24,75 +34,44 @@
 				? { lat: data.user_coords[0], lng: data.user_coords[1] }
 				: null;
 
+			const map = createDarkMap(mapEl);
 			const bounds = new google.maps.LatLngBounds();
 			bounds.extend(mine);
 			bounds.extend(plant);
 			if (user) bounds.extend(user);
-
-			const map = new Map(mapEl, {
-				mapId: 'UNEARTHED_MAP',
-				mapTypeId: 'hybrid',
-				disableDefaultUI: true,
-				zoomControl: true,
-				scrollwheel: false,
-				disableDoubleClickZoom: true,
-				keyboardShortcuts: false,
-			});
-			// Tight padding so the chain fills the frame instead of sitting inside a wide margin.
 			map.fitBounds(bounds, { top: 40, bottom: 40, left: 40, right: 40 });
 
-			// Arc 1: mine → plant (the supply chain)
-			const mineArc = buildArc(mine, plant, 50);
-			new google.maps.Polyline({
-				map,
-				path: mineArc,
-				strokeColor: '#c2542d',
-				strokeWeight: 2.5,
-				strokeOpacity: 0.5,
-				geodesic: false,
-			});
-			const mineDot = new AdvancedMarkerElement({
-				map,
-				position: mineArc[0],
-				content: buildDotElement('#c2542d'),
-				zIndex: 10,
-			});
-			let mineIdx = 0;
-			mineDotInterval = setInterval(() => {
-				mineIdx = (mineIdx + 1) % mineArc.length;
-				mineDot.position = mineArc[mineIdx];
-			}, 80);
-
-			// Arc 2: plant → user (the grid delivery)
+			// One coal flow—mine → plant → user—drawn as one color so the
+			// reader reads it as a single route, not two separate relationships.
+			// The stack doesn't interrupt the coal; it only converts it.
+			mineDotInterval = animateArc(map, mine, plant, MAP_COLORS.accent, 2.5, 0.55);
 			if (user) {
-				const userArc = buildArc(plant, user, 50);
-				new google.maps.Polyline({
-					map,
-					path: userArc,
-					strokeColor: '#5a7a5a',
-					strokeWeight: 2,
-					strokeOpacity: 0.55,
-					geodesic: false,
-				});
-				const userDot = new AdvancedMarkerElement({
-					map,
-					position: userArc[0],
-					content: buildDotElement('#5a7a5a'),
-					zIndex: 10,
-				});
-				let userIdx = 0;
-				userDotInterval = setInterval(() => {
-					userIdx = (userIdx + 1) % userArc.length;
-					userDot.position = userArc[userIdx];
-				}, 80);
-
-				addLabeledMarker(map, AdvancedMarkerElement, user, 'YOU', 'your meter', '#e8e0d4');
+				userDotInterval = animateArc(map, plant, user, MAP_COLORS.accent, 2.5, 0.55);
 			}
 
-			addLabeledMarker(map, AdvancedMarkerElement, mine, 'MINE', data.mine, '#c2542d');
-			addLabeledMarker(map, AdvancedMarkerElement, plant, 'PLANT', data.plant, '#5a7a5a');
+			// Offset labels from their relative geography so two close-together
+			// markers don't stack their InfoWindows on top of each other. Google's
+			// InfoWindow anchors at top-center of the marker by default, so we
+			// push each label out in the direction that matches where it sits.
+			const offsets = computeLabelOffsets({ mine, plant, user });
 
-			console.log('[unearthed] map rendered');
+			createLabeledMarker(
+				map,
+				anchorMarker(map, mine, MAP_COLORS.accent),
+				{ type: 'MINE', name: data.mine, pixelOffset: offsets.mine },
+			);
+			createLabeledMarker(
+				map,
+				anchorMarker(map, plant, MAP_COLORS.moss),
+				{ type: 'PLANT', name: data.plant, pixelOffset: offsets.plant },
+			);
+			if (user) {
+				createLabeledMarker(
+					map,
+					anchorMarker(map, user, MAP_COLORS.you),
+					{ type: 'YOU', name: 'your meter', pixelOffset: offsets.user },
+				);
+			}
 		} catch (e) {
 			console.error('[unearthed] map error:', e);
 			mapError = 'Map could not load.';
@@ -100,73 +79,121 @@
 	});
 
 	onDestroy(() => {
+		cancelled = true;
 		if (mineDotInterval) clearInterval(mineDotInterval);
 		if (userDotInterval) clearInterval(userDotInterval);
 	});
 
-	function buildArc(from, to, segments) {
+	// Sample the same great-circle Google's Polyline (geodesic: true) draws so
+	// the animated dot rides the visible line instead of drifting onto a
+	// synthetic arc.
+	function buildGeodesicArc(from, to) {
+		const fromLL = new google.maps.LatLng(from.lat, from.lng);
+		const toLL = new google.maps.LatLng(to.lat, to.lng);
 		const points = [];
-		for (let i = 0; i <= segments; i++) {
-			const t = i / segments;
-			const lat = from.lat + (to.lat - from.lat) * t;
-			const lng = from.lng + (to.lng - from.lng) * t;
-			const arc = Math.sin(t * Math.PI) * Math.abs(to.lng - from.lng) * 0.15;
-			points.push({ lat: lat + arc, lng });
+		for (let i = 0; i <= ARC_SEGMENTS; i++) {
+			const p = google.maps.geometry.spherical.interpolate(fromLL, toLL, i / ARC_SEGMENTS);
+			points.push({ lat: p.lat(), lng: p.lng() });
 		}
 		return points;
 	}
 
-	function buildDotElement(color) {
-		const el = document.createElement('div');
-		el.style.cssText = `width:10px;height:10px;border-radius:50%;background:${color};border:1.5px solid #fff;box-shadow:0 0 6px ${color}`;
-		return el;
-	}
-
-	function addLabeledMarker(map, AdvancedMarkerElement, pos, type, name, color) {
-		const pin = document.createElement('div');
-		pin.style.cssText = `width:14px;height:14px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,0.3)`;
-		const marker = new AdvancedMarkerElement({ map, position: pos, title: name, content: pin });
-
-		const el = document.createElement('div');
-		const typeEl = document.createElement('div');
-		typeEl.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:10px;color:#807b75;text-transform:uppercase;letter-spacing:0.1em;padding:2px 4px";
-		typeEl.textContent = type;
-		const nameEl = document.createElement('div');
-		nameEl.style.cssText = "font-family:Newsreader,serif;font-size:13px;color:#1a1a1a;padding:0 4px 2px";
-		nameEl.textContent = name;
-		el.appendChild(typeEl);
-		el.appendChild(nameEl);
-		const info = new google.maps.InfoWindow({ content: el });
-		info.open({ map, anchor: marker });
-	}
-
-	function loadGoogleMaps() {
-		return new Promise((resolve, reject) => {
-			const key = import.meta.env.VITE_GOOGLE_MAPS_KEY || '';
-			if (!key) {
-				reject(new Error('VITE_GOOGLE_MAPS_KEY not set — map cannot load'));
-				return;
-			}
-			const s = document.createElement('script');
-			s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&v=weekly&libraries=maps,marker`;
-			s.async = true;
-			s.onload = resolve;
-			s.onerror = () => reject(new Error('Google Maps failed to load'));
-			document.head.appendChild(s);
+	function animateArc(map, from, to, color, weight, opacity) {
+		const arc = buildGeodesicArc(from, to);
+		new google.maps.Polyline({
+			map,
+			path: [from, to],
+			strokeColor: color,
+			strokeWeight: weight,
+			strokeOpacity: opacity,
+			geodesic: true,
 		});
+		const dot = new google.maps.Marker({
+			map,
+			position: arc[0],
+			icon: circleIcon({ color, scale: 5, strokeWeight: 1.5 }),
+			zIndex: 10,
+			clickable: false,
+		});
+		let idx = 0;
+		return setInterval(() => {
+			idx = (idx + 1) % arc.length;
+			dot.setPosition(arc[idx]);
+		}, DOT_TICK_MS);
+	}
+
+	function anchorMarker(map, pos, color) {
+		return new google.maps.Marker({
+			map,
+			position: pos,
+			icon: circleIcon({ color }),
+		});
+	}
+
+	// Fan out the three labels from each other so their InfoWindows don't
+	// overlap when the markers are geographically close. We look at the
+	// latitude ordering (north-most goes up, south-most goes down) and the
+	// east-west spread (close-together points get pushed sideways). The
+	// returned offsets are Google Maps `Size` instances, which InfoWindow
+	// applies as (dx, dy) pixel offsets from the marker anchor.
+	function computeLabelOffsets({ mine, plant, user }) {
+		const points = [
+			{ key: 'mine', lat: mine.lat, lng: mine.lng },
+			{ key: 'plant', lat: plant.lat, lng: plant.lng },
+		];
+		if (user) points.push({ key: 'user', lat: user.lat, lng: user.lng });
+
+		// Sort by latitude descending (north first) so the northmost label
+		// floats above, the southmost drops below, and any middle label side-steps.
+		const byLat = [...points].sort((a, b) => b.lat - a.lat);
+		const slot = { [byLat[0].key]: 'above', [byLat[byLat.length - 1].key]: 'below' };
+		if (byLat.length === 3) slot[byLat[1].key] = 'side';
+
+		// Labels stay anchored to their marker—we only reorient them
+		// (above / below / beside) so two close dots don't stack their
+		// InfoWindows. Keep the magnitudes small: the dot must still read
+		// as the owner of the label.
+		const ABOVE = new google.maps.Size(0, -4);
+		const BELOW = new google.maps.Size(0, 22);
+		const SIDE_LEFT = new google.maps.Size(-22, 8);
+		const SIDE_RIGHT = new google.maps.Size(22, 8);
+
+		function sideOffsetFor(key) {
+			const me = points.find((p) => p.key === key);
+			const others = points.filter((p) => p.key !== key);
+			const avgLng = others.reduce((s, p) => s + p.lng, 0) / others.length;
+			return me.lng >= avgLng ? SIDE_RIGHT : SIDE_LEFT;
+		}
+
+		const out = {};
+		for (const p of points) {
+			if (slot[p.key] === 'above') out[p.key] = ABOVE;
+			else if (slot[p.key] === 'below') out[p.key] = BELOW;
+			else out[p.key] = sideOffsetFor(p.key);
+		}
+		return out;
 	}
 </script>
 
-<section class="map-section" use:reveal>
-	<h3>
-		The <em>line</em> — from your meter,<br/>to the stack, to the mountain.
-	</h3>
+<SectionRail number="03" label="The route" class="map-section">
+	<div class="map-header">
+		<h3>
+			Your <em>meter</em> pulls from the stack.<br/>
+			The stack pulls from the <em>mountain</em>.
+		</h3>
+		<p class="sub">
+			One rust line is the coal—from the <span class="rust">seam it was cut out of</span>,
+			to the <span class="rust">stack that burned it</span>, to
+			<span class="rust">your meter</span>. One route, one color.
+			<strong>Close markers fan their labels out</strong> so nothing stacks on top of anything else.
+		</p>
+	</div>
 
 	<div class="map-frame glass">
 		{#if mapError}
 			<p class="placeholder">{mapError}</p>
 		{/if}
-		<div class="map-container" bind:this={mapEl}></div>
+		<div class="map-container" bind:this={mapEl} role="img" aria-label="Map from coal mine to power plant to your meter"></div>
 	</div>
 
 	<div class="legend">
@@ -175,31 +202,19 @@
 		{#if data.user_coords}
 			<span class="legend-item"><span class="dot you"></span> you</span>
 		{/if}
-		<span class="legend-item"><span class="line-sample rust"></span> coal supply</span>
-		{#if data.user_coords}
-			<span class="legend-item"><span class="line-sample moss"></span> grid delivery</span>
-		{/if}
+		<span class="legend-item"><span class="line-sample rust"></span> the coal, from mine to your meter</span>
 	</div>
-</section>
+</SectionRail>
 
 <style>
-	.map-section {
-		padding: var(--section-pad);
-		display: flex;
-		flex-direction: column;
-		align-items: center;
+	:global(.section-rail.map-section > .rail-content) {
+		max-width: 1100px;
 	}
 
-	h3 {
-		font-family: var(--serif);
-		font-size: clamp(1.8rem, 4vw, 3rem);
-		font-weight: 400;
-		color: var(--text);
-		text-align: center;
+	.map-header {
+		max-width: 720px;
 		margin-bottom: 2rem;
-		line-height: 1.2;
 	}
-	h3 em { color: var(--accent); font-style: italic; }
 
 	.map-frame {
 		width: 100%;
@@ -210,10 +225,7 @@
 
 	.map-container {
 		width: 100%;
-		height: clamp(400px, 55vh, 600px);
-		/* Darken Google Maps tiles so the satellite imagery sits in the page
-		   palette instead of popping out against the moody dark theme. */
-		filter: brightness(0.62) contrast(1.05) saturate(0.8);
+		height: clamp(420px, 58vh, 620px);
 	}
 
 	.placeholder {
@@ -226,17 +238,19 @@
 
 	.legend {
 		display: flex;
-		gap: 1.5rem;
-		margin-top: 1rem;
+		flex-wrap: wrap;
+		gap: 1.2rem;
+		margin-top: 0.8rem;
+		padding: 0 0.2rem;
 		font-family: var(--mono);
-		font-size: 0.6rem;
+		font-size: 0.58rem;
 		text-transform: uppercase;
-		letter-spacing: 0.1em;
+		letter-spacing: 0.14em;
 		color: var(--text-ghost);
 	}
 
 	.legend-item {
-		display: flex;
+		display: inline-flex;
 		align-items: center;
 		gap: 0.4rem;
 	}

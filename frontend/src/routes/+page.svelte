@@ -1,5 +1,5 @@
 <script>
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { browser } from '$app/environment';
 	import Hero from '$lib/sections/Hero.svelte';
 	import PlantReveal from '$lib/sections/PlantReveal.svelte';
@@ -12,6 +12,7 @@
 	let mineData = $state(null);
 	let loading = $state(false);
 	let error = $state(null);
+	let resultsEl;
 
 	async function onTrace(subregionId, userCoords = null) {
 		loading = true;
@@ -24,6 +25,13 @@
 				mineData.user_coords = [userCoords.lat, userCoords.lon];
 			}
 			console.log('[unearthed] loaded:', mineData.mine, '→', mineData.plant);
+			// tick() waits for Svelte to commit the {#if mineData} block so the
+			// results container is in the DOM and `resultsEl` is bound before
+			// we try to scroll to it.
+			if (browser) {
+				await tick();
+				resultsEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+			}
 		} catch (e) {
 			console.error('[unearthed] trace failed:', e);
 			error = e.message;
@@ -44,14 +52,18 @@
 </script>
 
 <svelte:head>
-	<title>Unearthed{mineData ? ` — ${mineData.mine}, ${mineData.mine_state}` : ''}</title>
+	<title>Unearthed{mineData ? `—${mineData.mine}, ${mineData.mine_state}` : ''}</title>
 	<meta name="description" content="Find the coal mine under contract to your power plant." />
 </svelte:head>
 
-{#if !mineData}
-	<Hero {loading} {error} onTrace={onTrace} />
-{:else}
-	<main class="scroll">
+<!--
+	Hero (N° 01) stays mounted even once a trace returns. Users can always
+	search again from the top; a successful trace scrolls the viewport down
+	to the results so they read as page 2 rather than replacing page 1.
+-->
+<Hero {loading} {error} onTrace={onTrace} />
+{#if mineData}
+	<main class="scroll" bind:this={resultsEl}>
 		<PlantReveal data={mineData} />
 		<MapSection data={mineData} />
 		<H3Density

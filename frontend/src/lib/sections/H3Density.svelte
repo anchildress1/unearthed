@@ -1,8 +1,15 @@
 <script>
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { fetchH3Density } from '$lib/api.js';
 	import { loadSubregionGeoJSON } from '$lib/geo.js';
-	import { reveal } from '$lib/reveal.js';
+	import {
+		loadGoogleMaps,
+		createDarkMap,
+		createLabeledMarker,
+		circleIcon,
+		MAP_COLORS,
+	} from '$lib/maps.js';
+	import SectionRail from '$lib/components/SectionRail.svelte';
 
 	let {
 		userCoords = null,
@@ -12,86 +19,43 @@
 		subregionId = '',
 	} = $props();
 
-	const VIEW_W = 1000;
-	const VIEW_H = 520;
+	let mapEl;
+	let map = null;
+	let infoWindow = null;
+	let hexMarkers = [];
+	let subregionPolygons = [];
 
 	let cells = $state([]);
 	let geojson = $state(null);
 	let loaded = $state(false);
 	let errored = $state(false);
-	let hovered = $state(null);
+	let summary = $state('');
+	let summaryDegraded = $state(false);
+	let cancelled = false;
 
-	// Projection bounds — auto-fit to whatever the filtered query returns,
-	// padded out so the hexes don't hug the frame edge. Snowflake's Decimal
-	// type serializes to JSON as a string, so every numeric field gets
-	// coerced through Number() before the comparisons — otherwise
-	// `"37.5" < Infinity` is false and the loop silently falls back to
-	// continental US bounds, leaving a tiny cluster in a huge viewport.
-	const bounds = $derived.by(() => {
-		let minLat = Infinity, maxLat = -Infinity;
-		let minLng = Infinity, maxLng = -Infinity;
-		for (const c of cells) {
+	const MIN_RADIUS_PX = 4;
+	const MAX_RADIUS_PX = 22;
+
+	// Oceanic outliers (MSHA rows with stray coordinates that land the hex in
+	// the Atlantic or at null-island) are filtered at the query layer now, so
+	// the frontend only drops non-finite coords. Legitimate edges of a
+	// coal-producing region—a single mine on a state boundary, for example
+	//—stay in frame where an IQR fence used to cut them.
+	const filteredCells = $derived.by(() =>
+		cells.filter((c) => {
 			const lat = Number(c.LAT ?? c.lat);
 			const lng = Number(c.LNG ?? c.lng);
-			if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
-			if (lat < minLat) minLat = lat;
-			if (lat > maxLat) maxLat = lat;
-			if (lng < minLng) minLng = lng;
-			if (lng > maxLng) maxLng = lng;
-		}
-		for (const p of [userCoords, mineCoords]) {
-			if (!p) continue;
-			const lat = Number(p[0]);
-			const lng = Number(p[1]);
-			if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
-			if (lat < minLat) minLat = lat;
-			if (lat > maxLat) maxLat = lat;
-			if (lng < minLng) minLng = lng;
-			if (lng > maxLng) maxLng = lng;
-		}
-		// No data yet → continental US fallback so the SVG isn't blank.
-		if (!Number.isFinite(minLat)) {
-			return { minLat: 24, maxLat: 49.5, minLng: -125, maxLng: -66 };
-		}
-
-		// Pad to a minimum viewport so a single point doesn't collapse to zero.
-		let padLat = Math.max(0.4, (maxLat - minLat) * 0.12);
-		let padLng = Math.max(0.4, (maxLng - minLng) * 0.12);
-		minLat -= padLat; maxLat += padLat;
-		minLng -= padLng; maxLng += padLng;
-
-		// Preserve the viewBox aspect ratio so tall, narrow states (WV) don't
-		// get stretched across a 1000×520 viewport. Expand whichever axis is
-		// too tight. Longitude in CONUS is compressed by ~cos(lat), so we
-		// adjust for that when comparing geographic span to pixel span.
-		const midLat = (minLat + maxLat) / 2;
-		const lngScale = Math.cos((midLat * Math.PI) / 180);
-		const latSpan = maxLat - minLat;
-		const lngSpan = (maxLng - minLng) * lngScale;
-		const viewAspect = VIEW_W / VIEW_H;
-		const dataAspect = lngSpan / latSpan;
-		if (dataAspect > viewAspect) {
-			// Data is wider than viewport — grow latitude so projection fits.
-			const targetLatSpan = lngSpan / viewAspect;
-			const extra = (targetLatSpan - latSpan) / 2;
-			minLat -= extra; maxLat += extra;
-		} else {
-			// Data is taller than viewport — grow longitude.
-			const targetLngSpan = (latSpan * viewAspect) / lngScale;
-			const extra = (targetLngSpan - (maxLng - minLng)) / 2;
-			minLng -= extra; maxLng += extra;
-		}
-
-		return { minLat, maxLat, minLng, maxLng };
-	});
+			return Number.isFinite(lat) && Number.isFinite(lng);
+		}),
+	);
 
 	const totals = $derived.by(() => {
 		let mines = 0;
 		let active = 0;
 		let abandoned = 0;
-		// Decimal → JSON string again — coerce before summing or
+		// Decimal → JSON string again—coerce before summing or
 		// `0 + "5" + "3"` becomes the string "053".
-		for (const c of cells) {
+		for (const c of filteredCells) {
 			mines += Number(c.TOTAL ?? c.total) || 0;
 			active += Number(c.ACTIVE ?? c.active) || 0;
 			abandoned += Number(c.ABANDONED ?? c.abandoned) || 0;
@@ -99,109 +63,274 @@
 		return { mines, active, abandoned };
 	});
 
-	const userProj = $derived(
-		userCoords ? project(userCoords[0], userCoords[1]) : null,
-	);
-	const mineProj = $derived(
-		mineCoords ? project(mineCoords[0], mineCoords[1]) : null,
-	);
-
-	const subregionPaths = $derived.by(() => {
-		if (!geojson) return [];
-		return buildSubregionPaths(geojson);
+	// Once the geographic outliers are dropped, the remaining totals cluster
+	// tightly. A fixed coefficient on sqrt(total) squashes them all against
+	// the min clamp—every hex looks the same. Rescale against the filtered
+	// range so the dot with the most mines in view always hits the max size
+	// and the smallest always hits the min, with sqrt interpolation so a
+	// double-count hex doesn't quadruple in area.
+	const totalRange = $derived.by(() => {
+		let min = Infinity;
+		let max = 0;
+		for (const c of filteredCells) {
+			const t = Number(c.TOTAL ?? c.total) || 0;
+			if (t <= 0) continue;
+			if (t < min) min = t;
+			if (t > max) max = t;
+		}
+		if (!Number.isFinite(min)) min = 0;
+		return { min, max };
 	});
 
 	onMount(async () => {
+		// Fetch phase: "unavailable" here is the only honest reason to show
+		// the user a generic failure message. We log the GeoJSON failure
+		// separately so a missing asset doesn't disappear into the outer
+		// catch (eGRID overlays degrade to unadorned hexes instead of
+		// collapsing the whole section).
+		let density;
+		let geo = null;
 		try {
-			const [density, geo] = await Promise.all([
+			[density, geo] = await Promise.all([
 				fetchH3Density(5, mineState || null),
-				loadSubregionGeoJSON().catch(() => null),
+				loadSubregionGeoJSON().catch((err) => {
+					console.warn('[unearthed] eGRID overlay unavailable:', err.message);
+					return null;
+				}),
+				loadGoogleMaps(),
 			]);
-			cells = density.cells || [];
-			if (geo) geojson = geo;
 		} catch (e) {
-			console.warn('[unearthed] h3-density unavailable:', e.message);
+			console.warn('[unearthed] h3-density fetch failed:', e.message);
+			errored = true;
+			loaded = true;
+			return;
+		}
+
+		if (cancelled) return;
+
+		cells = density.cells || [];
+		summary = density.summary || '';
+		summaryDegraded = Boolean(density.summary_degraded);
+		if (geo) geojson = geo;
+
+		// Render phase: failures here are code bugs, not API outages. We let
+		// them surface in the console with a full stack so they're fixable
+		// instead of hiding behind "map temporarily unavailable."
+		try {
+			map = createDarkMap(mapEl);
+			infoWindow = new google.maps.InfoWindow({
+				disableAutoPan: true,
+				headerDisabled: true,
+			});
+			renderSubregions();
+			renderHexes();
+			renderAnchors();
+			fitToData();
+		} catch (e) {
+			console.error('[unearthed] h3-density render failed:', e);
 			errored = true;
 		} finally {
 			loaded = true;
 		}
 	});
 
-	function project(lat, lon) {
-		const { minLat, maxLat, minLng, maxLng } = bounds;
-		const x = ((lon - minLng) / (maxLng - minLng)) * VIEW_W;
-		const y = VIEW_H - ((lat - minLat) / (maxLat - minLat)) * VIEW_H;
-		return [x, y];
-	}
+	onDestroy(() => {
+		cancelled = true;
+		for (const m of hexMarkers) m.setMap(null);
+		for (const p of subregionPolygons) p.setMap(null);
+		hexMarkers = [];
+		subregionPolygons = [];
+	});
 
-	function buildSubregionPaths(geo) {
-		// Project each eGRID subregion polygon into the current bounds.
-		// Recomputes whenever bounds change (filtered view uses a tighter bbox).
-		const out = [];
-		for (const feature of geo.features) {
+	function renderSubregions() {
+		if (!geojson || !map) return;
+		for (const feature of geojson.features) {
 			const sub = feature.properties?.Subregion || '';
 			const type = feature.geometry.type;
 			const coords = feature.geometry.coordinates;
 			const polygons = type === 'MultiPolygon' ? coords : [coords];
-			const pathParts = [];
+			const paths = [];
 			for (const polygon of polygons) {
 				for (const ring of polygon) {
 					if (!ring.length) continue;
-					const [x0, y0] = project(ring[0][1], ring[0][0]);
-					let d = `M${x0.toFixed(1)},${y0.toFixed(1)}`;
-					for (let i = 1; i < ring.length; i++) {
-						const [x, y] = project(ring[i][1], ring[i][0]);
-						d += `L${x.toFixed(1)},${y.toFixed(1)}`;
-					}
-					d += 'Z';
-					pathParts.push(d);
+					paths.push(ring.map(([lng, lat]) => ({ lat, lng })));
 				}
 			}
-			if (pathParts.length) {
-				out.push({ subregion: sub, d: pathParts.join(' ') });
-			}
+			if (!paths.length) continue;
+			const isUserRegion = sub === subregionId;
+			const poly = new google.maps.Polygon({
+				map,
+				paths,
+				fillColor: isUserRegion ? MAP_COLORS.accent : MAP_COLORS.white,
+				fillOpacity: isUserRegion ? 0.08 : 0.015,
+				strokeColor: isUserRegion ? MAP_COLORS.accent : MAP_COLORS.white,
+				strokeOpacity: isUserRegion ? 0.55 : 0.12,
+				strokeWeight: isUserRegion ? 1 : 0.6,
+				clickable: false,
+				zIndex: 1,
+			});
+			subregionPolygons.push(poly);
 		}
-		return out;
+	}
+
+	function renderHexes() {
+		if (!map) return;
+		for (const c of filteredCells) {
+			const lat = Number(c.LAT ?? c.lat);
+			const lng = Number(c.LNG ?? c.lng);
+			if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+			const total = Number(c.TOTAL ?? c.total) || 0;
+			const active = Number(c.ACTIVE ?? c.active) || 0;
+			const abandoned = Number(c.ABANDONED ?? c.abandoned) || 0;
+			const fill = color(active, total);
+			const marker = new google.maps.Marker({
+				map,
+				position: { lat, lng },
+				icon: {
+					path: google.maps.SymbolPath.CIRCLE,
+					scale: radius(total),
+					fillColor: fill,
+					fillOpacity: 0.45,
+					strokeColor: fill,
+					strokeOpacity: 0.9,
+					strokeWeight: 0.8,
+				},
+				zIndex: 5,
+				cursor: 'pointer',
+			});
+			marker.addListener('click', () =>
+				openHexInfo({ total, active, abandoned }, marker),
+			);
+			hexMarkers.push(marker);
+		}
+	}
+
+	function renderAnchors() {
+		if (!map) return;
+		if (mineCoords) {
+			const marker = new google.maps.Marker({
+				map,
+				position: { lat: mineCoords[0], lng: mineCoords[1] },
+				title: mineName || 'your mine',
+				icon: circleIcon({ color: MAP_COLORS.accent, scale: 6 }),
+				zIndex: 20,
+			});
+			createLabeledMarker(map, marker, { type: 'YOUR MINE', name: mineName });
+		}
+		if (userCoords) {
+			const marker = new google.maps.Marker({
+				map,
+				position: { lat: userCoords[0], lng: userCoords[1] },
+				title: 'you',
+				icon: circleIcon({ color: MAP_COLORS.you, scale: 5 }),
+				zIndex: 20,
+			});
+			createLabeledMarker(map, marker, { type: 'YOU', name: 'your meter' });
+		}
+	}
+
+	function openHexInfo({ total, active, abandoned }, marker) {
+		if (!infoWindow) return;
+		const el = document.createElement('div');
+		el.style.cssText =
+			"font-family:'JetBrains Mono',monospace;font-size:10px;color:#1a1a1a;line-height:1.5;padding:0;min-width:0";
+		const a = document.createElement('div');
+		a.textContent = `${total.toLocaleString()} mines in this hex`;
+		a.style.cssText = 'font-weight:600';
+		const b = document.createElement('div');
+		b.textContent = `${active.toLocaleString()} active · ${abandoned.toLocaleString()} closed`;
+		b.style.cssText = 'color:#5a5550;margin-top:2px';
+		el.appendChild(a);
+		el.appendChild(b);
+		infoWindow.setContent(el);
+		infoWindow.open({ map, anchor: marker });
+	}
+
+	function fitToData() {
+		if (!map) return;
+		const bounds = new google.maps.LatLngBounds();
+		let any = false;
+		for (const c of filteredCells) {
+			const lat = Number(c.LAT ?? c.lat);
+			const lng = Number(c.LNG ?? c.lng);
+			if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+			bounds.extend({ lat, lng });
+			any = true;
+		}
+		for (const p of [userCoords, mineCoords]) {
+			if (!p) continue;
+			const lat = Number(p[0]);
+			const lng = Number(p[1]);
+			if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+			bounds.extend({ lat, lng });
+			any = true;
+		}
+		if (!any) {
+			// Continental US fallback so the frame isn't empty.
+			bounds.extend({ lat: 24, lng: -125 });
+			bounds.extend({ lat: 49.5, lng: -66 });
+		}
+		map.fitBounds(bounds, { top: 40, bottom: 40, left: 40, right: 40 });
 	}
 
 	function radius(total) {
-		return Math.max(3, Math.min(22, Math.sqrt(total) * 1.6));
+		// Marker SymbolPath.CIRCLE uses `scale` as the circle radius in pixels.
+		// Linearly interpolate sqrt(total) across the filtered range so the
+		// dot-size variation is always visible no matter how tight the cluster.
+		const { min, max } = totalRange;
+		if (max <= 0 || total <= 0) return MIN_RADIUS_PX;
+		if (max === min) return (MIN_RADIUS_PX + MAX_RADIUS_PX) / 2;
+		const sMin = Math.sqrt(min);
+		const sMax = Math.sqrt(max);
+		const t = (Math.sqrt(total) - sMin) / (sMax - sMin);
+		return MIN_RADIUS_PX + t * (MAX_RADIUS_PX - MIN_RADIUS_PX);
 	}
 
+	// Abandoned → warm ash (#7a746c). Green reads as "alive/growing," which is
+	// the opposite of what an abandoned mine is. Ash reads as "what's left,"
+	// which is what these points actually are.
 	function color(active, total) {
-		if (!total) return '#5a7a5a';
+		if (!total) return '#7a746c';
 		const ratio = active / total;
-		const r = Math.round(90 + (194 - 90) * ratio);
-		const g = Math.round(122 + (84 - 122) * ratio);
-		const b = Math.round(90 + (45 - 90) * ratio);
+		const r = Math.round(122 + (194 - 122) * ratio);
+		const g = Math.round(116 + (84 - 116) * ratio);
+		const b = Math.round(108 + (45 - 108) * ratio);
 		return `rgb(${r}, ${g}, ${b})`;
 	}
-
-	function onCellHover(c) { hovered = c; }
-	function onCellLeave() { hovered = null; }
 </script>
 
-<section class="h3" aria-label="Regional coal mining footprint" use:reveal>
-	<div class="h3-header">
-		<span class="badge">snowflake native · H3 geospatial</span>
+<SectionRail number="04" label="The seam" class="h3-section">
+	<div class="h3-header" aria-label="Regional coal mining footprint">
 		<h3>
-			One mine fed your lights.<br/>
-			<em>This</em> is {mineState ? `${mineState}'s coal country` : 'the whole seam'}.
+			{#if mineState}
+				This is <em>{mineState}'s</em> coal country.<br/>
+				Your mine is <em>one dot</em> in it.
+			{:else}
+				This is the country's <em>coal footprint</em>.<br/>
+				Your mine is <em>one dot</em> in it.
+			{/if}
 		</h3>
 		<p class="sub">
 			{#if mineState}
-				Every coal mine MSHA has on record in {mineState}, clustered into H3 hexes by
-				Snowflake's <code>H3_LATLNG_TO_CELL_STRING</code>. Your mine is the anchor —
-				hex size scales with mine count, color mixes between
-				<span class="rust">rust (still cutting)</span> and
-				<span class="moss">moss (abandoned)</span>.
+				Every coal mine MSHA has on record in {mineState}, clustered by
+				location. <strong>Bigger dot, more mines in that patch.</strong>
+				Color fades from <span class="rust">rust (still cutting)</span> to
+				<span class="ash">ash (abandoned and gone)</span>.
 			{:else}
-				Every coal mine in MSHA's registry, clustered into H3 hexes by Snowflake's
-				<code>H3_LATLNG_TO_CELL_STRING</code>. Size scales with mine count, color mixes
-				between <span class="rust">rust (still cutting)</span> and
-				<span class="moss">moss (abandoned)</span>.
+				Every coal mine in MSHA's registry, clustered by location.
+				<strong>Bigger dot, more mines nearby.</strong> Color fades from
+				<span class="rust">rust (still cutting)</span> to
+				<span class="ash">ash (abandoned and gone)</span>.
 			{/if}
 		</p>
+		{#if summary}
+			<p class="cortex-note" class:degraded={summaryDegraded}>
+				<span class="cortex-note-tag">
+					{summaryDegraded ? 'On this map' : 'Cortex, on this map'}
+				</span>
+				{summary}
+			</p>
+		{/if}
 	</div>
 
 	<div class="map-wrap glass">
@@ -209,89 +338,27 @@
 			<p class="loading">mapping the footprint…</p>
 		{:else if errored || cells.length === 0}
 			<p class="loading">Density map temporarily unavailable.</p>
-		{:else}
-			<svg
-				viewBox="0 0 {VIEW_W} {VIEW_H}"
-				preserveAspectRatio="xMidYMid meet"
-				role="img"
-				aria-label="Regional coal mine density"
-			>
-				<g class="subregion-layer" aria-hidden="true">
-					{#each subregionPaths as p}
-						<path d={p.d} class:user-region={p.subregion === subregionId} />
-					{/each}
-				</g>
-
-				<g class="hex-layer">
-					{#each cells as c}
-						{@const lat = c.LAT ?? c.lat}
-						{@const lng = c.LNG ?? c.lng}
-						{@const total = c.TOTAL ?? c.total ?? 0}
-						{@const active = c.ACTIVE ?? c.active ?? 0}
-						{@const abandoned = c.ABANDONED ?? c.abandoned ?? 0}
-						{#if lat != null && lng != null}
-							{@const [cx, cy] = project(lat, lng)}
-							<circle
-								{cx}
-								{cy}
-								r={radius(total)}
-								fill={color(active, total)}
-								fill-opacity="0.45"
-								stroke={color(active, total)}
-								stroke-width="0.6"
-								stroke-opacity="0.9"
-								role="presentation"
-								onmouseenter={() => onCellHover({ total, active, abandoned, cx, cy })}
-								onmouseleave={onCellLeave}
-							/>
-						{/if}
-					{/each}
-				</g>
-
-				{#if mineProj}
-					<g class="anchor mine-anchor">
-						<circle cx={mineProj[0]} cy={mineProj[1]} r="5" class="anchor-core" />
-						<circle cx={mineProj[0]} cy={mineProj[1]} r="11" class="anchor-ring" />
-						<text x={mineProj[0] + 14} y={mineProj[1] + 4} class="anchor-label">your mine</text>
-					</g>
-				{/if}
-				{#if userProj}
-					<g class="anchor user-anchor">
-						<circle cx={userProj[0]} cy={userProj[1]} r="4" class="anchor-core" />
-						<circle cx={userProj[0]} cy={userProj[1]} r="9" class="anchor-ring" />
-						<text x={userProj[0] + 12} y={userProj[1] + 4} class="anchor-label">you</text>
-					</g>
-				{/if}
-
-				{#if hovered}
-					{@const tx = Math.min(hovered.cx + 14, VIEW_W - 150)}
-					{@const ty = Math.max(hovered.cy - 28, 14)}
-					<g class="tip" aria-hidden="true">
-						<rect x={tx} y={ty} width="140" height="44" rx="3" class="tip-bg" />
-						<text x={tx + 8} y={ty + 16} class="tip-text">
-							{hovered.total} mines in this hex
-						</text>
-						<text x={tx + 8} y={ty + 32} class="tip-text tip-sub">
-							{hovered.active} active · {hovered.abandoned} closed
-						</text>
-					</g>
-				{/if}
-			</svg>
 		{/if}
+		<div
+			class="map-container"
+			bind:this={mapEl}
+			role="img"
+			aria-label={mineState ? `Coal mine density map for ${mineState}` : 'Coal mine density map for the US'}
+		></div>
 	</div>
 
 	<div class="map-legend">
 		<span class="legend-item">
-			<svg width="46" height="14" viewBox="0 0 46 14" aria-hidden="true">
-				<circle cx="6" cy="7" r="3" fill="#c2542d" fill-opacity="0.5" stroke="#c2542d" />
-				<circle cx="22" cy="7" r="5" fill="#c2542d" fill-opacity="0.45" stroke="#c2542d" />
-				<circle cx="40" cy="7" r="7" fill="#c2542d" fill-opacity="0.4" stroke="#c2542d" />
+			<svg width="56" height="18" viewBox="0 0 56 18" aria-hidden="true">
+				<circle cx="5" cy="9" r="3" fill="#c2542d" fill-opacity="0.5" stroke="#c2542d" />
+				<circle cx="22" cy="9" r="5" fill="#c2542d" fill-opacity="0.45" stroke="#c2542d" />
+				<circle cx="45" cy="9" r="8" fill="#c2542d" fill-opacity="0.4" stroke="#c2542d" />
 			</svg>
 			hex size ∝ mine count
 		</span>
 		<span class="legend-item">
 			<span class="swatch rust"></span> still cutting
-			<span class="swatch moss"></span> abandoned
+			<span class="swatch ash"></span> abandoned
 		</span>
 		{#if subregionId}
 			<span class="legend-item">
@@ -304,27 +371,31 @@
 		<div class="tallies">
 			<div class="tally">
 				<span class="t-value">{totals.mines.toLocaleString()}</span>
-				<span class="t-label">
-					{mineState ? `coal mines in ${mineState}` : 'coal mines on record'}
+				<span class="anchor-primary">
+					{mineState ? `coal mines in ${mineState}` : 'coal mines in the US'}
 				</span>
+				<span class="anchor-secondary">MSHA registry · 1983 to present</span>
 			</div>
 			<div class="tally">
 				<span class="t-value rust">{totals.active.toLocaleString()}</span>
-				<span class="t-label">still cutting</span>
+				<span class="anchor-primary">still cutting coal today</span>
+				<span class="anchor-secondary">active · the rust dots on the map</span>
 			</div>
 			<div class="tally">
-				<span class="t-value moss">{totals.abandoned.toLocaleString()}</span>
-				<span class="t-label">abandoned, gone</span>
+				<span class="t-value ash">{totals.abandoned.toLocaleString()}</span>
+				<span class="anchor-primary">closed, the ground left behind</span>
+				<span class="anchor-secondary">abandoned · the ash dots on the map</span>
 			</div>
 		</div>
 	{/if}
-</section>
+</SectionRail>
 
 <style>
-	.h3 {
-		padding: var(--section-pad);
+	/* The rail handles outer padding + grid. Give the section's content
+	   column a wider max-width than PlantReveal because the map benefits
+	   from more horizontal room. */
+	:global(.section-rail.h3-section > .rail-content) {
 		max-width: 1100px;
-		margin: 0 auto;
 	}
 
 	.h3-header {
@@ -332,129 +403,32 @@
 		margin-bottom: 2rem;
 	}
 
-	.badge {
-		display: inline-block;
-		font-family: var(--mono);
-		font-size: 0.55rem;
-		text-transform: uppercase;
-		letter-spacing: 0.2em;
-		color: var(--accent);
-		border: 1px solid rgba(194, 84, 45, 0.3);
-		padding: 0.25rem 0.6rem;
-		border-radius: 3px;
-		margin-bottom: 1.3rem;
-	}
-
-	h3 {
-		font-family: var(--serif);
-		font-size: clamp(2rem, 5vw, 3.6rem);
-		font-weight: 400;
-		line-height: 1.1;
-		color: var(--text);
-		margin-bottom: 1rem;
-		letter-spacing: -0.01em;
-	}
-	h3 em {
-		font-style: italic;
-		color: var(--accent);
-	}
-
-	.sub {
-		font-family: var(--serif);
-		font-size: 0.95rem;
-		font-weight: 300;
-		color: var(--text-dim);
-		line-height: 1.7;
-	}
-	.sub code {
-		font-family: var(--mono);
-		font-size: 0.8rem;
-		color: var(--text);
-		background: rgba(255, 255, 255, 0.04);
-		padding: 0.05rem 0.4rem;
-		border-radius: 3px;
-	}
-	.sub .rust { color: var(--accent); font-style: italic; }
-	.sub .moss { color: var(--green); font-style: italic; }
 
 	.map-wrap {
-		padding: 1rem;
-		overflow: hidden;
-	}
-	.map-wrap svg {
+		position: relative;
 		width: 100%;
-		height: auto;
-		display: block;
+		overflow: hidden;
+		padding: 0;
 	}
 
-	.subregion-layer path {
-		fill: rgba(255, 255, 255, 0.015);
-		stroke: rgba(255, 255, 255, 0.12);
-		stroke-width: 0.6;
-		vector-effect: non-scaling-stroke;
-	}
-	.subregion-layer path.user-region {
-		fill: rgba(194, 84, 45, 0.08);
-		stroke: rgba(194, 84, 45, 0.55);
-		stroke-width: 1;
-	}
-
-	.anchor-core {
-		fill: #e8e0d4;
-		stroke: #080808;
-		stroke-width: 1;
-	}
-	.mine-anchor .anchor-core {
-		fill: var(--accent);
-	}
-	.anchor-ring {
-		fill: none;
-		stroke: #e8e0d4;
-		stroke-width: 1;
-		stroke-opacity: 0.5;
-	}
-	.mine-anchor .anchor-ring {
-		stroke: var(--accent);
-		stroke-opacity: 0.75;
-	}
-	.anchor-label {
-		font-family: 'JetBrains Mono', monospace;
-		font-size: 11px;
-		fill: #e8e0d4;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		paint-order: stroke;
-		stroke: #080808;
-		stroke-width: 3;
-	}
-	.mine-anchor .anchor-label {
-		fill: var(--accent);
-	}
-
-	.tip-bg {
-		fill: rgba(8, 8, 8, 0.92);
-		stroke: rgba(194, 84, 45, 0.5);
-		stroke-width: 0.8;
-	}
-	.tip-text {
-		font-family: 'JetBrains Mono', monospace;
-		font-size: 10px;
-		fill: #e8e0d4;
-		letter-spacing: 0.06em;
-	}
-	.tip-text.tip-sub {
-		fill: #807b75;
-		font-size: 9px;
+	.map-container {
+		width: 100%;
+		height: clamp(420px, 58vh, 620px);
 	}
 
 	.loading {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 		font-family: var(--mono);
 		font-size: 0.7rem;
 		color: var(--text-ghost);
-		text-align: center;
-		padding: 3rem 1rem;
 		letter-spacing: 0.1em;
 		text-transform: uppercase;
+		pointer-events: none;
+		z-index: 2;
 	}
 
 	.map-legend {
@@ -481,7 +455,7 @@
 		border-radius: 50%;
 	}
 	.swatch.rust { background: var(--accent); }
-	.swatch.moss { background: var(--green); }
+	.swatch.ash { background: #a89e92; }
 	.swatch.region {
 		background: rgba(194, 84, 45, 0.18);
 		border: 1px solid rgba(194, 84, 45, 0.55);
@@ -498,7 +472,7 @@
 	.tally {
 		display: flex;
 		flex-direction: column;
-		gap: 0.3rem;
+		gap: 0.25rem;
 		padding: 0.2rem 0.2rem 0.2rem 1rem;
 		border-left: 1px solid rgba(255, 255, 255, 0.08);
 	}
@@ -510,12 +484,5 @@
 		line-height: 1;
 	}
 	.t-value.rust { color: var(--accent); }
-	.t-value.moss { color: var(--green); }
-	.t-label {
-		font-family: var(--mono);
-		font-size: 0.55rem;
-		text-transform: uppercase;
-		letter-spacing: 0.15em;
-		color: var(--text-ghost);
-	}
+	.t-value.ash { color: #a89e92; }
 </style>
