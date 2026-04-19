@@ -149,19 +149,22 @@ class TestQueryMineForSubregion:
 
     # --- cursor cleanup ---
 
+    @patch("app.snowflake_client._reconnect")
     @patch("app.snowflake_client._get_connection")
-    def test_cursor_closed_on_execute_error(self, mock_get_conn):
+    def test_cursor_closed_on_execute_error(self, mock_get_conn, mock_reconnect):
         """cur.close() must be called even when execute raises (inner finally)."""
         mock_cursor = MagicMock()
         mock_cursor.execute.side_effect = Exception("SQL error")
         mock_conn = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
         mock_get_conn.return_value = mock_conn
+        # Reconnect also fails with the same broken cursor
+        mock_reconnect.return_value = mock_conn
 
         with pytest.raises(Exception, match="SQL error"):
             query_mine_for_subregion("SRVC")
 
-        mock_cursor.close.assert_called_once()
+        assert mock_cursor.close.call_count >= 1
 
     # --- mine_type label mapping ---
 

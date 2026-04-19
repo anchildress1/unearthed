@@ -16,7 +16,7 @@ class TestGenerateProse:
         return mock_conn, stats_cursor, complete_cursor
 
     @patch("app.prose_client._get_connection")
-    def test_mine_id_passed_as_string(self, mock_get_conn):
+    def test_mine_id_passed_as_int(self, mock_get_conn):
         mock_conn, stats_cur, _ = self._mock_connection(
             stats_row=(10, 2, 5, 100),
             complete_result=("Workers have died.",),
@@ -32,10 +32,10 @@ class TestGenerateProse:
         generate_prose(mine_data)
 
         call_args = stats_cur.execute.call_args
-        assert call_args[0][1]["mine_id"] == "3607958"
+        assert call_args[0][1]["mine_id"] == 3607958
 
     @patch("app.prose_client._get_connection")
-    def test_mine_id_already_string(self, mock_get_conn):
+    def test_mine_id_from_string_converted_to_int(self, mock_get_conn):
         mock_conn, stats_cur, _ = self._mock_connection(
             stats_row=(5, 0, 3, 50),
         )
@@ -50,7 +50,7 @@ class TestGenerateProse:
         generate_prose(mine_data)
 
         call_args = stats_cur.execute.call_args
-        assert call_args[0][1]["mine_id"] == "3607958"
+        assert call_args[0][1]["mine_id"] == 3607958
 
     @patch("app.prose_client._get_connection")
     def test_no_stats_returns_fallback_no_data(self, mock_get_conn):
