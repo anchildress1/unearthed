@@ -300,8 +300,13 @@ export function createFlowOverlay(
 
 	const pulse = document.createElementNS(svgNS, 'circle');
 	pulse.setAttribute('r', '4');
-	pulse.setAttribute('fill', color);
-	pulse.setAttribute('stroke', '#ffffff');
+	// Coal-dark fill with a rust ring. The bead reads as a piece of coal
+	// riding the route — the same dark as the map canvas (#141210), so
+	// the dot "punches through" the rust line rather than competing with
+	// it. The rust stroke keeps it legible at small size against the
+	// dark landscape where a pure-black dot would vanish on pan.
+	pulse.setAttribute('fill', '#141210');
+	pulse.setAttribute('stroke', color);
 	pulse.setAttribute('stroke-width', '1.5');
 	pulse.setAttribute('opacity', '0');
 	svg.appendChild(pulse);
