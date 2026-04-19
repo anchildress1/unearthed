@@ -2,9 +2,10 @@
 
 Show any US resident which specific coal mine supplies their local power plant.
 Federal data (MSHA + EIA + EPA) in **Snowflake Cortex** — Analyst answers
-factual questions in natural language; Complete (openai-gpt-5.2) writes
-the short safety prose. H3 geospatial hexbins render the national extraction
-footprint. DEV Weekend Challenge 2026 — Earth Day Edition.
+factual questions in natural language; Complete (openai-gpt-5.2) writes both
+the short mine-safety prose and the 2-3 sentence explanation of the national
+H3 density map (with an honest degraded flag so template fallbacks never sit
+under a Cortex byline). DEV Weekend Challenge 2026 — Earth Day Edition.
 
 ## Run locally
 
