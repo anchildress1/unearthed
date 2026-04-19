@@ -23,11 +23,11 @@ export function loadGoogleMaps() {
 	if (_scriptPromise) return _scriptPromise;
 
 	_scriptPromise = new Promise((resolve, reject) => {
-		if (typeof window === 'undefined') {
+		if (typeof globalThis.window === 'undefined') {
 			reject(new Error('loadGoogleMaps can only run in the browser'));
 			return;
 		}
-		if (window.google?.maps) {
+		if (globalThis.google?.maps) {
 			resolve();
 			return;
 		}
@@ -60,7 +60,7 @@ export function loadGoogleMaps() {
 		const existing = document.querySelector('script[data-unearthed-maps]');
 		if (existing) {
 			const poll = setInterval(() => {
-				if (window.google?.maps) {
+				if (globalThis.google?.maps) {
 					clearInterval(poll);
 					succeed();
 				}
