@@ -13,20 +13,25 @@ def _extract_const(name: str) -> int:
     return int(match.group(1))
 
 
-FLY_DURATION = _extract_const("FLY_DURATION")
-HOLD_DURATION = _extract_const("HOLD_DURATION")
+HOLD_SHORT = _extract_const("HOLD_SHORT")
+HOLD_LONG = _extract_const("HOLD_LONG")
+HOLD_MORBID = _extract_const("HOLD_MORBID")
+ZOOM_STEP_MS = _extract_const("ZOOM_STEP_MS")
 LOAD_TIMEOUT = _extract_const("MAP_LOAD_TIMEOUT_MS")
 
 
 class TestMapTimingSpec:
-    def test_fly_duration_is_positive(self):
-        assert FLY_DURATION > 0
+    def test_hold_short_is_readable(self):
+        assert HOLD_SHORT >= 1500, "Short hold too brief to register"
 
-    def test_hold_duration_allows_user_to_read(self):
-        assert HOLD_DURATION >= 2000, "Hold too short for user to register location"
+    def test_hold_long_lets_user_orient(self):
+        assert HOLD_LONG >= 3000, "Long hold too brief to orient"
 
-    def test_fly_is_reasonable(self):
-        assert FLY_DURATION >= 1000, "Fly too fast for animation to be visible"
+    def test_hold_morbid_is_deliberate(self):
+        assert HOLD_MORBID >= 4000, "Morbid hold should be uncomfortably long"
+
+    def test_zoom_step_is_smooth(self):
+        assert ZOOM_STEP_MS >= 80, "Zoom steps too fast — will feel jarring"
 
     def test_load_timeout_is_generous(self):
         assert LOAD_TIMEOUT >= 10000
