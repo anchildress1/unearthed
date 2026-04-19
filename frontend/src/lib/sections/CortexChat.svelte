@@ -86,6 +86,15 @@
 	</div>
 
 	<h3>Interrogate the <em>records</em>.</h3>
+
+	<!--
+		`.cortex-shell` caps the interactive UI at a sensible reading width
+		even though the section's headline above is free to span the full
+		content column. The form, pipeline, chips, and results all need a
+		line-length that reads like prose, not a dashboard. The headline
+		above opts out of this cap by sitting outside the wrapper.
+	-->
+	<div class="cortex-shell">
 	<p class="sub">
 		Your question becomes <strong>SQL</strong>. The SQL runs against federal mine data
 		pooled in Snowflake. The answer comes back with the generated query attached —
@@ -211,6 +220,7 @@
 			{/if}
 		</div>
 	{/if}
+	</div>
 </SectionRail>
 
 <style>
@@ -219,6 +229,15 @@
 		align-items: center;
 		gap: 1rem;
 		margin-bottom: 1rem;
+	}
+
+	/* Reading measure for the interactive UI. SectionRail no longer caps
+	   the content column (so the h3 above can breathe edge-to-edge), but
+	   the form + pipeline + chips + results table all want line-lengths
+	   closer to prose than to a dashboard. 1040px matches the canonical
+	   map-frame width elsewhere on the page. */
+	.cortex-shell {
+		max-width: min(1040px, 100%);
 	}
 
 	.badge {

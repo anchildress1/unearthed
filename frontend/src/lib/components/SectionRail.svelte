@@ -122,14 +122,13 @@
 		flex: 1 1 0;
 		min-width: 0;
 		width: 100%;
-		/* Single canonical column width so every post-hero section ends at
-		   the same right edge. Without this clamp, CortexChat's form + table
-		   sprawl to the viewport while Ticker's internal prose caps (460px,
-		   560px) read as a narrow left column — same rail, two framings.
-		   Matches MapSection's map-frame width (the widest editorial element
-		   on the page). Internal body copy can still set a tighter measure
-		   inside; this just anchors the outer column. */
-		max-width: min(1040px, 100%);
+		/* No outer max-width on the content column — headlines are the
+		   editorial beat of each section and should breathe edge-to-edge
+		   when they want to. Body copy enforces its own reading measure
+		   via `.sub` (640px) and section-specific wrappers (CortexChat's
+		   `.cortex-shell`, Ticker's internal caps). If a section adds a
+		   wide-prone element (form, table, grid), cap it inside that
+		   section rather than re-introducing an outer clamp here. */
 	}
 
 	/* ---- Canonical section header wrapper ----
