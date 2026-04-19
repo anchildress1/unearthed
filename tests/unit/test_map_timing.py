@@ -1,37 +1,26 @@
-"""Unit tests verifying map reveal timing constants."""
+"""Unit tests verifying map.js uses moveCamera animation pattern."""
 
-import re
 from pathlib import Path
 
 MAP_JS = (Path(__file__).parent.parent.parent / "static" / "js" / "map.js").read_text()
 
 
-def _extract_const(name: str) -> int:
-    """Extract a numeric const from map.js source."""
-    match = re.search(rf"const {name}\s*=\s*(\d+)", MAP_JS)
-    assert match, f"Could not find const {name} in map.js"
-    return int(match.group(1))
+class TestMapAnimationPattern:
+    def test_uses_move_camera(self):
+        assert "moveCamera" in MAP_JS
 
+    def test_uses_request_animation_frame(self):
+        assert "requestAnimationFrame" in MAP_JS
 
-HOLD_SHORT = _extract_const("HOLD_SHORT")
-HOLD_LONG = _extract_const("HOLD_LONG")
-HOLD_MORBID = _extract_const("HOLD_MORBID")
-ZOOM_STEP_MS = _extract_const("ZOOM_STEP_MS")
-LOAD_TIMEOUT = _extract_const("MAP_LOAD_TIMEOUT_MS")
+    def test_has_easing_function(self):
+        assert "easeInOutCubic" in MAP_JS
 
+    def test_has_lerp(self):
+        assert "lerp" in MAP_JS
 
-class TestMapTimingSpec:
-    def test_hold_short_is_readable(self):
-        assert HOLD_SHORT >= 1500, "Short hold too brief to register"
+    def test_flow_line_is_slow(self):
+        # offset increment should be <= 0.2 per tick
+        assert "0.15" in MAP_JS
 
-    def test_hold_long_lets_user_orient(self):
-        assert HOLD_LONG >= 3000, "Long hold too brief to orient"
-
-    def test_hold_morbid_is_deliberate(self):
-        assert HOLD_MORBID >= 4000, "Morbid hold should be uncomfortably long"
-
-    def test_zoom_step_is_smooth(self):
-        assert ZOOM_STEP_MS >= 80, "Zoom steps too fast — will feel jarring"
-
-    def test_load_timeout_is_generous(self):
-        assert LOAD_TIMEOUT >= 10000
+    def test_uses_geodesic_lines(self):
+        assert "geodesic: true" in MAP_JS

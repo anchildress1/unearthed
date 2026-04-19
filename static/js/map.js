@@ -1,33 +1,24 @@
 /**
- * Google Maps with cinematic reveal sequence.
+ * Google Maps — cinematic reveal sequence.
  *
- * Sequence:
- *   1. Smooth zoom to user address, hold long enough to read
- *   2. Slow zoom out to show the power plant, draw connection
- *   3. Slow zoom out to show mine, draw animated flow line
- *   4. Slow zoom in on the mine at satellite level — hold morbidly long
- *   5. Ease back out to the full view with all lines visible
+ * Uses moveCamera() with requestAnimationFrame for smooth, interpolated
+ * camera transitions. No tween library — just easeInOutCubic and lerp.
  *
- * All transitions use smooth recursive zoom to avoid jarring snaps.
- * Flow line animates at a slow, steady pace — not frantic.
+ * The emotional arc:
+ *   1. You are here. (Satellite close-up of your neighborhood. You live here.)
+ *   2. This is your power plant. (Zoom out. A line connects you to it.)
+ *   3. This is the mine that feeds it. (The full supply chain, laid bare.)
+ *   4. Look at it. (Zoom 18 on the mine. Scarred earth. Hold for 6 seconds.)
+ *   5. This is the shape of your demand. (Pull back. The lines stay.)
  */
 
 const MAP_LOAD_TIMEOUT_MS = 15000;
-
-// Timing (ms) — deliberately slow, cinematic pacing
-const HOLD_SHORT = 2000;
-const HOLD_LONG = 4000;
-const HOLD_MORBID = 5000;
-const ZOOM_STEP_MS = 120; // ms per zoom level change — controls smoothness
-const FLOW_ANIM_INTERVAL = 80; // slower dash crawl
 
 // Load Google Maps core library.
 const { Map: GMap } = await google.maps.importLibrary("maps");
 
 /**
- * Initialize a Google Map in the given container.
- * @param {HTMLElement} container
- * @returns {google.maps.Map}
+ * Initialize a Google Map.
  */
 export function createMap(container) {
   return new GMap(container, {
@@ -37,6 +28,7 @@ export function createMap(container) {
     disableDefaultUI: true,
     zoomControl: true,
     gestureHandling: "greedy",
+    tilt: 0,
   });
 }
 
@@ -47,151 +39,145 @@ export function runRevealSequence(map, params) {
   const { userCoords, plantCoords, mineCoords, plantName, mineName, captionEl } =
     params;
 
-  const userLatLng = { lat: userCoords[0], lng: userCoords[1] };
-  const plantLatLng = { lat: plantCoords[0], lng: plantCoords[1] };
-  const mineLatLng = { lat: mineCoords[0], lng: mineCoords[1] };
+  const user = { lat: userCoords[0], lng: userCoords[1] };
+  const plant = { lat: plantCoords[0], lng: plantCoords[1] };
+  const mine = { lat: mineCoords[0], lng: mineCoords[1] };
 
   return new Promise((resolve, reject) => {
     let settled = false;
 
-    const timeoutId = setTimeout(() => {
+    const tid = setTimeout(() => {
       if (!settled) {
         settled = true;
         reject(new Error("Map failed to load. Please check your network connection."));
       }
     }, MAP_LOAD_TIMEOUT_MS);
 
-    async function startSequence() {
+    async function run() {
       if (settled) return;
       settled = true;
-      clearTimeout(timeoutId);
+      clearTimeout(tid);
 
-      // Step 1: Smooth zoom to user address — let them orient
+      // --- Act 1: You are here ---
       showCaption(captionEl, "Your location");
-      map.panTo(userLatLng);
-      await smoothZoom(map, 14, ZOOM_STEP_MS);
-      addMarker(map, userLatLng, "You", "#c4956a");
-      await delay(HOLD_LONG);
+      await flyTo(map, { center: user, zoom: 15 }, 3000);
+      addMarker(map, user, "You", "#c4956a");
+      await hold(3000);
 
-      // Step 2: Ease out to show plant
+      // --- Act 2: Your power plant ---
       showCaption(captionEl, plantName);
-      addMarker(map, plantLatLng, plantName, "#8aaa8a");
-      const userPlantBounds = new google.maps.LatLngBounds();
-      userPlantBounds.extend(userLatLng);
-      userPlantBounds.extend(plantLatLng);
-      await smoothFitBounds(map, userPlantBounds, ZOOM_STEP_MS);
-      await delay(HOLD_SHORT);
-      drawStaticLine(map, [userLatLng, plantLatLng], "#ffffff", 1.5, 0.4);
-      await delay(HOLD_SHORT);
+      addMarker(map, plant, plantName, "#8aaa8a");
+      const upBounds = toBounds([user, plant]);
+      await flyTo(map, { center: midpoint(user, plant), zoom: boundsZoom(upBounds) }, 3000);
+      await hold(1500);
+      drawLine(map, [user, plant], "#ffffff", 2, 0.5);
+      await hold(2000);
 
-      // Step 3: Ease out to show the mine
+      // --- Act 3: The supply chain ---
       showCaption(captionEl, mineName);
-      addMarker(map, mineLatLng, mineName, "#d4d0c8");
-      const allBounds = new google.maps.LatLngBounds();
-      allBounds.extend(userLatLng);
-      allBounds.extend(plantLatLng);
-      allBounds.extend(mineLatLng);
-      await smoothFitBounds(map, allBounds, ZOOM_STEP_MS);
-      await delay(HOLD_SHORT);
-
-      // Draw the flow line mine → plant — slow, deliberate
-      const stopFlow = drawFlowLine(map, mineLatLng, plantLatLng);
+      addMarker(map, mine, mineName, "#d4d0c8");
+      const allBounds = toBounds([user, plant, mine]);
+      await flyTo(map, { center: midpoint(user, mine), zoom: boundsZoom(allBounds) }, 3500);
+      await hold(1500);
+      const stopFlow = drawFlowLine(map, mine, plant);
       map._stopFlowAnimation = stopFlow;
-      await delay(HOLD_LONG);
+      await hold(3000);
 
-      // Step 4: Zoom in tight on the mine — satellite detail, hold morbidly long
-      showCaption(captionEl, `${mineName} — source mine`);
-      map.panTo(mineLatLng);
-      await smoothZoom(map, 18, ZOOM_STEP_MS);
-      await delay(HOLD_MORBID);
+      // --- Act 4: Look at it ---
+      showCaption(captionEl, mineName);
+      await flyTo(map, { center: mine, zoom: 18 }, 4000);
+      await hold(6000);
 
-      // Step 5: Ease back out to the full picture
+      // --- Act 5: Pull back ---
       showCaption(captionEl, "");
-      await smoothFitBounds(map, allBounds, ZOOM_STEP_MS);
-      await delay(HOLD_SHORT);
+      await flyTo(map, { center: midpoint(user, mine), zoom: boundsZoom(allBounds) }, 3500);
+      await hold(1000);
 
       resolve();
     }
 
-    google.maps.event.addListenerOnce(map, "tilesloaded", startSequence);
+    google.maps.event.addListenerOnce(map, "tilesloaded", run);
   });
 }
 
+// ---------------------------------------------------------------------------
+// Camera animation
+// ---------------------------------------------------------------------------
+
 /**
- * Smooth zoom — steps one level at a time with a pause between each.
- * Prevents the jarring snap of setZoom().
+ * Smooth camera flight using moveCamera + requestAnimationFrame.
+ * Interpolates center, zoom, tilt, and heading with easeInOutCubic.
  */
-function smoothZoom(map, targetZoom, stepMs) {
+function flyTo(map, target, durationMs) {
   return new Promise((resolve) => {
-    const current = map.getZoom();
-    if (current === targetZoom) {
-      resolve();
-      return;
-    }
+    const startCenter = map.getCenter();
+    const startZoom = map.getZoom();
+    const startTilt = map.getTilt() || 0;
+    const startHeading = map.getHeading() || 0;
 
-    const direction = targetZoom > current ? 1 : -1;
-    let level = current;
+    const endCenter = target.center;
+    const endZoom = target.zoom ?? startZoom;
+    const endTilt = target.tilt ?? 0;
+    const endHeading = target.heading ?? 0;
 
-    const step = () => {
-      level += direction;
-      map.setZoom(level);
-      if (level === targetZoom) {
+    const start = performance.now();
+
+    function frame(now) {
+      const elapsed = now - start;
+      const t = Math.min(elapsed / durationMs, 1);
+      const e = easeInOutCubic(t);
+
+      map.moveCamera({
+        center: {
+          lat: lerp(startCenter.lat(), endCenter.lat, e),
+          lng: lerp(startCenter.lng(), endCenter.lng, e),
+        },
+        zoom: lerp(startZoom, endZoom, e),
+        tilt: lerp(startTilt, endTilt, e),
+        heading: lerp(startHeading, endHeading, e),
+      });
+
+      if (t < 1) {
+        requestAnimationFrame(frame);
+      } else {
         resolve();
-      } else {
-        setTimeout(step, stepMs);
       }
-    };
-
-    setTimeout(step, stepMs);
-  });
-}
-
-/**
- * Smooth fitBounds — zoom out to target bounds one level at a time,
- * then let fitBounds do the final precise adjustment.
- */
-function smoothFitBounds(map, bounds, stepMs) {
-  return new Promise((resolve) => {
-    // Figure out what zoom fitBounds would produce
-    const targetZoom = getBoundsZoom(map, bounds);
-    const current = map.getZoom();
-
-    if (current <= targetZoom) {
-      // Already zoomed out enough, just fit
-      map.fitBounds(bounds, { top: 80, bottom: 80, left: 80, right: 80 });
-      setTimeout(resolve, 500);
-      return;
     }
 
-    // Zoom out smoothly, then fit precisely
-    let level = current;
-    const step = () => {
-      level -= 1;
-      map.setZoom(level);
-      map.panTo(bounds.getCenter());
-      if (level <= targetZoom) {
-        map.fitBounds(bounds, { top: 80, bottom: 80, left: 80, right: 80 });
-        setTimeout(resolve, 500);
-      } else {
-        setTimeout(step, stepMs);
-      }
-    };
-
-    setTimeout(step, stepMs);
+    requestAnimationFrame(frame);
   });
 }
 
-/**
- * Estimate the zoom level for a given bounds (rough approximation).
- */
-function getBoundsZoom(map, bounds) {
+function easeInOutCubic(t) {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function hold(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// ---------------------------------------------------------------------------
+// Geometry helpers
+// ---------------------------------------------------------------------------
+
+function midpoint(a, b) {
+  return { lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2 };
+}
+
+function toBounds(points) {
+  const b = new google.maps.LatLngBounds();
+  for (const p of points) b.extend(p);
+  return b;
+}
+
+function boundsZoom(bounds) {
   const ne = bounds.getNorthEast();
   const sw = bounds.getSouthWest();
-  const latSpan = ne.lat() - sw.lat();
-  const lngSpan = ne.lng() - sw.lng();
-  const span = Math.max(latSpan, lngSpan);
-
-  // Rough: each zoom level halves the span
+  const span = Math.max(Math.abs(ne.lat() - sw.lat()), Math.abs(ne.lng() - sw.lng()));
   if (span > 40) return 3;
   if (span > 20) return 4;
   if (span > 10) return 5;
@@ -199,16 +185,14 @@ function getBoundsZoom(map, bounds) {
   if (span > 2) return 7;
   if (span > 1) return 8;
   if (span > 0.5) return 9;
-  return 10;
+  if (span > 0.2) return 10;
+  return 11;
 }
 
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+// ---------------------------------------------------------------------------
+// Markers
+// ---------------------------------------------------------------------------
 
-/**
- * Add a labeled marker.
- */
 function addMarker(map, position, label, color) {
   const marker = new google.maps.Marker({
     map,
@@ -229,101 +213,92 @@ function addMarker(map, position, label, color) {
     disableAutoPan: true,
   });
   info.open(map, marker);
-
   return marker;
 }
 
-/**
- * Draw a static dotted line (user → plant context).
- */
-function drawStaticLine(map, path, color, weight, opacity) {
+// ---------------------------------------------------------------------------
+// Lines
+// ---------------------------------------------------------------------------
+
+function drawLine(map, path, color, weight, opacity) {
   return new google.maps.Polyline({
     map,
     path,
     strokeColor: color,
     strokeWeight: weight,
-    strokeOpacity: 0,
-    icons: [
-      {
-        icon: {
-          path: "M 0,-1 0,1",
-          strokeOpacity: opacity,
-          strokeWeight: weight,
-          scale: 3,
-        },
-        offset: "0",
-        repeat: "16px",
-      },
-    ],
+    strokeOpacity: opacity,
+    geodesic: true,
   });
 }
 
 /**
- * Draw the animated flow line (mine → plant).
- * Slow, steady crawl — not frantic.
- * Returns a stop function to cancel the animation.
+ * Animated flow line — slow, deliberate crawl from mine toward plant.
+ * The movement should feel heavy, inevitable. Not fast. Not fun.
  */
 function drawFlowLine(map, from, to) {
-  // Glow backing
+  // Dim glow — the corridor
   new google.maps.Polyline({
     map,
     path: [from, to],
     strokeColor: "#c4956a",
     strokeWeight: 8,
-    strokeOpacity: 0.25,
+    strokeOpacity: 0.2,
+    geodesic: true,
   });
 
-  // Animated dashes
-  const flowLine = new google.maps.Polyline({
+  // Animated dashes — the extraction
+  const line = new google.maps.Polyline({
     map,
     path: [from, to],
-    strokeColor: "#ffb347",
-    strokeWeight: 3,
     strokeOpacity: 0,
+    geodesic: true,
     icons: [
       {
         icon: {
           path: "M 0,-1 0,1",
-          strokeOpacity: 0.9,
+          strokeOpacity: 0.8,
+          strokeColor: "#ffb347",
           strokeWeight: 3,
           scale: 4,
         },
         offset: "0%",
-        repeat: "28px",
+        repeat: "32px",
       },
     ],
   });
 
-  // Slow, steady crawl — 0.2% every 80ms
   let offset = 0;
   let stopped = false;
 
-  const intervalId = setInterval(() => {
+  // 0.15% every 60ms — slow, heavy, relentless
+  const id = setInterval(() => {
     if (stopped) return;
-    offset = (offset + 0.2) % 100;
-    flowLine.set("icons", [
+    offset = (offset + 0.15) % 100;
+    line.set("icons", [
       {
         icon: {
           path: "M 0,-1 0,1",
-          strokeOpacity: 0.9,
+          strokeOpacity: 0.8,
+          strokeColor: "#ffb347",
           strokeWeight: 3,
           scale: 4,
         },
         offset: offset + "%",
-        repeat: "28px",
+        repeat: "32px",
       },
     ]);
-  }, FLOW_ANIM_INTERVAL);
+  }, 60);
 
   return function stop() {
     stopped = true;
-    clearInterval(intervalId);
+    clearInterval(id);
   };
 }
 
-/**
- * Show or hide a caption on the map.
- */
+// ---------------------------------------------------------------------------
+// Caption
+// ---------------------------------------------------------------------------
+
 function showCaption(el, text) {
   if (text) {
     el.textContent = text;

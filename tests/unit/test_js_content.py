@@ -156,13 +156,13 @@ class TestMapJsContent:
         assert "export function runRevealSequence" in self.src
 
     def test_uses_google_maps(self):
-        assert "google.maps.Map" in self.src
+        assert "importLibrary" in self.src
 
     def test_uses_google_marker(self):
         assert "google.maps.Marker" in self.src
 
-    def test_uses_fit_bounds(self):
-        assert "fitBounds" in self.src
+    def test_uses_move_camera(self):
+        assert "moveCamera" in self.src
 
     def test_has_flow_line_function(self):
         assert "drawFlowLine" in self.src
