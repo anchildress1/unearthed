@@ -175,33 +175,73 @@ export function createDarkMap(el, extra = {}) {
 }
 
 /**
- * Attach a small type/name label to a marker via InfoWindow. Returns the
- * InfoWindow so the caller can close or repoint it later. Used by both map
- * sections so the legend chrome stays identical.
+ * Attach a dark HTML pin card above a marker. Uses OverlayView so the card
+ * rides the map's own transform: the floatPane is translated on pan/zoom by
+ * Google, so we only reposition on projection-relevant events (draw() fires
+ * whenever zoom or bounds change). InfoWindow was the old fallback — its
+ * white chrome read as a tooltip, not as editorial labelling, and it stole
+ * click focus. Returns the OverlayView so the caller can setMap(null) to
+ * remove it.
+ *
+ * `placement` (optional): `'above' | 'below' | 'left' | 'right'` — which
+ * side of the marker the card floats on. Used for fan-out when two markers
+ * are close enough that their default (above) cards would stack.
  */
-export function createLabeledMarker(map, marker, { type, name, pixelOffset = null }) {
-	const el = document.createElement('div');
-	el.style.cssText = 'padding:0;min-width:0;line-height:1.15';
+const PIN_TRANSFORMS = {
+	above: 'translate(-50%, calc(-100% - 14px))',
+	below: 'translate(-50%, 14px)',
+	left: 'translate(calc(-100% - 14px), -50%)',
+	right: 'translate(14px, -50%)',
+};
+
+export function createLabeledMarker(map, marker, { type, name, placement = 'above' }) {
+	const card = document.createElement('div');
+	card.style.cssText = [
+		'position:absolute',
+		`transform:${PIN_TRANSFORMS[placement] || PIN_TRANSFORMS.above}`,
+		'padding:6px 10px',
+		'background:rgba(20,18,16,0.92)',
+		'border:1px solid rgba(255,255,255,0.08)',
+		'border-radius:6px',
+		'pointer-events:none',
+		'white-space:nowrap',
+		'line-height:1.25',
+		'backdrop-filter:blur(8px)',
+		'-webkit-backdrop-filter:blur(8px)',
+		'box-shadow:0 4px 14px rgba(0,0,0,0.4)',
+	].join(';');
 	const typeEl = document.createElement('div');
 	typeEl.style.cssText =
-		"font-family:'JetBrains Mono',monospace;font-size:8px;color:#5c554a;text-transform:uppercase;letter-spacing:0.08em";
+		"font-family:'JetBrains Mono',monospace;font-size:9px;color:#be573b;text-transform:uppercase;letter-spacing:0.12em";
 	typeEl.textContent = type;
-	el.appendChild(typeEl);
+	card.appendChild(typeEl);
 	if (name) {
 		const nameEl = document.createElement('div');
 		nameEl.style.cssText =
-			"font-family:Newsreader,serif;font-size:11px;color:#1a1a1a;margin-top:1px";
+			"font-family:Newsreader,serif;font-size:12px;color:#e8dfcc;margin-top:1px";
 		nameEl.textContent = name;
-		el.appendChild(nameEl);
+		card.appendChild(nameEl);
 	}
-	const options = {
-		content: el,
-		disableAutoPan: true,
-		headerDisabled: true,
-	};
-	if (pixelOffset) options.pixelOffset = pixelOffset;
-	const info = new google.maps.InfoWindow(options);
-	info.open({ map, anchor: marker });
-	marker.addListener('click', () => info.open({ map, anchor: marker }));
-	return info;
+
+	class PinCardOverlay extends google.maps.OverlayView {
+		onAdd() {
+			this.getPanes().floatPane.appendChild(card);
+		}
+		draw() {
+			const proj = this.getProjection();
+			if (!proj) return;
+			const pos = marker.getPosition();
+			if (!pos) return;
+			const px = proj.fromLatLngToDivPixel(pos);
+			card.style.left = `${px.x}px`;
+			card.style.top = `${px.y}px`;
+		}
+		onRemove() {
+			card.remove();
+		}
+	}
+
+	const overlay = new PinCardOverlay();
+	overlay.setMap(map);
+	return overlay;
 }

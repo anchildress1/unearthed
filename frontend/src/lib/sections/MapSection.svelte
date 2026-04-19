@@ -49,27 +49,28 @@
 				userDotInterval = animateArc(map, plant, user, MAP_COLORS.rust, 2.5, 0.55);
 			}
 
-			// Offset labels from their relative geography so two close-together
-			// markers don't stack their InfoWindows on top of each other. Google's
-			// InfoWindow anchors at top-center of the marker by default, so we
-			// push each label out in the direction that matches where it sits.
-			const offsets = computeLabelOffsets({ mine, plant, user });
+			// Fan the three cards out by relative geography so two close-together
+			// markers don't stack their labels. Northmost floats above, southmost
+			// drops below, anyone in between slides to the side the other two
+			// aren't using. Cards render as HTML overlays (OverlayView), so
+			// "above/below/left/right" are real CSS transforms, not nudges.
+			const placement = computeLabelPlacement({ mine, plant, user });
 
 			createLabeledMarker(
 				map,
 				anchorMarker(map, mine, MAP_COLORS.rust),
-				{ type: 'MINE', name: data.mine, pixelOffset: offsets.mine },
+				{ type: 'MINE', name: data.mine, placement: placement.mine },
 			);
 			createLabeledMarker(
 				map,
 				anchorMarker(map, plant, MAP_COLORS.moss),
-				{ type: 'PLANT', name: data.plant, pixelOffset: offsets.plant },
+				{ type: 'PLANT', name: data.plant, placement: placement.plant },
 			);
 			if (user) {
 				createLabeledMarker(
 					map,
 					anchorMarker(map, user, MAP_COLORS.you),
-					{ type: 'YOU', name: 'your meter', pixelOffset: offsets.user },
+					{ type: 'YOU', name: 'your meter', placement: placement.user },
 				);
 			}
 		} catch (e) {
@@ -130,46 +131,33 @@
 		});
 	}
 
-	// Fan out the three labels from each other so their InfoWindows don't
-	// overlap when the markers are geographically close. We look at the
-	// latitude ordering (north-most goes up, south-most goes down) and the
-	// east-west spread (close-together points get pushed sideways). The
-	// returned offsets are Google Maps `Size` instances, which InfoWindow
-	// applies as (dx, dy) pixel offsets from the marker anchor.
-	function computeLabelOffsets({ mine, plant, user }) {
+	// Fan the three labels so they don't stack when markers are close.
+	// Latitude ordering drives the primary assignment: northmost floats
+	// above, southmost drops below. Any middle point slides to whichever
+	// side it sits on relative to the other two's longitude midpoint. The
+	// returned values are keys of PIN_TRANSFORMS in maps.js.
+	function computeLabelPlacement({ mine, plant, user }) {
 		const points = [
 			{ key: 'mine', lat: mine.lat, lng: mine.lng },
 			{ key: 'plant', lat: plant.lat, lng: plant.lng },
 		];
 		if (user) points.push({ key: 'user', lat: user.lat, lng: user.lng });
 
-		// Sort by latitude descending (north first) so the northmost label
-		// floats above, the southmost drops below, and any middle label side-steps.
 		const byLat = [...points].sort((a, b) => b.lat - a.lat);
 		const slot = { [byLat[0].key]: 'above', [byLat[byLat.length - 1].key]: 'below' };
 		if (byLat.length === 3) slot[byLat[1].key] = 'side';
 
-		// Labels stay anchored to their marker—we only reorient them
-		// (above / below / beside) so two close dots don't stack their
-		// InfoWindows. Keep the magnitudes small: the dot must still read
-		// as the owner of the label.
-		const ABOVE = new google.maps.Size(0, -4);
-		const BELOW = new google.maps.Size(0, 22);
-		const SIDE_LEFT = new google.maps.Size(-22, 8);
-		const SIDE_RIGHT = new google.maps.Size(22, 8);
-
-		function sideOffsetFor(key) {
+		function sidePlacementFor(key) {
 			const me = points.find((p) => p.key === key);
 			const others = points.filter((p) => p.key !== key);
 			const avgLng = others.reduce((s, p) => s + p.lng, 0) / others.length;
-			return me.lng >= avgLng ? SIDE_RIGHT : SIDE_LEFT;
+			return me.lng >= avgLng ? 'right' : 'left';
 		}
 
 		const out = {};
 		for (const p of points) {
-			if (slot[p.key] === 'above') out[p.key] = ABOVE;
-			else if (slot[p.key] === 'below') out[p.key] = BELOW;
-			else out[p.key] = sideOffsetFor(p.key);
+			if (slot[p.key] === 'side') out[p.key] = sidePlacementFor(p.key);
+			else out[p.key] = slot[p.key];
 		}
 		return out;
 	}
