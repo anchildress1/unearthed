@@ -3,11 +3,6 @@
 </script>
 
 <section class="cost">
-	<div class="label">
-		<span class="label-line"></span>
-		<span class="label-text">03 &ensp; the cost</span>
-	</div>
-
 	{#if data.prose}
 		<blockquote class="prose">{data.prose}</blockquote>
 	{:else}
@@ -16,33 +11,25 @@
 
 	<div class="details glass">
 		<dl>
-			<div class="row"><dt>Mine</dt><dd>{data.mine}</dd></div>
-			<div class="row"><dt>Operator</dt><dd>{data.mine_operator}</dd></div>
-			<div class="row"><dt>Type</dt><dd>{data.mine_type}</dd></div>
-			<div class="row"><dt>Plant</dt><dd>{data.plant}</dd></div>
+			<div class="row"><dt>Coal mine</dt><dd>{data.mine}</dd></div>
+			<div class="row"><dt>Mine operator</dt><dd>{data.mine_operator}</dd></div>
+			<div class="row"><dt>Mine type</dt><dd>{data.mine_type}</dd></div>
+			<div class="row"><dt>Power plant</dt><dd>{data.plant}</dd></div>
 			<div class="row"><dt>Plant operator</dt><dd>{data.plant_operator}</dd></div>
-			<div class="row"><dt>Tonnage</dt><dd>{Number(data.tons).toLocaleString()} tons ({data.tons_year})</dd></div>
+			<div class="row"><dt>Coal shipped</dt><dd>{Number(data.tons).toLocaleString()} tons ({data.tons_year})</dd></div>
 		</dl>
 	</div>
 </section>
 
 <style>
 	.cost {
-		min-height: 100vh;
+		min-height: 80vh;
 		display: flex;
 		flex-direction: column;
+		align-items: center;
 		justify-content: center;
 		padding: var(--section-pad);
-	}
-
-	.label { display: flex; align-items: center; gap: 0.8rem; margin-bottom: 2rem; }
-	.label-line { width: 32px; height: 1px; background: var(--text-ghost); }
-	.label-text {
-		font-family: var(--mono);
-		font-size: 0.6rem;
-		letter-spacing: 0.25em;
-		text-transform: uppercase;
-		color: var(--text-ghost);
+		text-align: center;
 	}
 
 	.prose {
@@ -52,24 +39,20 @@
 		line-height: 2;
 		color: var(--text);
 		max-width: 560px;
-		margin-bottom: 3.5rem;
+		margin-bottom: 3rem;
 		border: none;
 		padding: 0;
+		text-align: left;
 	}
-	.prose em {
-		color: var(--text-dim);
-	}
+	.prose em { color: var(--text-dim); }
 
 	.details {
 		max-width: 480px;
+		width: 100%;
 		padding: 1.5rem 1.8rem;
 	}
 
-	dl {
-		display: flex;
-		flex-direction: column;
-		gap: 0.6rem;
-	}
+	dl { display: flex; flex-direction: column; gap: 0.6rem; }
 
 	.row {
 		display: flex;

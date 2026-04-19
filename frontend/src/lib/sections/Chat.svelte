@@ -10,11 +10,13 @@
 		`How much has ${mineName} produced since 2020?`,
 		`Is ${mineName} still active?`,
 		'Who is the largest coal supplier in this state?',
+		'How many fatalities at this mine?',
 	];
 
 	async function ask(q) {
 		if (asking || !q.trim()) return;
 		asking = true;
+		console.log('[unearthed] asking Cortex:', q);
 		const entry = { question: q, answer: null, error: null, sql: null };
 		transcript = [...transcript, entry];
 		question = '';
@@ -25,7 +27,9 @@
 			entry.error = result.error;
 			entry.results = result.results;
 			transcript = [...transcript];
-		} catch {
+			console.log('[unearthed] Cortex answered:', entry.answer?.slice(0, 80));
+		} catch (e) {
+			console.error('[unearthed] Cortex failed:', e);
 			entry.error = 'Could not reach the data assistant.';
 			transcript = [...transcript];
 		} finally {
@@ -40,10 +44,10 @@
 </script>
 
 <section class="chat">
-	<div class="label">
-		<span class="label-line"></span>
-		<span class="label-text">05 &ensp; ask your grid</span>
-	</div>
+	<h3 class="chat-heading">Ask the data</h3>
+	<p class="chat-sub">
+		Powered by <strong>Snowflake Cortex Analyst</strong> — ask anything about this mine, its operators, or your grid.
+	</p>
 
 	<div class="chips">
 		{#each chips as chip}
@@ -62,67 +66,83 @@
 			maxlength="500"
 			disabled={asking}
 		/>
-		<button type="submit" disabled={asking}>Ask</button>
+		<button type="submit" disabled={asking}>{asking ? '...' : 'Ask'}</button>
 	</form>
 
-	<div class="transcript">
-		{#each transcript as entry}
-			<div class="entry glass">
-				<p class="q">{entry.question}</p>
-				{#if entry.error}
-					<p class="error">{entry.error}</p>
-				{/if}
-				{#if entry.answer}
-					<p class="a">{entry.answer}</p>
-				{/if}
-				{#if entry.results}
-					<div class="results">
-						<table>
-							<thead>
-								<tr>
-									{#each Object.keys(entry.results[0] || {}) as col}
-										<th>{col}</th>
-									{/each}
-								</tr>
-							</thead>
-							<tbody>
-								{#each entry.results as row}
+	{#if transcript.length > 0}
+		<div class="transcript">
+			{#each transcript as entry}
+				<div class="entry glass">
+					<p class="q">{entry.question}</p>
+					{#if entry.error}
+						<p class="error">{entry.error}</p>
+					{/if}
+					{#if entry.answer}
+						<p class="a">{entry.answer}</p>
+					{/if}
+					{#if entry.results && entry.results.length > 0}
+						<div class="results">
+							<table>
+								<thead>
 									<tr>
-										{#each Object.values(row) as val}
-											<td>{val}</td>
+										{#each Object.keys(entry.results[0]) as col}
+											<th>{col.replace(/_/g, ' ')}</th>
 										{/each}
 									</tr>
-								{/each}
-							</tbody>
-						</table>
-					</div>
-				{/if}
-				{#if entry.sql}
-					<details>
-						<summary class="sql-toggle">Show SQL</summary>
-						<pre class="sql">{entry.sql}</pre>
-					</details>
-				{/if}
-			</div>
-		{/each}
-	</div>
+								</thead>
+								<tbody>
+									{#each entry.results as row}
+										<tr>
+											{#each Object.values(row) as val}
+												<td>{typeof val === 'number' ? val.toLocaleString() : val}</td>
+											{/each}
+										</tr>
+									{/each}
+								</tbody>
+							</table>
+						</div>
+					{/if}
+					{#if entry.sql}
+						<details>
+							<summary class="sql-toggle">Show generated SQL</summary>
+							<pre class="sql">{entry.sql}</pre>
+						</details>
+					{/if}
+				</div>
+			{/each}
+		</div>
+	{/if}
 </section>
 
 <style>
 	.chat {
 		min-height: 80vh;
 		padding: var(--section-pad);
-		max-width: 680px;
+		max-width: 700px;
+		margin: 0 auto;
 	}
 
-	.label { display: flex; align-items: center; gap: 0.8rem; margin-bottom: 2rem; }
-	.label-line { width: 32px; height: 1px; background: var(--text-ghost); }
-	.label-text {
-		font-family: var(--mono);
-		font-size: 0.6rem;
-		letter-spacing: 0.25em;
-		text-transform: uppercase;
-		color: var(--text-ghost);
+	.chat-heading {
+		font-family: var(--serif);
+		font-size: clamp(1.8rem, 4vw, 2.5rem);
+		font-weight: 400;
+		color: var(--text);
+		margin-bottom: 0.5rem;
+		text-align: center;
+	}
+
+	.chat-sub {
+		font-family: var(--serif);
+		font-size: 0.9rem;
+		color: var(--text-dim);
+		text-align: center;
+		margin-bottom: 2rem;
+		font-style: italic;
+	}
+	.chat-sub strong {
+		color: var(--accent);
+		font-weight: 600;
+		font-style: normal;
 	}
 
 	.chips {
@@ -130,12 +150,13 @@
 		flex-wrap: wrap;
 		gap: 0.4rem;
 		margin-bottom: 1.2rem;
+		justify-content: center;
 	}
 	.chip {
 		font-family: var(--serif);
 		font-size: 0.8rem;
 		font-style: italic;
-		padding: 0.45rem 0.9rem;
+		padding: 0.5rem 1rem;
 		background: rgba(255,255,255,0.03);
 		border: 1px solid var(--border-glass);
 		border-radius: 2rem;
@@ -147,6 +168,7 @@
 		border-color: var(--accent);
 		color: var(--accent);
 	}
+	.chip:disabled { opacity: 0.4; cursor: not-allowed; }
 
 	.form {
 		display: flex;
@@ -179,20 +201,17 @@
 		border-radius: 6px;
 		cursor: pointer;
 		letter-spacing: 0.08em;
-		font-weight: 400;
 	}
-	button[type="submit"]:hover:not(:disabled) {
-		opacity: 0.85;
-	}
+	button[type="submit"]:hover:not(:disabled) { opacity: 0.85; }
+	button[type="submit"]:disabled { opacity: 0.4; cursor: not-allowed; }
 
 	.transcript {
 		display: flex;
 		flex-direction: column;
 		gap: 1rem;
 	}
-	.entry {
-		padding: 1.2rem;
-	}
+	.entry { padding: 1.2rem; }
+
 	.q {
 		font-family: var(--serif);
 		font-weight: 600;
@@ -215,11 +234,7 @@
 		margin-top: 0.6rem;
 		overflow-x: auto;
 	}
-	table {
-		width: 100%;
-		border-collapse: collapse;
-		font-size: 0.8rem;
-	}
+	table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
 	th, td {
 		text-align: left;
 		padding: 0.35rem 0.6rem;

@@ -82,11 +82,6 @@
 
 <section class="hero" aria-label="Find your mine">
 	<div class="hero-inner">
-		<div class="label">
-			<span class="label-line"></span>
-			<span class="label-text">01 &ensp; the switch</span>
-		</div>
-
 		<h1>
 			You <span class="rust">came</span> home.<br/>
 			You turned <span class="rust">on</span> <em>a light.</em>
@@ -160,27 +155,6 @@
 		max-width: 720px;
 	}
 
-	/* ---- Section label ---- */
-	.label {
-		display: flex;
-		align-items: center;
-		gap: 0.8rem;
-		margin-bottom: 1.8rem;
-	}
-	.label-line {
-		width: 32px;
-		height: 1px;
-		background: var(--text-ghost);
-	}
-	.label-text {
-		font-family: var(--mono);
-		font-size: 0.6rem;
-		letter-spacing: 0.25em;
-		text-transform: uppercase;
-		color: var(--text-ghost);
-	}
-
-	/* ---- Headline ---- */
 	h1 {
 		font-family: var(--serif);
 		font-size: clamp(3rem, 8vw, 5.8rem);
