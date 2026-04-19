@@ -18,7 +18,6 @@
 		const entry = { question: q, answer: null, error: null, sql: null };
 		transcript = [...transcript, entry];
 		question = '';
-
 		try {
 			const result = await fetchAsk(q, subregionId);
 			entry.answer = result.answer || result.interpretation || '';
@@ -41,40 +40,40 @@
 </script>
 
 <section class="chat">
-	<p class="chat__pre">05 — ASK YOUR GRID</p>
+	<div class="label">
+		<span class="label-line"></span>
+		<span class="label-text">05 &ensp; ask your grid</span>
+	</div>
 
-	<div class="chat__chips">
+	<div class="chips">
 		{#each chips as chip}
-			<button class="chat__chip" onclick={() => ask(chip)} disabled={asking}>
-				{chip}
-			</button>
+			<button class="chip" onclick={() => ask(chip)} disabled={asking}>{chip}</button>
 		{/each}
 	</div>
 
-	<form class="chat__form" onsubmit={handleSubmit}>
+	<form class="form glass" onsubmit={handleSubmit}>
 		<input
-			class="chat__input"
 			type="text"
 			bind:value={question}
 			placeholder="Ask a question about this mine..."
 			maxlength="500"
 			disabled={asking}
 		/>
-		<button class="chat__btn" type="submit" disabled={asking}>Ask</button>
+		<button type="submit" disabled={asking}>Ask</button>
 	</form>
 
-	<div class="chat__transcript">
+	<div class="transcript">
 		{#each transcript as entry}
-			<div class="chat__entry">
-				<p class="chat__q">{entry.question}</p>
+			<div class="entry glass">
+				<p class="q">{entry.question}</p>
 				{#if entry.error}
-					<p class="chat__error">{entry.error}</p>
+					<p class="error">{entry.error}</p>
 				{/if}
 				{#if entry.answer}
-					<p class="chat__a">{entry.answer}</p>
+					<p class="a">{entry.answer}</p>
 				{/if}
 				{#if entry.results}
-					<div class="chat__results">
+					<div class="results">
 						<table>
 							<thead>
 								<tr>
@@ -96,9 +95,9 @@
 					</div>
 				{/if}
 				{#if entry.sql}
-					<details class="chat__sql-details">
-						<summary class="chat__sql-toggle">Show SQL</summary>
-						<pre class="chat__sql">{entry.sql}</pre>
+					<details>
+						<summary class="sql-toggle">Show SQL</summary>
+						<pre class="sql">{entry.sql}</pre>
 					</details>
 				{/if}
 			</div>
@@ -109,158 +108,145 @@
 <style>
 	.chat {
 		min-height: 80vh;
-		padding: 4rem 2rem;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		max-width: 700px;
-		margin: 0 auto;
+		padding: var(--section-pad);
+		max-width: 680px;
 	}
 
-	.chat__pre {
-		font-family: 'JetBrains Mono', monospace;
-		font-size: 0.75rem;
-		letter-spacing: 0.15em;
+	.label { display: flex; align-items: center; gap: 0.8rem; margin-bottom: 2rem; }
+	.label-line { width: 32px; height: 1px; background: var(--text-ghost); }
+	.label-text {
+		font-family: var(--mono);
+		font-size: 0.6rem;
+		letter-spacing: 0.25em;
 		text-transform: uppercase;
-		color: var(--text-muted);
-		margin-bottom: 2rem;
+		color: var(--text-ghost);
 	}
 
-	.chat__chips {
+	.chips {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 0.5rem;
-		margin-bottom: 1.5rem;
-		justify-content: center;
+		gap: 0.4rem;
+		margin-bottom: 1.2rem;
 	}
-
-	.chat__chip {
-		font-family: 'Inter', sans-serif;
-		font-size: 0.85rem;
-		padding: 0.5rem 1rem;
-		background: var(--bg-card);
-		border: 1px solid var(--border);
+	.chip {
+		font-family: var(--serif);
+		font-size: 0.8rem;
+		font-style: italic;
+		padding: 0.45rem 0.9rem;
+		background: rgba(255,255,255,0.03);
+		border: 1px solid var(--border-glass);
 		border-radius: 2rem;
-		color: var(--text-muted);
+		color: var(--text-dim);
 		cursor: pointer;
+		transition: all 0.2s;
 	}
-
-	.chat__chip:hover:not(:disabled) {
+	.chip:hover:not(:disabled) {
 		border-color: var(--accent);
 		color: var(--accent);
 	}
 
-	.chat__form {
+	.form {
 		display: flex;
 		gap: 0.5rem;
-		width: 100%;
-		margin-bottom: 2rem;
+		padding: 0.8rem;
+		margin-bottom: 1.5rem;
 	}
 
-	.chat__input {
+	input[type="text"] {
 		flex: 1;
-		font-family: 'Inter', sans-serif;
-		font-size: 0.95rem;
-		padding: 0.7rem 1rem;
-		background: var(--bg-card);
+		font-family: var(--serif);
+		font-size: 0.9rem;
+		padding: 0.7rem 0.9rem;
+		background: rgba(0,0,0,0.3);
 		color: var(--text);
-		border: 1px solid var(--border);
-		border-radius: 4px;
-	}
-
-	.chat__input:focus {
+		border: 1px solid rgba(255,255,255,0.05);
+		border-radius: 6px;
 		outline: none;
-		border-color: var(--accent);
 	}
+	input:focus { border-color: var(--accent); }
+	input::placeholder { color: var(--text-ghost); font-style: italic; }
 
-	.chat__btn {
-		font-family: 'Inter', sans-serif;
-		font-size: 0.95rem;
-		padding: 0.7rem 1.2rem;
+	button[type="submit"] {
+		font-family: var(--mono);
+		font-size: 0.7rem;
+		padding: 0.7rem 1rem;
 		background: var(--accent);
 		color: var(--bg);
-		border: 1px solid var(--accent);
-		border-radius: 4px;
+		border: none;
+		border-radius: 6px;
 		cursor: pointer;
-		font-weight: 600;
+		letter-spacing: 0.08em;
+		font-weight: 400;
+	}
+	button[type="submit"]:hover:not(:disabled) {
+		opacity: 0.85;
 	}
 
-	.chat__transcript {
-		width: 100%;
+	.transcript {
 		display: flex;
 		flex-direction: column;
-		gap: 1.5rem;
+		gap: 1rem;
 	}
-
-	.chat__entry {
-		padding: 1rem;
-		background: var(--bg-card);
-		border: 1px solid var(--border);
-		border-radius: 6px;
+	.entry {
+		padding: 1.2rem;
 	}
-
-	.chat__q {
+	.q {
+		font-family: var(--serif);
 		font-weight: 600;
-		color: var(--accent);
-		margin-bottom: 0.75rem;
-		font-size: 0.95rem;
-	}
-
-	.chat__a {
-		font-size: 0.95rem;
-		line-height: 1.6;
-	}
-
-	.chat__error {
-		color: #c45a5a;
 		font-size: 0.9rem;
+		color: var(--accent);
+		margin-bottom: 0.6rem;
+	}
+	.a {
+		font-size: 0.9rem;
+		line-height: 1.7;
+		color: var(--text);
+	}
+	.error {
+		color: var(--accent);
+		font-size: 0.85rem;
+		font-style: italic;
 	}
 
-	.chat__results {
-		margin-top: 0.75rem;
+	.results {
+		margin-top: 0.6rem;
 		overflow-x: auto;
 	}
-
-	.chat__results table {
+	table {
 		width: 100%;
 		border-collapse: collapse;
-		font-size: 0.85rem;
-	}
-
-	.chat__results th,
-	.chat__results td {
-		text-align: left;
-		padding: 0.4rem 0.75rem;
-		border-bottom: 1px solid var(--border);
-	}
-
-	.chat__results th {
-		font-size: 0.75rem;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--text-muted);
-	}
-
-	.chat__sql-details {
-		margin-top: 0.5rem;
-	}
-
-	.chat__sql-toggle {
 		font-size: 0.8rem;
+	}
+	th, td {
+		text-align: left;
+		padding: 0.35rem 0.6rem;
+		border-bottom: 1px solid rgba(255,255,255,0.05);
+	}
+	th {
+		font-family: var(--mono);
+		font-size: 0.6rem;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		color: var(--text-ghost);
+	}
+	td { color: var(--text-dim); }
+
+	.sql-toggle {
+		font-family: var(--mono);
+		font-size: 0.7rem;
 		color: var(--green);
 		cursor: pointer;
-	}
-
-	.chat__sql {
 		margin-top: 0.5rem;
-		padding: 0.75rem;
-		background: var(--bg);
-		border-radius: 4px;
-		font-family: 'JetBrains Mono', monospace;
-		font-size: 0.8rem;
+	}
+	.sql {
+		margin-top: 0.4rem;
+		padding: 0.6rem;
+		background: rgba(0,0,0,0.3);
+		border-radius: 6px;
+		font-family: var(--mono);
+		font-size: 0.7rem;
 		color: var(--green);
 		white-space: pre-wrap;
 		word-break: break-word;
-		overflow-x: auto;
 	}
 </style>

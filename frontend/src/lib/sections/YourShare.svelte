@@ -1,37 +1,40 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
-
 	let { data } = $props();
 
 	const SECONDS_IN_YEAR = 365.25 * 24 * 60 * 60;
 	const rate = data.tons / SECONDS_IN_YEAR;
-	let tonsSoFar = $state(0);
-	let rafId = null;
-	let startTime = null;
+	let tons = $state(0);
+	let raf = null;
+	let t0 = null;
 
 	onMount(() => {
 		function tick(now) {
-			if (!startTime) startTime = now;
-			tonsSoFar = rate * ((now - startTime) / 1000);
-			rafId = requestAnimationFrame(tick);
+			if (!t0) t0 = now;
+			tons = rate * ((now - t0) / 1000);
+			raf = requestAnimationFrame(tick);
 		}
-		rafId = requestAnimationFrame(tick);
+		raf = requestAnimationFrame(tick);
 	});
-
-	onDestroy(() => { if (rafId) cancelAnimationFrame(rafId); });
+	onDestroy(() => { if (raf) cancelAnimationFrame(raf); });
 </script>
 
 <section class="share">
-	<p class="share__pre">04 — YOUR SHARE</p>
-
-	<div class="share__ticker">
-		<span class="share__number">{tonsSoFar.toFixed(2)}</span>
-		<span class="share__unit">tons extracted since you opened this page</span>
+	<div class="label">
+		<span class="label-line"></span>
+		<span class="label-text">04 &ensp; your share</span>
 	</div>
 
-	<p class="share__line">That coal is leaving <em>{data.mine_county}</em> right now.</p>
-	<p class="share__line">It is being burned at <em>{data.plant}</em> right now.</p>
-	<p class="share__line">Your lights are on right now.</p>
+	<div class="ticker">
+		<span class="number">{tons.toFixed(2)}</span>
+		<span class="unit">tons extracted since you opened this page</span>
+	</div>
+
+	<div class="lines">
+		<p>That coal is leaving <em class="rust">{data.mine_county}</em> right now.</p>
+		<p>It is being burned at <em class="rust">{data.plant}</em> right now.</p>
+		<p>Your lights are on right now.</p>
+	</div>
 </section>
 
 <style>
@@ -39,48 +42,52 @@
 		min-height: 100vh;
 		display: flex;
 		flex-direction: column;
-		align-items: center;
 		justify-content: center;
-		padding: 4rem 2rem;
-		text-align: center;
+		padding: var(--section-pad);
 	}
 
-	.share__pre {
-		font-family: var(--font-mono);
-		font-size: 0.7rem;
-		letter-spacing: 0.15em;
+	.label { display: flex; align-items: center; gap: 0.8rem; margin-bottom: 2rem; }
+	.label-line { width: 32px; height: 1px; background: var(--text-ghost); }
+	.label-text {
+		font-family: var(--mono);
+		font-size: 0.6rem;
+		letter-spacing: 0.25em;
 		text-transform: uppercase;
-		color: var(--text-muted);
-		margin-bottom: 3rem;
+		color: var(--text-ghost);
 	}
 
-	.share__ticker { margin-bottom: 4rem; }
+	.ticker { margin-bottom: 3.5rem; }
 
-	.share__number {
+	.number {
 		display: block;
-		font-family: var(--font-mono);
-		font-size: clamp(3rem, 10vw, 6rem);
+		font-family: var(--mono);
+		font-size: clamp(3rem, 11vw, 7rem);
 		font-weight: 300;
 		color: var(--accent);
 		line-height: 1;
-		margin-bottom: 0.5rem;
+		letter-spacing: -0.02em;
 	}
-
-	.share__unit {
-		font-family: var(--font-mono);
-		font-size: 0.7rem;
-		color: var(--text-muted);
-		letter-spacing: 0.1em;
+	.unit {
+		display: block;
+		font-family: var(--mono);
+		font-size: 0.6rem;
+		color: var(--text-ghost);
+		letter-spacing: 0.15em;
 		text-transform: uppercase;
+		margin-top: 0.6rem;
 	}
 
-	.share__line {
-		font-family: var(--font-serif);
-		font-size: clamp(1.2rem, 3vw, 1.8rem);
-		color: var(--text);
-		margin-bottom: 1rem;
-		max-width: 500px;
+	.lines p {
+		font-family: var(--serif);
+		font-size: clamp(1.2rem, 3vw, 1.9rem);
+		font-weight: 300;
+		color: var(--text-dim);
+		margin-bottom: 0.8rem;
+		max-width: 520px;
+		line-height: 1.4;
 	}
-
-	.share__line em { color: var(--accent); font-style: italic; }
+	.lines :global(.rust) {
+		color: var(--accent);
+		font-style: italic;
+	}
 </style>

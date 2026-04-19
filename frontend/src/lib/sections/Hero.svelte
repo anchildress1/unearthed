@@ -34,12 +34,12 @@
 		const geojson = await loadSubregionGeoJSON();
 		const subregion = findSubregion(lat, lon, geojson);
 		if (!subregion) {
-			localError = 'That location is outside the US grid coverage area. Try the state picker.';
+			localError = 'That location is outside the US grid coverage area.';
 			showStatePicker = true;
 			return;
 		}
 		if (!hasCoalData(subregion)) {
-			localError = `Your grid subregion (${subregion}) has no active coal supply chain in our data.`;
+			localError = `Your grid subregion (${subregion}) has no active coal supply chain.`;
 			showStatePicker = true;
 			return;
 		}
@@ -62,7 +62,7 @@
 		localError = null;
 		const coords = await requestLocation();
 		if (!coords) {
-			localError = 'Location access denied. Try entering an address.';
+			localError = 'Location access denied.';
 			showStatePicker = true;
 			return;
 		}
@@ -81,75 +81,67 @@
 </script>
 
 <section class="hero">
-	<div class="hero__content">
-		<div class="hero__label">
-			<span class="hero__line"></span>
-			<span class="hero__tag">01 &nbsp; THE SWITCH</span>
+	<div class="hero-inner">
+		<div class="label">
+			<span class="label-line"></span>
+			<span class="label-text">01 &ensp; the switch</span>
 		</div>
-		<h1 class="hero__title">
-			You <span class="accent">came</span> home.<br />
-			You turned <span class="accent">on</span> <em>a light.</em>
+
+		<h1>
+			You <span class="rust">came</span> home.<br/>
+			You turned <span class="rust">on</span> <em>a light.</em>
 		</h1>
 
-		<p class="hero__sub">tell us where that light is</p>
+		<p class="sub">tell us where that light is</p>
 
-		<form class="hero__form" onsubmit={handleSubmit}>
-			<input
-				class="hero__input"
-				type="text"
-				placeholder="Enter address or zip code"
-				bind:value={address}
-				maxlength="200"
-				autocomplete="off"
-				disabled={loading}
-			/>
-			<button class="hero__btn" type="submit" disabled={loading}>
-				{loading ? '...' : 'Trace →'}
+		<div class="input-group glass">
+			<form class="form" onsubmit={handleSubmit}>
+				<input
+					type="text"
+					placeholder="Enter address or zip code"
+					bind:value={address}
+					maxlength="200"
+					autocomplete="off"
+					disabled={loading}
+				/>
+				<button type="submit" disabled={loading}>
+					{loading ? '...' : 'trace →'}
+				</button>
+			</form>
+
+			<div class="divider"><span>or</span></div>
+
+			<button class="geo-btn" onclick={handleGeolocate} disabled={loading}>
+				Use my location
 			</button>
-		</form>
 
-		<div class="hero__or"><span>or</span></div>
-
-		<button class="hero__locate" onclick={handleGeolocate} disabled={loading}>
-			Use my location
-		</button>
-
-		{#if showStatePicker}
-			<div class="hero__state">
-				<p class="hero__state-label">Pick your state instead:</p>
-				<div class="hero__state-row">
-					<select class="hero__select" bind:value={selectedState}>
+			{#if showStatePicker}
+				<div class="state-pick">
+					<select bind:value={selectedState}>
 						<option value="">Select a state...</option>
 						{#each states as code}
 							<option value={code}>{stateLabels[code] || code}</option>
 						{/each}
 					</select>
-					<button class="hero__btn" onclick={handleStateGo} disabled={!selectedState || loading}>
-						Show me
-					</button>
+					<button onclick={handleStateGo} disabled={!selectedState || loading}>Show me</button>
 				</div>
-			</div>
-		{/if}
+			{/if}
+		</div>
 
 		{#if localError || error}
-			<p class="hero__error">{localError || error}</p>
+			<p class="err">{localError || error}</p>
 		{/if}
 
 		{#if loading}
-			<p class="hero__loading">Tracing your grid...</p>
+			<p class="loading">Tracing your grid...</p>
 		{/if}
 
-		<p class="hero__hint">
-			We find the nearest coal-burning power plant on your grid — nothing is stored or shared.
-		</p>
+		<p class="hint">We find the nearest coal-burning power plant on your grid — nothing is stored or shared.</p>
 	</div>
 
-	<a
-		class="hero__credit"
-		href="https://www.flickr.com/photos/nationalmemorialforthemountains/255887679/"
-		target="_blank"
-		rel="noopener"
-	>Photo: Kent Kessinger / iLoveMountains.org / Flickr — Flight courtesy of SouthWings</a>
+	<a class="credit" href="https://www.flickr.com/photos/nationalmemorialforthemountains/255887679/" target="_blank" rel="noopener">
+		Photo: Kent Kessinger / iLoveMountains.org — Flight courtesy SouthWings
+	</a>
 </section>
 
 <style>
@@ -157,202 +149,198 @@
 		min-height: 100vh;
 		display: flex;
 		align-items: center;
-		justify-content: flex-start;
-		padding: 2rem 4rem;
+		padding: var(--section-pad);
 		position: relative;
 	}
 
-	.hero__content {
-		text-align: left;
-		max-width: 800px;
-		position: relative;
-		z-index: 1;
+	.hero-inner {
+		max-width: 720px;
 	}
 
-	.hero__label {
+	/* ---- Section label ---- */
+	.label {
 		display: flex;
 		align-items: center;
-		gap: 1rem;
-		margin-bottom: 1.5rem;
+		gap: 0.8rem;
+		margin-bottom: 1.8rem;
 	}
-
-	.hero__line {
-		display: block;
-		width: 40px;
+	.label-line {
+		width: 32px;
 		height: 1px;
-		background: var(--text-muted);
+		background: var(--text-ghost);
 	}
-
-	.hero__tag {
-		font-family: var(--font-mono);
-		font-size: 0.65rem;
-		letter-spacing: 0.2em;
+	.label-text {
+		font-family: var(--mono);
+		font-size: 0.6rem;
+		letter-spacing: 0.25em;
 		text-transform: uppercase;
-		color: var(--text-muted);
+		color: var(--text-ghost);
 	}
 
-	.hero__title {
-		font-family: var(--font-serif);
-		font-size: clamp(2.8rem, 7vw, 5.5rem);
+	/* ---- Headline ---- */
+	h1 {
+		font-family: var(--serif);
+		font-size: clamp(3rem, 8vw, 5.8rem);
 		font-weight: 400;
-		line-height: 1.08;
+		line-height: 1.05;
 		color: var(--text);
-		margin-bottom: 3rem;
+		margin-bottom: 2.5rem;
+		letter-spacing: -0.01em;
 	}
-
-	.hero__title :global(.accent) {
+	h1 em {
+		font-style: italic;
+		color: var(--text);
+	}
+	:global(.rust) {
 		color: var(--accent);
 	}
 
-	.hero__title em {
+	.sub {
+		font-family: var(--mono);
+		font-size: 0.7rem;
+		text-transform: uppercase;
+		letter-spacing: 0.18em;
+		color: var(--text-dim);
+		margin-bottom: 1.2rem;
+	}
+
+	/* ---- Glass input group ---- */
+	.input-group {
+		padding: 1.5rem;
+		max-width: 460px;
+	}
+
+	.form {
+		display: flex;
+		gap: 0.5rem;
+	}
+
+	input[type="text"] {
+		flex: 1;
+		font-family: var(--serif);
+		font-size: 0.95rem;
+		padding: 0.8rem 1rem;
+		background: rgba(0, 0, 0, 0.4);
 		color: var(--text);
+		border: 1px solid rgba(255, 255, 255, 0.06);
+		border-radius: 6px;
+		outline: none;
+	}
+	input[type="text"]:focus {
+		border-color: var(--accent);
+		box-shadow: 0 0 0 1px var(--accent-glow);
+	}
+	input[type="text"]::placeholder {
+		color: var(--text-ghost);
 		font-style: italic;
 	}
 
-	.hero__sub {
-		font-family: var(--font-mono);
+	button {
+		font-family: var(--mono);
 		font-size: 0.75rem;
-		color: var(--text-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.12em;
-		margin-bottom: 1.5rem;
-	}
-
-	.hero__form {
-		display: flex;
-		gap: 0.5rem;
-		max-width: 480px;
-	}
-
-	.hero__input {
-		flex: 1;
-		font-family: var(--font-sans);
-		font-size: 1rem;
-		padding: 0.85rem 1.2rem;
-		background: rgba(26, 26, 26, 0.9);
-		color: var(--text);
-		border: 1px solid var(--border);
-		border-radius: 4px;
-	}
-
-	.hero__input:focus { outline: none; border-color: var(--accent); }
-	.hero__input::placeholder { color: var(--text-muted); }
-
-	.hero__btn {
-		font-family: var(--font-mono);
-		font-size: 0.85rem;
-		padding: 0.85rem 1.5rem;
+		padding: 0.8rem 1.2rem;
 		background: transparent;
 		color: var(--accent);
-		border: 1px solid var(--accent);
-		border-radius: 4px;
+		border: 1px solid rgba(194, 84, 45, 0.4);
+		border-radius: 6px;
 		cursor: pointer;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.08em;
 		white-space: nowrap;
+		transition: all 0.2s ease;
+	}
+	button:hover:not(:disabled) {
+		background: var(--accent);
+		color: var(--bg);
+		border-color: var(--accent);
+	}
+	button:disabled {
+		opacity: 0.3;
+		cursor: not-allowed;
 	}
 
-	.hero__btn:hover:not(:disabled) { background: var(--accent); color: var(--bg); }
-	.hero__btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-	.hero__or {
+	.divider {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
-		margin: 1rem 0;
-		color: var(--text-muted);
-		font-size: 0.8rem;
-		max-width: 480px;
+		gap: 0.6rem;
+		margin: 0.8rem 0;
+		font-size: 0.7rem;
+		color: var(--text-ghost);
 	}
-
-	.hero__or::before, .hero__or::after {
+	.divider::before, .divider::after {
 		content: '';
 		flex: 1;
 		height: 1px;
-		background: var(--border);
+		background: rgba(255,255,255,0.05);
 	}
 
-	.hero__locate {
-		font-family: var(--font-sans);
-		font-size: 0.95rem;
-		padding: 0.75rem 2rem;
-		background: transparent;
-		color: var(--accent);
-		border: 1px solid var(--accent);
-		border-radius: 4px;
-		cursor: pointer;
+	.geo-btn {
+		width: 100%;
+		font-family: var(--serif);
+		font-size: 0.9rem;
+		font-style: italic;
+		padding: 0.7rem;
 	}
 
-	.hero__locate:hover:not(:disabled) { background: var(--accent); color: var(--bg); }
-
-	.hero__state {
-		margin: 1.5rem 0;
-		max-width: 400px;
-	}
-
-	.hero__state-label {
-		font-size: 0.85rem;
-		color: var(--text-muted);
-		margin-bottom: 0.75rem;
-	}
-
-	.hero__state-row {
+	.state-pick {
 		display: flex;
 		gap: 0.5rem;
+		margin-top: 0.8rem;
 	}
-
-	.hero__select {
+	select {
 		flex: 1;
-		font-family: var(--font-sans);
-		font-size: 1rem;
-		padding: 0.6rem 1rem;
-		background: rgba(26, 26, 26, 0.9);
+		font-family: var(--serif);
+		font-size: 0.9rem;
+		padding: 0.6rem 0.8rem;
+		background: rgba(0,0,0,0.4);
 		color: var(--text);
-		border: 1px solid var(--border);
-		border-radius: 4px;
+		border: 1px solid rgba(255,255,255,0.06);
+		border-radius: 6px;
 		appearance: none;
+		outline: none;
 	}
 
-	.hero__error {
-		color: #c45a5a;
-		font-size: 0.9rem;
-		margin: 1rem 0;
-		max-width: 400px;
-		padding: 0.75rem;
-		background: rgba(196, 90, 90, 0.1);
-		border: 1px solid rgba(196, 90, 90, 0.3);
-		border-radius: 4px;
-	}
-
-	.hero__loading {
-		color: var(--text-muted);
-		font-size: 0.9rem;
-		margin: 1rem 0;
+	.err {
+		color: var(--accent);
+		font-size: 0.85rem;
 		font-style: italic;
+		margin-top: 1rem;
+		max-width: 460px;
 	}
 
-	.hero__hint {
-		font-size: 0.75rem;
-		color: #4a4540;
-		margin-top: 2.5rem;
+	.loading {
+		color: var(--text-dim);
+		font-size: 0.85rem;
+		font-style: italic;
+		margin-top: 1rem;
 	}
 
-	.hero__credit {
+	.hint {
+		font-size: 0.7rem;
+		color: var(--text-ghost);
+		margin-top: 2rem;
+		max-width: 400px;
+		line-height: 1.5;
+	}
+
+	.credit {
 		position: absolute;
-		bottom: 1rem;
-		right: 1rem;
-		font-size: 0.65rem;
-		color: var(--text-muted);
-		opacity: 0.4;
+		bottom: 1.2rem;
+		right: var(--section-pad);
+		font-family: var(--mono);
+		font-size: 0.55rem;
+		color: var(--text-ghost);
+		opacity: 0.5;
 		text-decoration: none;
-		z-index: 1;
-		line-height: 1.3;
-		max-width: 280px;
+		max-width: 260px;
 		text-align: right;
+		line-height: 1.4;
+		letter-spacing: 0.02em;
+		transition: opacity 0.3s;
 	}
-
-	.hero__credit:hover { opacity: 1; color: var(--text); }
+	.credit:hover { opacity: 1; }
 
 	@media (max-width: 768px) {
-		.hero { padding: 2rem; }
+		.hero { padding: 1.5rem; }
+		.input-group { max-width: 100%; }
 	}
 </style>

@@ -3,20 +3,23 @@
 </script>
 
 <section class="reveal">
-	<p class="reveal__pre">02 — THE SOURCE</p>
-	<h2 class="reveal__title">
-		<em>{data.mine}</em>
-	</h2>
-	<p class="reveal__location">{data.mine_county}, {data.mine_state}</p>
-	<p class="reveal__operator">{data.mine_operator}</p>
-
-	<div class="reveal__stat">
-		<span class="reveal__number">{Number(data.tons).toLocaleString()}</span>
-		<span class="reveal__unit">tons of coal in {data.tons_year}</span>
+	<div class="label">
+		<span class="label-line"></span>
+		<span class="label-text">02 &ensp; the source</span>
 	</div>
 
-	<p class="reveal__verdict">
-		From this mine. To <em>{data.plant}</em>. To your grid.
+	<h2><em>{data.mine}.</em></h2>
+
+	<p class="geo">{data.mine_county}, {data.mine_state}</p>
+	<p class="operator">{data.mine_operator}</p>
+
+	<div class="tonnage">
+		<span class="tons">{Number(data.tons).toLocaleString()}</span>
+		<span class="tons-label">tons of coal, {data.tons_year}</span>
+	</div>
+
+	<p class="verdict">
+		From this mine. To <em class="rust">{data.plant}</em>. To your grid.
 	</p>
 </section>
 
@@ -25,59 +28,75 @@
 		min-height: 100vh;
 		display: flex;
 		flex-direction: column;
-		align-items: center;
 		justify-content: center;
-		padding: 4rem 2rem;
-		text-align: center;
+		padding: var(--section-pad);
 	}
 
-	.reveal__pre {
-		font-family: var(--font-mono);
-		font-size: 0.7rem;
+	.label { display: flex; align-items: center; gap: 0.8rem; margin-bottom: 1.8rem; }
+	.label-line { width: 32px; height: 1px; background: var(--text-ghost); }
+	.label-text {
+		font-family: var(--mono);
+		font-size: 0.6rem;
+		letter-spacing: 0.25em;
+		text-transform: uppercase;
+		color: var(--text-ghost);
+	}
+
+	h2 {
+		font-family: var(--serif);
+		font-size: clamp(2.5rem, 7vw, 5rem);
+		font-weight: 400;
+		line-height: 1.05;
+		color: var(--text);
+		margin-bottom: 0.6rem;
+	}
+	h2 em {
+		font-style: italic;
+		color: var(--accent);
+	}
+
+	.geo {
+		font-size: 1.1rem;
+		color: var(--text-dim);
+		margin-bottom: 0.2rem;
+	}
+	.operator {
+		font-size: 0.85rem;
+		color: var(--text-ghost);
+		margin-bottom: 3.5rem;
+	}
+
+	.tonnage {
+		margin-bottom: 3.5rem;
+	}
+	.tons {
+		display: block;
+		font-family: var(--serif);
+		font-size: clamp(3.5rem, 12vw, 8rem);
+		font-weight: 300;
+		color: var(--accent);
+		line-height: 0.95;
+		letter-spacing: -0.02em;
+	}
+	.tons-label {
+		font-family: var(--mono);
+		font-size: 0.65rem;
+		color: var(--text-ghost);
 		letter-spacing: 0.15em;
 		text-transform: uppercase;
-		color: var(--text-muted);
-		margin-bottom: 2rem;
-	}
-
-	.reveal__title {
-		font-family: var(--font-serif);
-		font-size: clamp(2rem, 6vw, 4.5rem);
-		font-weight: 400;
-		color: var(--text);
-		margin-bottom: 0.5rem;
-	}
-
-	.reveal__title em { color: var(--accent); font-style: italic; }
-
-	.reveal__location { font-size: 1.1rem; color: var(--text-muted); margin-bottom: 0.25rem; }
-	.reveal__operator { font-size: 0.85rem; color: #4a4540; margin-bottom: 3rem; }
-
-	.reveal__stat { margin-bottom: 3rem; }
-
-	.reveal__number {
+		margin-top: 0.4rem;
 		display: block;
-		font-family: var(--font-serif);
-		font-size: clamp(3rem, 10vw, 7rem);
-		font-weight: 400;
-		color: var(--accent);
-		line-height: 1;
 	}
 
-	.reveal__unit {
-		font-family: var(--font-mono);
-		font-size: 0.75rem;
-		color: var(--text-muted);
-		letter-spacing: 0.1em;
-		text-transform: uppercase;
-	}
-
-	.reveal__verdict {
-		font-family: var(--font-serif);
-		font-size: clamp(1.2rem, 3vw, 1.8rem);
-		color: var(--text);
+	.verdict {
+		font-family: var(--serif);
+		font-size: clamp(1.3rem, 3vw, 2rem);
+		font-weight: 300;
+		color: var(--text-dim);
 		max-width: 500px;
+		line-height: 1.4;
 	}
-
-	.reveal__verdict em { color: var(--green); font-style: italic; }
+	.verdict :global(.rust) {
+		color: var(--accent);
+	}
 </style>

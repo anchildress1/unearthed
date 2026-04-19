@@ -6,12 +6,13 @@
 	<link rel="preconnect" href="https://fonts.googleapis.com" />
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
 	<link
-		href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@300;400;600&family=JetBrains+Mono:wght@300;400&display=swap"
+		href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,600;1,6..72,300;1,6..72,400;1,6..72,600&family=JetBrains+Mono:wght@300;400&display=swap"
 		rel="stylesheet"
 	/>
 </svelte:head>
 
-<div class="bg-fixed"></div>
+<div class="bg-fixed" aria-hidden="true"></div>
+<div class="bg-grain" aria-hidden="true"></div>
 {@render children()}
 
 <style>
@@ -22,30 +23,35 @@
 	}
 
 	:global(:root) {
-		--bg: #0a0a0a;
-		--bg-card: #111111;
+		--bg: #080808;
 		--text: #e8e0d4;
-		--text-muted: #7a756e;
+		--text-dim: #9a9490;
+		--text-ghost: #4a4540;
 		--accent: #c2542d;
-		--accent-light: #d4714e;
-		--green: #6a8a6a;
-		--border: #1e1c1a;
-		--font-serif: 'DM Serif Display', serif;
-		--font-sans: 'Inter', system-ui, sans-serif;
-		--font-mono: 'JetBrains Mono', monospace;
+		--accent-glow: rgba(194, 84, 45, 0.15);
+		--green: #5a7a5a;
+		--border-glass: rgba(255, 255, 255, 0.07);
+		--glass-bg: rgba(255, 255, 255, 0.03);
+		--glass-blur: blur(14px);
+		--serif: 'Newsreader', Georgia, serif;
+		--mono: 'JetBrains Mono', ui-monospace, monospace;
+		--section-pad: clamp(2rem, 5vw, 6rem);
 	}
 
 	:global(html) {
 		font-size: 16px;
 		scroll-behavior: smooth;
+		-webkit-font-smoothing: antialiased;
+		-moz-osx-font-smoothing: grayscale;
 	}
 
 	:global(body) {
-		font-family: var(--font-sans);
+		font-family: var(--serif);
+		font-weight: 300;
 		background: var(--bg);
 		color: var(--text);
-		line-height: 1.6;
-		-webkit-font-smoothing: antialiased;
+		line-height: 1.7;
+		overflow-x: hidden;
 	}
 
 	:global(a) {
@@ -53,33 +59,56 @@
 		text-decoration: none;
 	}
 
+	:global(strong), :global(b) {
+		font-weight: 600;
+		color: var(--text);
+	}
+
+	/* ---- Fixed mountain scar ---- */
 	.bg-fixed {
 		position: fixed;
 		inset: 0;
-		z-index: -1;
-		background-image: url('/img/westva-strip-mine.webp');
-		background-size: cover;
-		background-position: center 40%;
-		background-repeat: no-repeat;
-		opacity: 0.3;
+		z-index: -2;
+		background: url('/img/westva-strip-mine.webp') center 35% / cover no-repeat;
+		opacity: 0.38;
 	}
-
-	/* Radial fade — edges bleed into black */
 	.bg-fixed::after {
 		content: '';
 		position: absolute;
 		inset: 0;
-		background: radial-gradient(
-			ellipse 80% 70% at 50% 40%,
-			transparent 20%,
-			var(--bg) 100%
-		);
+		background:
+			radial-gradient(ellipse 100% 80% at 50% 35%, transparent 25%, var(--bg) 100%),
+			linear-gradient(to bottom, transparent 60%, var(--bg) 100%);
+	}
+
+	/* Film grain texture */
+	.bg-grain {
+		position: fixed;
+		inset: 0;
+		z-index: -1;
+		opacity: 0.035;
+		pointer-events: none;
+		background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+		background-repeat: repeat;
+		background-size: 256px;
 	}
 
 	@media (max-width: 768px) {
 		.bg-fixed {
 			background-image: url('/img/westva-strip-mine-768.webp');
-			opacity: 0.2;
+			opacity: 0.25;
 		}
+	}
+
+	/* ---- Glass utility ---- */
+	:global(.glass) {
+		background: var(--glass-bg);
+		-webkit-backdrop-filter: var(--glass-blur);
+		backdrop-filter: var(--glass-blur);
+		border: 1px solid var(--border-glass);
+		box-shadow:
+			0 8px 32px rgba(0, 0, 0, 0.35),
+			inset 0 1px 0 rgba(255, 255, 255, 0.04);
+		border-radius: 12px;
 	}
 </style>
