@@ -4,12 +4,12 @@
 
 ```mermaid
 flowchart TB
-    subgraph BROWSER["BROWSER (client-side)"]
+    subgraph BROWSER["BROWSER (SvelteKit)"]
         GEO[Geolocation API<br/>→ lat/lon]
         PIP[Point-in-polygon<br/>eGRID GeoJSON ~1MB]
-        MAP[MapLibre GL JS<br/>satellite basemap<br/>animated flow lines]
-        TICKER[Tonnage ticker<br/>requestAnimationFrame]
-        CHAT[Chat UI<br/>chips + transcript]
+        SCROLL[Scroll sections<br/>typographic data reveals]
+        MAP[Google Maps JS API<br/>satellite + flow lines]
+        CHAT[Cortex Analyst chat<br/>chips + transcript]
         GEO --> PIP
     end
 
@@ -20,8 +20,9 @@ flowchart TB
     end
 
     subgraph SNOW["SNOWFLAKE"]
-        DB[(UNEARTHED_DB<br/>RAW → INT → MRT)]
+        DB[(UNEARTHED_DB<br/>RAW + MSHA_ACCIDENTS → MRT)]
         CORTEX[Cortex Analyst<br/>semantic model YAML<br/>→ SQL + suggestions]
+        COMPLETE[Cortex Complete<br/>llama3.1-70b<br/>→ prose from fatality data]
         RO_EXEC[SQL Execution<br/>READONLY_ROLE<br/>500-row cap, 10s timeout]
     end
 
@@ -29,8 +30,12 @@ flowchart TB
     CHAT -->|POST question| ASK_EP
     MINE_EP -->|SQL via APP_ROLE| DB
     MINE_EP -->|Snowflake down| FALLBACK
-    MINE_EP -->|JSON payload| MAP
-    MAP --> TICKER
+    MINE_EP -->|fatality stats| CORTEX
+    CORTEX -->|SQL| RO_EXEC
+    RO_EXEC -->|stats| COMPLETE
+    COMPLETE -->|prose| MINE_EP
+    MINE_EP -->|JSON payload| SCROLL
+    SCROLL --> MAP
     ASK_EP -->|REST API| CORTEX
     CORTEX -->|generated SELECT| RO_EXEC
     RO_EXEC -->|rows as dicts| ASK_EP

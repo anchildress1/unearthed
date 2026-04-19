@@ -31,10 +31,12 @@ Do not add endpoints without updating the PRD.
 
 ### Frontend
 
-- Vanilla JS (no framework). MapLibre GL JS for the map.
-- Chat UI for Cortex Analyst: plain HTML form + chip buttons + transcript div. No component library.
+- SvelteKit (Vite) with static adapter. Scroll-driven typographic sections.
+- Google Maps JavaScript API for satellite map with animated flow lines.
+- Chat UI for Cortex Analyst: Svelte component with chips and transcript.
 - Geolocation: Browser API with permission prompt. Point-in-polygon against bundled eGRID GeoJSON runs client-side.
 - State-picker dropdown as fallback when geolocation is denied or user is outside US.
+- Dev: `make dev` (frontend :5173) + `make server` (backend :8001). Vite proxies API calls.
 
 ### Backend
 
@@ -166,7 +168,7 @@ One Cortex feature in use:
 
 - **Python:** Python 3.12. Follow PEP 8 enforced by `ruff`. Type hints on all function signatures. Use `async def` only if genuinely async; sync is fine for Snowflake connector and Cortex Analyst REST calls.
 - **Dependencies:** `pyproject.toml` with `uv`. Dev deps in `[dependency-groups]`. Run `uv sync` to install, `make lint` / `make fmt` for ruff, `make test` for pytest.
-- **JavaScript:** Vanilla JS, no transpilation. ES modules. No TypeScript for this project (speed over safety for a weekend build).
+- **JavaScript/Svelte:** SvelteKit with Vite. Svelte 5 runes mode. No TypeScript (speed over safety for a weekend build).
 - **SQL:** Uppercase keywords, lowercase only inside string literals. One statement per file when possible. Comment the "why," not the "what."
 - **Secrets:** Never committed. Use `.env` locally (gitignored), Secret Manager in Cloud Run.
 - **Static assets:** Checked into repo under an `assets/` directory. eGRID GeoJSON, hero images, fallback JSON (19 subregions), semantic model YAML.

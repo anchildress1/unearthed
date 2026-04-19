@@ -12,14 +12,15 @@ A live data product that shows any US resident which specific coal mine supplies
 
 ## Tech Stack
 
-- **Frontend:** Vanilla JS, MapLibre GL JS (map, satellite basemap, animated flow lines)
+- **Frontend:** SvelteKit (Vite) — scroll-driven typographic experience, Google Maps JS API
 - **Backend:** Python 3.12 / FastAPI — two endpoints: `/mine-for-me`, `/ask`
-- **Deps:** `pyproject.toml` + `uv` (no requirements.txt). `make install-dev` to set up.
-- **Data:** Snowflake (5 tables, 2 views, 2 roles: APP_ROLE + READONLY_ROLE)
-- **AI:** Snowflake Cortex Analyst (NL → SQL via semantic model YAML)
-- **Deploy:** Google Cloud Run, secrets via Secret Manager, Docker with non-root user
+- **Deps:** `pyproject.toml` + `uv` (backend), `pnpm` (frontend). `make install` to set up both.
+- **Data:** Snowflake (5 tables + `MSHA_ACCIDENTS`, 1 view, 2 roles: APP_ROLE + READONLY_ROLE)
+- **AI:** Snowflake Cortex Analyst (NL → SQL) + Cortex Complete (prose from fatality data)
+- **Deploy:** Google Cloud Run, secrets via Secret Manager, Docker multi-stage
 - **Lint/Format:** `ruff` via `make lint` / `make fmt`
-- **Tests:** `pytest` — `make test` (521 tests, all), `make test-ci` (510, excludes e2e timing tests)
+- **Dev:** `make server` (backend :8001) + `make dev` (frontend :5173, proxies API)
+- **Tests:** `pytest` — `make test` (all), `make test-ci` (excludes e2e)
 - **Assets:** eGRID GeoJSON (~1 MB), 19 fallback JSONs, semantic model YAML
 
 ## Data Sources
