@@ -33,13 +33,13 @@
 				mapId: 'UNEARTHED_MAP',
 				mapTypeId: 'hybrid',
 				disableDefaultUI: true,
-				zoomControl: false,
+				zoomControl: true,
 				scrollwheel: false,
 				disableDoubleClickZoom: true,
 				keyboardShortcuts: false,
-				gestureHandling: 'none',
 			});
-			map.fitBounds(bounds, { top: 100, bottom: 100, left: 100, right: 100 });
+			// Tight padding so the chain fills the frame instead of sitting inside a wide margin.
+			map.fitBounds(bounds, { top: 40, bottom: 40, left: 40, right: 40 });
 
 			// Arc 1: mine → plant (the supply chain)
 			const mineArc = buildArc(mine, plant, 50);
@@ -211,6 +211,9 @@
 	.map-container {
 		width: 100%;
 		height: clamp(400px, 55vh, 600px);
+		/* Darken Google Maps tiles so the satellite imagery sits in the page
+		   palette instead of popping out against the moody dark theme. */
+		filter: brightness(0.62) contrast(1.05) saturate(0.8);
 	}
 
 	.placeholder {
