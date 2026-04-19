@@ -76,26 +76,6 @@ export function subregionForState(stateCode) {
 	return STATE_TO_SUBREGION[stateCode.toUpperCase()] || null;
 }
 
-export async function geocodeAddress(query) {
-	// Use Nominatim (no API key needed, works before Google Maps loads)
-	const url = new URL('https://nominatim.openstreetmap.org/search');
-	url.searchParams.set('format', 'json');
-	url.searchParams.set('q', query);
-	url.searchParams.set('countrycodes', 'us');
-	url.searchParams.set('limit', '1');
-
-	try {
-		const resp = await fetch(url.toString());
-		if (!resp.ok) throw new Error('Geocoding unavailable');
-		const results = await resp.json();
-		if (!results.length) return null;
-		return { lat: Number.parseFloat(results[0].lat), lon: Number.parseFloat(results[0].lon) };
-	} catch (e) {
-		console.error('[unearthed] geocoding failed:', e);
-		return null;
-	}
-}
-
 export function requestLocation(timeout = 10000) {
 	return new Promise((resolve) => {
 		if (!navigator.geolocation) { resolve(null); return; }

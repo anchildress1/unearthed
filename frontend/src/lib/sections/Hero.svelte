@@ -1,7 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
 	import {
-		geocodeAddress,
 		loadSubregionGeoJSON,
 		findSubregion,
 		hasCoalData,
@@ -18,26 +17,36 @@
 	let localError = $state(null);
 
 	// Google Places autocomplete — adds a suggestion dropdown beneath the
-	// address input without replacing it. If Maps fails to load we silently
-	// fall back to the existing submit-and-geocode flow.
+	// existing input and resolves every address through GCP. No Nominatim
+	// fallback; Places is the single source of geolocation.
 	let placesReady = $state(false);
 	let predictions = $state([]);
 	let showPredictions = $state(false);
+	// Modern (2026) pattern: load the Places classes via importLibrary so we
+	// never reach into `google.maps.places.*` as a global. Cached after first
+	// import.
+	let placesLib = null;
 	let sessionToken = null;
 	let debounceId;
+	// Remember the last prediction the user picked from the dropdown so that
+	// hitting "trace →" right after a selection skips a redundant
+	// autocomplete round-trip and goes straight to Place Details.
+	let cachedPrediction = null;
 
 	onMount(async () => {
 		try {
 			await loadGoogleMaps();
+			placesLib = await google.maps.importLibrary('places');
 			placesReady = true;
 		} catch (e) {
-			console.warn('[unearthed] Places suggestions unavailable:', e);
+			console.error('[unearthed] Places library unavailable:', e);
+			localError = 'Address search is temporarily unavailable. Use your location or pick a state.';
+			showStatePicker = true;
 		}
 	});
 
 	function newSession() {
-		// eslint-disable-next-line no-undef
-		sessionToken = new google.maps.places.AutocompleteSessionToken();
+		sessionToken = new placesLib.AutocompleteSessionToken();
 	}
 
 	async function fetchPredictions(input) {
@@ -47,8 +56,7 @@
 		}
 		if (!sessionToken) newSession();
 		try {
-			// eslint-disable-next-line no-undef
-			const { suggestions } = await google.maps.places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
+			const { suggestions } = await placesLib.AutocompleteSuggestion.fetchAutocompleteSuggestions({
 				input,
 				includedRegionCodes: ['us'],
 				sessionToken,
@@ -63,32 +71,70 @@
 	}
 
 	function onAddressInput() {
+		// User is editing — any cached selection no longer applies.
+		cachedPrediction = null;
 		showPredictions = true;
 		clearTimeout(debounceId);
 		debounceId = setTimeout(() => fetchPredictions(address), 180);
 	}
 
-	async function selectPrediction(pred) {
-		showPredictions = false;
-		predictions = [];
-		localError = null;
+	// Picking a suggestion populates the input exactly as if the user had
+	// typed the full address. Resolution waits for the trace button — same
+	// flow as a hand-typed entry.
+	function selectPrediction(pred) {
 		const displayText = pred.text?.toString?.() ?? pred.text?.text ?? '';
 		address = displayText;
+		cachedPrediction = pred;
+		predictions = [];
+		showPredictions = false;
+		localError = null;
+	}
+
+	async function resolveFromPrediction(pred) {
+		const place = pred.toPlace();
+		await place.fetchFields({ fields: ['location'] });
+		// Details call consumes the session token — start a fresh one for
+		// the next typing session to stay on Autocomplete-Essentials billing.
+		newSession();
+		const loc = place.location;
+		if (!loc) {
+			localError = 'Could not resolve that place. Try another address.';
+			return;
+		}
+		await resolveSubregion(loc.lat(), loc.lng());
+	}
+
+	async function resolveCurrentAddress() {
+		// Prefer the cached prediction if the user picked one and hasn't
+		// since edited the input.
+		const cachedText = cachedPrediction?.text?.toString?.();
+		if (cachedPrediction && cachedText === address) {
+			await resolveFromPrediction(cachedPrediction);
+			return;
+		}
+		if (!placesReady) {
+			localError = 'Address search is temporarily unavailable. Use your location or pick a state.';
+			showStatePicker = true;
+			return;
+		}
+		// No cached pick — ask Places for the top match on whatever the user
+		// typed and resolve that. Keeps the single-path GCP contract.
+		if (!sessionToken) newSession();
 		try {
-			const place = pred.toPlace();
-			await place.fetchFields({ fields: ['location'] });
-			// A fetched Place's session token is consumed on the first
-			// Details call, so start a fresh one for the next typing session.
-			newSession();
-			const loc = place.location;
-			if (!loc) {
-				localError = 'Could not resolve that place. Try another suggestion.';
+			const { suggestions } = await placesLib.AutocompleteSuggestion.fetchAutocompleteSuggestions({
+				input: address,
+				includedRegionCodes: ['us'],
+				sessionToken,
+			});
+			const top = suggestions?.find((s) => s.placePrediction)?.placePrediction;
+			if (!top) {
+				localError = 'Could not find that location. Try a full address or zip code.';
 				return;
 			}
-			await resolveSubregion(loc.lat(), loc.lng());
+			await resolveFromPrediction(top);
 		} catch (e) {
-			console.error('[unearthed] Place fetch failed:', e);
-			localError = 'Could not resolve that place. Try again.';
+			console.error('[unearthed] resolution failed:', e);
+			localError = 'Could not resolve that address. Try again.';
 		}
 	}
 
@@ -126,20 +172,8 @@
 	async function handleSubmit(e) {
 		e.preventDefault();
 		if (!address.trim()) return;
-		// If Places gave us at least one prediction, treat submit as
-		// "take the top suggestion" — that's what the dropdown is hinting
-		// and it avoids a second network hop to a different geocoder.
-		if (predictions.length > 0) {
-			await selectPrediction(predictions[0].placePrediction);
-			return;
-		}
 		localError = null;
-		const coords = await geocodeAddress(address.trim());
-		if (!coords) {
-			localError = 'Could not find that location. Try a full address or zip code.';
-			return;
-		}
-		await resolveSubregion(coords.lat, coords.lon);
+		await resolveCurrentAddress();
 	}
 
 	async function handleGeolocate() {
