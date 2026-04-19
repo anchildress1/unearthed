@@ -7,9 +7,8 @@ description: >
 tables:
   - name: MSHA_MINES
     description: >
-      Registry of all US mines from MSHA. Filtered to coal (COAL_METAL_IND = "C").
+      Registry of all US mines from MSHA. Filtered to coal (COAL_METAL_IND = 'C').
       Contains mine location, operator, status, and type.
-      Note: all string fields contain embedded double quotes that must be stripped with REPLACE(col, '"', '').
     base_table:
       database: UNEARTHED_DB
       schema: RAW
@@ -19,67 +18,65 @@ tables:
         - mine_id
     filters:
       - name: coal_mines_only
-        expr: REPLACE(COAL_METAL_IND, '"', '') = 'C'
+        expr: COAL_METAL_IND = 'C'
         description: Only coal mines
     dimensions:
       - name: mine_id
         description: MSHA mine identifier (unique per mine)
-        expr: TRY_TO_NUMBER(REPLACE(MINE_ID, '"', ''))
-        data_type: NUMBER
+        expr: MINE_ID
+        data_type: VARCHAR
       - name: mine_name
         description: Current name of the mine
-        expr: TRIM(REPLACE(CURRENT_MINE_NAME, '"', ''))
+        expr: TRIM(CURRENT_MINE_NAME)
         data_type: VARCHAR
       - name: mine_operator
         description: Current operator of the mine
-        expr: TRIM(REPLACE(CURRENT_OPERATOR_NAME, '"', ''))
+        expr: TRIM(CURRENT_OPERATOR_NAME)
         data_type: VARCHAR
       - name: mine_state
         description: State where the mine is located
-        expr: TRIM(REPLACE(STATE, '"', ''))
+        expr: TRIM(STATE)
         data_type: VARCHAR
       - name: mine_county
         description: County where the mine is located
-        expr: TRIM(REPLACE(FIPS_CNTY_NM, '"', ''))
+        expr: TRIM(FIPS_CNTY_NM)
         data_type: VARCHAR
       - name: mine_type
         description: >
           Type of mine: Surface, Underground, or Facility.
-          Raw values are quoted strings.
-        expr: TRIM(REPLACE(CURRENT_MINE_TYPE, '"', ''))
+        expr: TRIM(CURRENT_MINE_TYPE)
         data_type: VARCHAR
       - name: mine_status
         description: >
           Current operating status: Active, Abandoned, etc.
-        expr: TRIM(REPLACE(CURRENT_MINE_STATUS, '"', ''))
+        expr: TRIM(CURRENT_MINE_STATUS)
         data_type: VARCHAR
       - name: mine_latitude
         description: Latitude of the mine
-        expr: TRY_TO_DOUBLE(REPLACE(LATITUDE, '"', ''))
+        expr: TRY_TO_DOUBLE(LATITUDE)
         data_type: FLOAT
       - name: mine_longitude
         description: Longitude of the mine
-        expr: TRY_TO_DOUBLE(REPLACE(LONGITUDE, '"', ''))
+        expr: TRY_TO_DOUBLE(LONGITUDE)
         data_type: FLOAT
 
   - name: MSHA_QUARTERLY_PRODUCTION
     description: >
       Quarterly coal production data per mine from MSHA.
       COAL_PRODUCTION is in short tons. CAL_YR and CAL_QTR identify the period.
-      Note: COAL_METAL_IND contains embedded double quotes.
     base_table:
       database: UNEARTHED_DB
       schema: RAW
       table: MSHA_QUARTERLY_PRODUCTION
     filters:
       - name: coal_production_only
-        expr: REPLACE(COAL_METAL_IND, '"', '') = 'C'
+        expr: COAL_METAL_IND = 'C'
         description: Only coal production records
     dimensions:
       - name: mine_id
         description: MSHA mine identifier, joins to MSHA_MINES
-        expr: TRY_TO_NUMBER(REPLACE(MINE_ID, '"', ''))
-        data_type: NUMBER
+        expr: MINE_ID
+        data_type: VARCHAR
       - name: year
         description: Calendar year
         expr: CAL_YR
@@ -129,9 +126,9 @@ tables:
         expr: PLANT_STATE
         data_type: VARCHAR
       - name: coalmine_msha_id
-        description: MSHA mine ID of the source mine (cast to NUMBER to match MSHA_MINES.mine_id)
-        expr: TRY_TO_NUMBER(COALMINE_MSHA_ID)
-        data_type: NUMBER
+        description: MSHA mine ID of the source mine
+        expr: COALMINE_MSHA_ID
+        data_type: VARCHAR
       - name: coalmine_name
         description: Name of the source coal mine
         expr: COALMINE_NAME
@@ -226,16 +223,16 @@ tables:
       table: MSHA_ACCIDENTS
     filters:
       - name: coal_accidents_only
-        expr: REPLACE(COAL_METAL_IND, '"', '') = 'C'
+        expr: COAL_METAL_IND = 'C'
         description: Only coal mine accidents
     dimensions:
       - name: mine_id
         description: MSHA mine identifier, joins to MSHA_MINES
-        expr: TRY_TO_NUMBER(REPLACE(MINE_ID, '"', ''))
-        data_type: NUMBER
+        expr: MINE_ID
+        data_type: VARCHAR
       - name: accident_date
         description: Date of the accident
-        expr: TRY_TO_DATE(REPLACE(ACCIDENT_DT, '"', ''), 'MM/DD/YYYY')
+        expr: TRY_TO_DATE(ACCIDENT_DT, 'MM/DD/YYYY')
         data_type: DATE
       - name: year
         description: Calendar year of the accident
@@ -245,23 +242,23 @@ tables:
         description: >
           Severity classification. Key values: FATALITY, DAYS AWAY FROM WORK ONLY,
           PERM TOT OR PERM PRTL DISABLTY, DAYS RESTRICTED ACTIVITY ONLY.
-        expr: TRIM(REPLACE(DEGREE_INJURY, '"', ''))
+        expr: TRIM(DEGREE_INJURY)
         data_type: VARCHAR
       - name: occupation
         description: Job title of the injured worker
-        expr: TRIM(REPLACE(OCCUPATION, '"', ''))
+        expr: TRIM(OCCUPATION)
         data_type: VARCHAR
       - name: narrative
         description: Free-text description of what happened in the accident
-        expr: TRIM(REPLACE(NARRATIVE, '"', ''))
+        expr: TRIM(NARRATIVE)
         data_type: VARCHAR
       - name: classification
         description: Type of accident (e.g. Powered Haulage, Fall of Roof)
-        expr: TRIM(REPLACE(CLASSIFICATION, '"', ''))
+        expr: TRIM(CLASSIFICATION)
         data_type: VARCHAR
       - name: injury_source
         description: Object or substance that caused the injury
-        expr: TRIM(REPLACE(INJURY_SOURCE, '"', ''))
+        expr: TRIM(INJURY_SOURCE)
         data_type: VARCHAR
     measures:
       - name: incident_count
@@ -270,11 +267,11 @@ tables:
         data_type: NUMBER
       - name: fatality_count
         description: Number of fatalities
-        expr: SUM(CASE WHEN TRIM(REPLACE(DEGREE_INJURY, '"', '')) = 'FATALITY' THEN 1 ELSE 0 END)
+        expr: SUM(CASE WHEN TRIM(DEGREE_INJURY) = 'FATALITY' THEN 1 ELSE 0 END)
         data_type: NUMBER
       - name: days_lost
         description: Total days of work lost due to injuries
-        expr: SUM(TRY_TO_NUMBER(REPLACE(DAYS_LOST, '"', '')))
+        expr: SUM(TRY_TO_NUMBER(DAYS_LOST))
         data_type: NUMBER
 
 relationships:
@@ -320,14 +317,14 @@ verified_queries:
     sql: >
       SELECT SUM(COAL_PRODUCTION) AS total_tons
       FROM UNEARTHED_DB.RAW.MSHA_QUARTERLY_PRODUCTION
-      WHERE TRY_TO_NUMBER(REPLACE(MINE_ID, '"', '')) IN (
-        SELECT TRY_TO_NUMBER(REPLACE(MINE_ID, '"', ''))
+      WHERE MINE_ID IN (
+        SELECT MINE_ID
         FROM UNEARTHED_DB.RAW.MSHA_MINES
-        WHERE TRIM(REPLACE(CURRENT_MINE_NAME, '"', '')) ILIKE 'Bailey%'
-          AND REPLACE(COAL_METAL_IND, '"', '') = 'C'
+        WHERE TRIM(CURRENT_MINE_NAME) ILIKE 'Bailey%'
+          AND COAL_METAL_IND = 'C'
       )
       AND CAL_YR >= 2020
-      AND REPLACE(COAL_METAL_IND, '"', '') = 'C'
+      AND COAL_METAL_IND = 'C'
 
   - name: plants_buying_from_operator
     question: "What other plants buy from Consol Pennsylvania Coal Company?"
@@ -336,8 +333,8 @@ verified_queries:
         SUM(TRY_TO_NUMBER(REPLACE(fr.QUANTITY, ',', ''), 18, 1)) AS total_tons
       FROM UNEARTHED_DB.RAW.EIA_923_FUEL_RECEIPTS fr
       JOIN UNEARTHED_DB.RAW.MSHA_MINES m
-        ON TRY_TO_NUMBER(fr.COALMINE_MSHA_ID) = TRY_TO_NUMBER(REPLACE(m.MINE_ID, '"', ''))
-      WHERE TRIM(REPLACE(m.CURRENT_OPERATOR_NAME, '"', '')) ILIKE 'Consol Pennsylvania%'
+        ON fr.COALMINE_MSHA_ID = m.MINE_ID
+      WHERE TRIM(m.CURRENT_OPERATOR_NAME) ILIKE 'Consol Pennsylvania%'
         AND fr.FUEL_GROUP = 'Coal'
         AND fr.YEAR = 2024
       GROUP BY fr.PLANT_NAME, fr.PLANT_STATE
@@ -346,13 +343,13 @@ verified_queries:
   - name: is_mine_active
     question: "Is Bailey Mine still active?"
     sql: >
-      SELECT TRIM(REPLACE(CURRENT_MINE_NAME, '"', '')) AS mine_name,
-        TRIM(REPLACE(CURRENT_MINE_STATUS, '"', '')) AS mine_status,
-        TRIM(REPLACE(CURRENT_MINE_TYPE, '"', '')) AS mine_type,
-        TRIM(REPLACE(CURRENT_OPERATOR_NAME, '"', '')) AS operator
+      SELECT TRIM(CURRENT_MINE_NAME) AS mine_name,
+        TRIM(CURRENT_MINE_STATUS) AS mine_status,
+        TRIM(CURRENT_MINE_TYPE) AS mine_type,
+        TRIM(CURRENT_OPERATOR_NAME) AS operator
       FROM UNEARTHED_DB.RAW.MSHA_MINES
-      WHERE TRIM(REPLACE(CURRENT_MINE_NAME, '"', '')) ILIKE 'Bailey%'
-        AND REPLACE(COAL_METAL_IND, '"', '') = 'C'
+      WHERE TRIM(CURRENT_MINE_NAME) ILIKE 'Bailey%'
+        AND COAL_METAL_IND = 'C'
 
   - name: total_tonnage_for_subregion
     question: "What is the total coal tonnage for SRVC in 2024?"
@@ -370,15 +367,51 @@ verified_queries:
   - name: largest_supplier_in_state
     question: "Who is the largest coal supplier in Wyoming?"
     sql: >
-      SELECT TRIM(REPLACE(m.CURRENT_OPERATOR_NAME, '"', '')) AS operator,
+      SELECT TRIM(m.CURRENT_OPERATOR_NAME) AS operator,
         SUM(COAL_PRODUCTION) AS total_production_tons
       FROM UNEARTHED_DB.RAW.MSHA_QUARTERLY_PRODUCTION p
       JOIN UNEARTHED_DB.RAW.MSHA_MINES m
-        ON TRY_TO_NUMBER(REPLACE(p.MINE_ID, '"', '')) = TRY_TO_NUMBER(REPLACE(m.MINE_ID, '"', ''))
-      WHERE TRIM(REPLACE(m.STATE, '"', '')) = 'WY'
-        AND REPLACE(m.COAL_METAL_IND, '"', '') = 'C'
-        AND REPLACE(p.COAL_METAL_IND, '"', '') = 'C'
+        ON p.MINE_ID = m.MINE_ID
+      WHERE TRIM(m.STATE) = 'WY'
+        AND m.COAL_METAL_IND = 'C'
+        AND p.COAL_METAL_IND = 'C'
         AND p.CAL_YR = 2024
-      GROUP BY TRIM(REPLACE(m.CURRENT_OPERATOR_NAME, '"', ''))
+      GROUP BY TRIM(m.CURRENT_OPERATOR_NAME)
       ORDER BY total_production_tons DESC
       LIMIT 1
+
+  - name: fatalities_at_mine
+    question: "How many fatalities have occurred at Black Thunder Mine?"
+    sql: >
+      SELECT SUM(CASE WHEN TRIM(a.DEGREE_INJURY) = 'FATALITY' THEN 1 ELSE 0 END) AS fatalities
+      FROM UNEARTHED_DB.RAW.MSHA_ACCIDENTS a
+      JOIN UNEARTHED_DB.RAW.MSHA_MINES m
+        ON a.MINE_ID = m.MINE_ID
+      WHERE TRIM(m.CURRENT_MINE_NAME) ILIKE 'Black Thunder%'
+        AND a.COAL_METAL_IND = 'C'
+
+  - name: production_by_mine_since_year
+    question: "How much has Black Thunder produced since 2020?"
+    sql: >
+      SELECT SUM(COAL_PRODUCTION) AS total_tons
+      FROM UNEARTHED_DB.RAW.MSHA_QUARTERLY_PRODUCTION
+      WHERE MINE_ID IN (
+        SELECT MINE_ID
+        FROM UNEARTHED_DB.RAW.MSHA_MINES
+        WHERE TRIM(CURRENT_MINE_NAME) ILIKE 'Black Thunder%'
+          AND COAL_METAL_IND = 'C'
+      )
+      AND CAL_YR >= 2020
+      AND COAL_METAL_IND = 'C'
+
+  - name: mines_supplying_plant
+    question: "Which mines supply Cross plant in 2024?"
+    sql: >
+      SELECT DISTINCT fr.COALMINE_NAME, fr.COALMINE_MSHA_ID,
+        SUM(TRY_TO_NUMBER(REPLACE(fr.QUANTITY, ',', ''), 18, 1)) AS total_tons
+      FROM UNEARTHED_DB.RAW.EIA_923_FUEL_RECEIPTS fr
+      WHERE fr.PLANT_NAME ILIKE 'Cross%'
+        AND fr.FUEL_GROUP = 'Coal'
+        AND fr.YEAR = 2024
+      GROUP BY fr.COALMINE_NAME, fr.COALMINE_MSHA_ID
+      ORDER BY total_tons DESC

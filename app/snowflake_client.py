@@ -23,8 +23,6 @@ _pool_lock = threading.Lock()
 # Scoped to the subregion to avoid a global EIA_923 full-table scan on every request.
 MINE_FOR_SUBREGION_SQL = """
 WITH latest_year AS (
-    -- Single-row CTE: MAX(YEAR) for coal receipts reaching this subregion.
-    -- CROSS JOIN in the final SELECT is safe because this CTE always returns exactly one row.
     SELECT MAX(fr.YEAR) AS YEAR
     FROM UNEARTHED_DB.RAW.EIA_923_FUEL_RECEIPTS fr
     JOIN UNEARTHED_DB.RAW.PLANT_SUBREGION_LOOKUP lk
@@ -61,7 +59,7 @@ top_plant AS (
     JOIN UNEARTHED_DB.RAW.PLANT_SUBREGION_LOOKUP lk
         ON p.PLANTCODE = lk.PLANT_CODE
     JOIN top_mine tm
-        ON TRY_TO_NUMBER(fr.COALMINE_MSHA_ID) = TRY_TO_NUMBER(tm.MINE_ID)
+        ON TRY_TO_NUMBER(fr.COALMINE_MSHA_ID) = tm.MINE_ID
     WHERE fr.FUEL_GROUP = 'Coal'
         AND fr.YEAR = (SELECT YEAR FROM latest_year)
         AND lk.EGRID_SUBREGION = %(subregion_id)s

@@ -50,24 +50,26 @@ if _STATIC_DIR.exists():
 _H3_DENSITY_SQL = """
 SELECT
     H3_LATLNG_TO_CELL_STRING(
-        TRY_TO_DOUBLE(REPLACE(LATITUDE, '"', '')),
-        TRY_TO_DOUBLE(REPLACE(LONGITUDE, '"', '')),
+        TRY_TO_DOUBLE(LATITUDE),
+        TRY_TO_DOUBLE(LONGITUDE),
         {resolution}
     ) AS h3,
-    AVG(TRY_TO_DOUBLE(REPLACE(LATITUDE, '"', ''))) AS lat,
-    AVG(TRY_TO_DOUBLE(REPLACE(LONGITUDE, '"', ''))) AS lng,
+    AVG(TRY_TO_DOUBLE(LATITUDE)) AS lat,
+    AVG(TRY_TO_DOUBLE(LONGITUDE)) AS lng,
     COUNT(*) AS total,
-    SUM(CASE WHEN TRIM(REPLACE(CURRENT_MINE_STATUS, '"', '')) = 'Active'
+    SUM(CASE WHEN TRIM(CURRENT_MINE_STATUS) = 'Active'
         THEN 1 ELSE 0 END) AS active,
-    SUM(CASE WHEN TRIM(REPLACE(CURRENT_MINE_STATUS, '"', '')) != 'Active'
+    SUM(CASE WHEN TRIM(CURRENT_MINE_STATUS) != 'Active'
         THEN 1 ELSE 0 END) AS abandoned
 FROM UNEARTHED_DB.RAW.MSHA_MINES
-WHERE REPLACE(COAL_METAL_IND, '"', '') = 'C'
-    AND TRY_TO_DOUBLE(REPLACE(LATITUDE, '"', '')) IS NOT NULL
+WHERE COAL_METAL_IND = 'C'
+    AND TRY_TO_DOUBLE(LATITUDE) IS NOT NULL
 GROUP BY h3
 HAVING total >= 5
 ORDER BY total DESC
 """
+
+_h3_cache: dict[int, list[dict]] = {}
 
 
 @app.get("/h3-density", responses={400: {"description": "Invalid resolution (must be 2-7)"}})
@@ -75,6 +77,11 @@ def h3_density(resolution: int = 4):
     """H3 hexbin mine density — active vs abandoned extraction footprint."""
     if resolution < 2 or resolution > 7:
         raise HTTPException(status_code=400, detail="Resolution must be 2-7")
+
+    cached = _h3_cache.get(resolution)
+    if cached is not None:
+        return {"resolution": resolution, "cells": cached}
+
     from app.config import settings
 
     conn = _get_connection(role=settings.snowflake_readonly_role)
@@ -84,34 +91,26 @@ def h3_density(resolution: int = 4):
         rows = [dict(r) for r in cur.fetchall()]
     finally:
         cur.close()
+    _h3_cache[resolution] = rows
     return {"resolution": resolution, "cells": rows}
 
 
 _EMISSIONS_SQL = """
-SELECT
-    SUM(CASE WHEN t.VARIABLE_NAME = 'Carbon Dioxide Mass, Short Tons (Quarterly)'
-        THEN t.VALUE ELSE 0 END) AS co2_tons,
-    SUM(CASE WHEN t.VARIABLE_NAME = 'Sulfur Dioxide Mass, Short Tons (Quarterly)'
-        THEN t.VALUE ELSE 0 END) AS so2_tons,
-    SUM(CASE WHEN t.VARIABLE_NAME = 'Nitrogen Oxide Mass, Short Tons (Quarterly)'
-        THEN t.VALUE ELSE 0 END) AS nox_tons
-FROM SNOWFLAKE_PUBLIC_DATA_FREE.PUBLIC_DATA_FREE.EPA_CAM_PLANT_UNIT_INDEX p
-JOIN SNOWFLAKE_PUBLIC_DATA_FREE.PUBLIC_DATA_FREE.EPA_CAM_TIMESERIES t
-    ON p.PLANT_UNIT_ID = t.PLANT_UNIT_ID
-WHERE p.FACILITY_NAME ILIKE %(plant_name)s
-    AND p.PRIMARY_FUEL_INFO = 'Coal'
-    AND t.VARIABLE_NAME IN (
-        'Carbon Dioxide Mass, Short Tons (Quarterly)',
-        'Sulfur Dioxide Mass, Short Tons (Quarterly)',
-        'Nitrogen Oxide Mass, Short Tons (Quarterly)'
-    )
-    AND t.DATE >= '2020-01-01'
+SELECT CO2_TONS, SO2_TONS, NOX_TONS
+FROM UNEARTHED_DB.MRT.EMISSIONS_BY_PLANT
+WHERE FACILITY_NAME ILIKE %(plant_name)s
 """
+
+_emissions_cache: dict[str, dict] = {}
 
 
 @app.get("/emissions/{plant_name}")
 def plant_emissions(plant_name: str):
-    """EPA emissions data for a plant — from Snowflake Marketplace (free)."""
+    """EPA emissions data for a plant — pre-aggregated from Snowflake Marketplace."""
+    cache_key = plant_name.upper()
+    if cache_key in _emissions_cache:
+        return _emissions_cache[cache_key]
+
     from app.config import settings
 
     conn = _get_connection(role=settings.snowflake_readonly_role)
@@ -122,14 +121,17 @@ def plant_emissions(plant_name: str):
     finally:
         cur.close()
     if not row or row.get("CO2_TONS") is None:
-        return {"plant": plant_name, "co2_tons": None, "so2_tons": None, "nox_tons": None}
-    return {
-        "plant": plant_name,
-        "co2_tons": float(row["CO2_TONS"] or 0),
-        "so2_tons": float(row["SO2_TONS"] or 0),
-        "nox_tons": float(row["NOX_TONS"] or 0),
-        "source": "EPA Clean Air Markets via Snowflake Marketplace",
-    }
+        result = {"plant": plant_name, "co2_tons": None, "so2_tons": None, "nox_tons": None}
+    else:
+        result = {
+            "plant": plant_name,
+            "co2_tons": float(row["CO2_TONS"] or 0),
+            "so2_tons": float(row["SO2_TONS"] or 0),
+            "nox_tons": float(row["NOX_TONS"] or 0),
+            "source": "EPA Clean Air Markets via Snowflake Marketplace",
+        }
+    _emissions_cache[cache_key] = result
+    return result
 
 
 DEFAULT_SUGGESTIONS = [

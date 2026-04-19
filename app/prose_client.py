@@ -15,14 +15,14 @@ _prose_cache: dict[str, tuple[str, bool]] = {}
 _STATS_SQL = """
 SELECT
     COUNT(*) AS total_incidents,
-    SUM(CASE WHEN TRIM(REPLACE(DEGREE_INJURY, '"', '')) = 'FATALITY'
+    SUM(CASE WHEN TRIM(DEGREE_INJURY) = 'FATALITY'
         THEN 1 ELSE 0 END) AS fatalities,
-    SUM(CASE WHEN TRIM(REPLACE(DEGREE_INJURY, '"', '')) LIKE '%%DAYS%%'
+    SUM(CASE WHEN TRIM(DEGREE_INJURY) LIKE '%%DAYS%%'
         THEN 1 ELSE 0 END) AS injuries_lost_time,
-    SUM(TRY_TO_NUMBER(REPLACE(DAYS_LOST, '"', ''))) AS total_days_lost
+    SUM(TRY_TO_NUMBER(DAYS_LOST)) AS total_days_lost
 FROM UNEARTHED_DB.RAW.MSHA_ACCIDENTS
-WHERE TRY_TO_NUMBER(REPLACE(MINE_ID, '"', '')) = %(mine_id)s
-    AND REPLACE(COAL_METAL_IND, '"', '') = 'C'
+WHERE MINE_ID = %(mine_id)s
+    AND COAL_METAL_IND = 'C'
 """
 
 _COMPLETE_PROMPT = """You are writing 2-3 sentences for a data visualization about US coal.
@@ -75,7 +75,7 @@ def _generate(mine_data: dict) -> tuple[str, bool]:
 
     cur = conn.cursor()
     try:
-        cur.execute(_STATS_SQL, {"mine_id": int(mine_data["mine_id"])})
+        cur.execute(_STATS_SQL, {"mine_id": str(mine_data["mine_id"])})
         row = cur.fetchone()
     finally:
         cur.close()
