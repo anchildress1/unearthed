@@ -84,7 +84,7 @@ if _STATIC_DIR.exists():
 
 _H3_DENSITY_SQL = """
 SELECT
-    H3_LATLNG_TO_CELL_STRING(LATITUDE, LONGITUDE, {resolution}) AS h3,
+    H3_LATLNG_TO_CELL_STRING(LATITUDE, LONGITUDE, %(resolution)s) AS h3,
     AVG(LATITUDE) AS lat,
     AVG(LONGITUDE) AS lng,
     COUNT(*) AS total,
@@ -118,7 +118,7 @@ def h3_density(resolution: int = 4):
     conn = _get_connection(role=settings.snowflake_readonly_role)
     cur = conn.cursor(snowflake.connector.DictCursor)
     try:
-        cur.execute(_H3_DENSITY_SQL.format(resolution=int(resolution)))
+        cur.execute(_H3_DENSITY_SQL, {"resolution": int(resolution)})
         rows = [dict(r) for r in cur.fetchall()]
     finally:
         cur.close()
