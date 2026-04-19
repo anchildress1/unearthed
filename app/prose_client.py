@@ -108,7 +108,7 @@ def _generate(mine_data: dict) -> str:
     cur2 = conn.cursor()
     try:
         cur2.execute(
-            "SELECT SNOWFLAKE.CORTEX.COMPLETE('llama3.1-70b', %s)",
+            "SELECT SNOWFLAKE.CORTEX.COMPLETE('openai-gpt-5-chat', %s)",
             (prompt,),
         )
         result = cur2.fetchone()
