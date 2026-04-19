@@ -14,10 +14,16 @@
 		'Who is the largest coal supplier in this state?',
 	]);
 
-	const ID_COLUMNS = /\b(ID|MINE_ID|PLANT_ID|MSHA_ID)\b/i;
+	function isIdColumn(col) {
+		return /_ID$|^ID$/i.test(col);
+	}
 
 	function formatCell(val, col) {
-		if (typeof val === 'number' && !ID_COLUMNS.test(col)) return val.toLocaleString();
+		if (isIdColumn(col)) return val;
+		const n = Number(val);
+		if (!Number.isNaN(n) && val !== '' && val !== null) {
+			return Number.isInteger(n) ? n.toLocaleString() : n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+		}
 		return val;
 	}
 
