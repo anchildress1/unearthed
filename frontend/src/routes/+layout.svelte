@@ -41,11 +41,21 @@
 </a>
 {@render children()}
 
+<!--
+	Site-wide credits. Single footer for the whole page — section-internal
+	credits (Ticker previously carried its own) have been consolidated here
+	so links appear once, at the bottom, and the page body stays focused
+	on the story instead of repeated attribution rows.
+-->
 <footer class="site-footer">
 	<p>© 2026 Ashley Childress</p>
 	<p class="data-credit">
-		Federal public-domain data: MSHA · EIA · EPA · eGRID ·
-		via Snowflake Cortex + Marketplace
+		Data:
+		<a href="https://www.msha.gov/" target="_blank" rel="noopener">MSHA</a> ·
+		<a href="https://www.eia.gov/" target="_blank" rel="noopener">EIA</a> ·
+		<a href="https://www.epa.gov/egrid" target="_blank" rel="noopener">EPA eGRID</a>
+		· AI:
+		<a href="https://www.snowflake.com/en/data-cloud/cortex/" target="_blank" rel="noopener">Snowflake Cortex</a>
 	</p>
 </footer>
 
@@ -259,6 +269,21 @@
 		   line above it because the font is smaller and the tracking
 		   is wider. */
 		color: #857c70;
+	}
+	/* Credit links are the same dim tone as the surrounding text with a
+	   subtle underline to mark them as affordances. Hover lifts to the
+	   rust accent used everywhere else on the page. */
+	.site-footer .data-credit a {
+		color: var(--text-dim);
+		text-decoration: underline;
+		text-decoration-color: rgba(255, 255, 255, 0.12);
+		text-underline-offset: 2px;
+		transition: color 0.15s, text-decoration-color 0.15s;
+	}
+	.site-footer .data-credit a:hover,
+	.site-footer .data-credit a:focus-visible {
+		color: var(--rust);
+		text-decoration-color: var(--rust);
 	}
 
 	/* ---- Glass utility ---- */

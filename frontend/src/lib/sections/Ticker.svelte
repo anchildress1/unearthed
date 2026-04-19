@@ -61,13 +61,6 @@
 		</p>
 	</aside>
 
-	<footer class="footer">
-		<p>
-			Data: <a href="https://www.msha.gov/" target="_blank" rel="noopener">MSHA</a> +
-			<a href="https://www.eia.gov/" target="_blank" rel="noopener">EIA</a> (2024, public domain).
-			AI: <a href="https://www.snowflake.com/en/data-cloud/cortex/" target="_blank" rel="noopener">Snowflake Cortex Analyst</a>.
-		</p>
-	</footer>
 </SectionRail>
 
 <style>
@@ -155,17 +148,4 @@
 	/* No `.ded-close em` override: <em> falls back to browser-default italic.
 	   Rust coloring is reserved for headings and the canonical `.sub` subtitle,
 	   so the dedication reads as prose, not as a second hero. */
-
-	.footer {
-		padding-top: 2rem;
-		border-top: 1px solid rgba(255,255,255,0.04);
-	}
-	.footer p {
-		font-family: var(--mono);
-		font-size: 0.55rem;
-		color: var(--text-ghost);
-		letter-spacing: 0.05em;
-	}
-	.footer a { color: var(--text-dim); }
-	.footer a:hover { color: var(--rust); }
 </style>
