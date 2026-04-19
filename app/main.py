@@ -134,13 +134,34 @@ def plant_emissions(plant_name: str):
     return result
 
 
-DEFAULT_SUGGESTIONS = [
+_GENERIC_SUGGESTIONS = [
     "How much has Bailey Mine produced since 2020?",
     "What other plants buy from Consol Pennsylvania Coal Company?",
     "Is Bailey Mine still active?",
     "What is the total coal tonnage for SRVC?",
     "Who is the largest coal supplier in Wyoming?",
 ]
+
+_mine_context: dict[str, dict] = {}
+
+
+def _suggestions_for(subregion_id: str | None) -> list[str]:
+    """Build contextual suggestions from cached mine data for this subregion."""
+    if not subregion_id:
+        return _GENERIC_SUGGESTIONS
+    ctx = _mine_context.get(subregion_id.upper())
+    if not ctx:
+        return _GENERIC_SUGGESTIONS
+    mine = ctx["mine"]
+    plant = ctx["plant"]
+    state = ctx["mine_state"]
+    return [
+        f"How much has {mine} produced since 2020?",
+        f"Which mines supplied {plant} in 2024?",
+        f"Is {mine} still active?",
+        f"What is the total coal tonnage for {subregion_id.upper()}?",
+        f"Who is the largest coal supplier in {state}?",
+    ]
 
 
 @app.post("/mine-for-me", response_model=MineForMeResponse)
@@ -165,6 +186,7 @@ def mine_for_me(req: MineForMeRequest):
         )
 
     mine_data = {**mine_data, "subregion_id": req.subregion_id}
+    _mine_context[req.subregion_id.upper()] = mine_data
     prose, gemini_degraded = generate_prose(mine_data)
     degraded = degraded or gemini_degraded
 
@@ -200,7 +222,7 @@ def ask(req: AskRequest):
             answer="",
             error="The data assistant is temporarily unavailable. "
             "Try one of the suggested questions.",
-            suggestions=DEFAULT_SUGGESTIONS,
+            suggestions=_suggestions_for(req.subregion_id),
         )
 
     results = None
@@ -219,7 +241,7 @@ def ask(req: AskRequest):
             result["answer"] = "I could not answer that confidently."
             interpretation = None
 
-    suggestions = result.get("suggestions") or DEFAULT_SUGGESTIONS
+    suggestions = result.get("suggestions") or _suggestions_for(req.subregion_id)
 
     return AskResponse(
         answer=result["answer"],
