@@ -1,3 +1,4 @@
+import functools
 import json
 import logging
 import re
@@ -44,6 +45,26 @@ WHERE EGRID_SUBREGION = %(subregion_id)s
 _MINE_TYPE_LABELS = {"U": "Underground", "S": "Surface", "F": "Facility"}
 
 
+@functools.lru_cache(maxsize=1)
+def _get_private_key_der() -> bytes:
+    """Parse the private key once and cache the DER bytes."""
+    from cryptography.hazmat.primitives import serialization
+
+    key_path = Path(settings.snowflake_private_key_path).expanduser()
+    key_data = key_path.read_bytes()
+    passphrase = (
+        settings.snowflake_private_key_passphrase.encode()
+        if settings.snowflake_private_key_passphrase
+        else None
+    )
+    private_key = serialization.load_pem_private_key(key_data, password=passphrase)
+    return private_key.private_bytes(
+        encoding=serialization.Encoding.DER,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+
+
 def _create_connection(role: str) -> snowflake.connector.SnowflakeConnection:
     """Create a fresh Snowflake connection for the given role."""
     if not settings.snowflake_account or not settings.snowflake_user:
@@ -59,21 +80,7 @@ def _create_connection(role: str) -> snowflake.connector.SnowflakeConnection:
         "network_timeout": 15,
     }
     if settings.snowflake_private_key_path:
-        from cryptography.hazmat.primitives import serialization
-
-        key_path = Path(settings.snowflake_private_key_path).expanduser()
-        key_data = key_path.read_bytes()
-        passphrase = (
-            settings.snowflake_private_key_passphrase.encode()
-            if settings.snowflake_private_key_passphrase
-            else None
-        )
-        private_key = serialization.load_pem_private_key(key_data, password=passphrase)
-        connect_args["private_key"] = private_key.private_bytes(
-            encoding=serialization.Encoding.DER,
-            format=serialization.PrivateFormat.PKCS8,
-            encryption_algorithm=serialization.NoEncryption(),
-        )
+        connect_args["private_key"] = _get_private_key_der()
     elif settings.allow_password_auth and settings.snowflake_password:
         logger.warning("Using password auth — set SNOWFLAKE_PRIVATE_KEY_PATH for production.")
         connect_args["password"] = settings.snowflake_password

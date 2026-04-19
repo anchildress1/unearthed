@@ -19,10 +19,12 @@ from app.snowflake_client import (
 
 @pytest.fixture(autouse=True)
 def _clear_pool():
-    """Reset the thread-local connection pool between tests."""
+    """Reset the thread-local connection pool and key cache between tests."""
     snowflake_client._get_pool().clear()
+    snowflake_client._get_private_key_der.cache_clear()
     yield
     snowflake_client._get_pool().clear()
+    snowflake_client._get_private_key_der.cache_clear()
 
 
 MOCK_ROW = {
