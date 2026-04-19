@@ -213,11 +213,19 @@
 	}
 	.prose :global(.rust) { color: var(--rust); }
 
+	/* Ledger-look stat grid. The wrapper itself is the hairline: its
+	   --rule background bleeds through the 1px gap between children so
+	   the cards read as three columns of one document, not three drifting
+	   chips. Each child still carries its own glass surface. */
 	.cards {
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-		gap: 0.8rem;
+		gap: 1px;
 		max-width: 600px;
+		background: var(--rule);
+		border: 1px solid var(--border-glass);
+		border-radius: 12px;
+		overflow: hidden;
 	}
 
 	.card {
@@ -225,6 +233,10 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.25rem;
+		/* Override .glass's own border+radius so the wrapper owns the chrome
+		   and only the 1px gap reads as a divider. */
+		border: none;
+		border-radius: 0;
 	}
 
 	.card-value {

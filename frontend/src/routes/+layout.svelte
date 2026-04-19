@@ -46,6 +46,11 @@
 		--rust-glow: oklch(58% 0.14 36 / 0.15);
 		--green: #5a7a5a;
 		--border-glass: rgba(255, 255, 255, 0.07);
+		/* Hairline divider used for the ledger-look stat grids: sits between
+		   cards as a 1px bleed of the wrapper background. Just barely brighter
+		   than --glass-bg so the rule reads as intentional structure instead of
+		   a compositor seam. */
+		--rule: rgba(255, 255, 255, 0.06);
 		--glass-bg: rgba(255, 255, 255, 0.03);
 		--glass-blur: blur(14px);
 		--serif: 'Newsreader', Georgia, serif;
