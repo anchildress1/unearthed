@@ -12,9 +12,22 @@ import pytest
 from app.prose_client import (
     _COMPLETE_PROMPT,
     _FALLBACK_NO_DATA,
+    _H3_SUMMARY_PROMPT,
     _build_fallback,
+    generate_h3_summary,
     generate_prose,
 )
+
+
+@pytest.fixture(autouse=True)
+def _clear_h3_cache():
+    """Keep H3 summary cache isolated across tests — otherwise the first
+    successful test pins the value for every later one."""
+    from app import prose_client
+
+    prose_client._h3_summary_cache.clear()
+    yield
+    prose_client._h3_summary_cache.clear()
 
 
 class TestBuildFallback:
@@ -23,21 +36,21 @@ class TestBuildFallback:
         assert "42" in out
         assert "1,200" in out
         assert "3" in out
-        assert out.endswith("The coal kept moving to your grid.")
+        assert out.endswith("That is where your electricity was made.")
 
     def test_injuries_precede_fatalities(self):
         out = _build_fallback(fatalities=5, injuries=30, days_lost=800)
-        assert out.index("30") < out.index("5 never came home")
+        assert out.index("30") < out.index("5 were killed")
 
     def test_skips_zero_fatalities(self):
         out = _build_fallback(fatalities=0, injuries=12, days_lost=50)
-        assert "never came home" not in out
+        assert "were killed" not in out
         assert "12" in out
 
     def test_skips_zero_injuries(self):
         out = _build_fallback(fatalities=2, injuries=0, days_lost=0)
         assert "hurt badly enough" not in out
-        assert "2 never came home" in out
+        assert "2 were killed" in out
 
     def test_days_lost_formatted_with_commas(self):
         out = _build_fallback(fatalities=0, injuries=5, days_lost=12345)
@@ -120,7 +133,7 @@ class TestGenerateProse:
         )
         assert degraded is True
         # Must follow the injuries-first ordering
-        assert prose.index("40") < prose.index("3 never came home")
+        assert prose.index("40") < prose.index("3 were killed")
 
     @patch("app.prose_client._get_connection")
     def test_uses_cortex_output_when_populated(self, mock_conn):
@@ -184,6 +197,96 @@ class TestProseCache:
         assert first == second == "Cached prose."
         # Only the first call hit the cursor pipeline
         assert mock_conn.return_value.cursor.call_count == 2
+
+
+class TestH3SummaryPrompt:
+    def test_prompt_has_active_pct_and_scope_placeholders(self):
+        for placeholder in (
+            "{scope_line}",
+            "{total",
+            "{active",
+            "{abandoned",
+            "{active_pct}",
+            "{top_counties}",
+        ):
+            assert placeholder in _H3_SUMMARY_PROMPT, f"missing {placeholder}"
+
+
+class TestGenerateH3Summary:
+    @patch("app.prose_client._get_connection")
+    def test_returns_cortex_output_when_populated(self, mock_conn):
+        cursor = MagicMock()
+        cursor.fetchone.return_value = ("Most of these mines are already closed.",)
+        mock_conn.return_value.cursor.return_value = cursor
+
+        text, degraded = generate_h3_summary(state="WV", total=500, active=20, abandoned=480)
+        assert degraded is False
+        assert text == "Most of these mines are already closed."
+
+    @patch("app.prose_client._get_connection")
+    def test_cache_hit_skips_cortex(self, mock_conn):
+        cursor = MagicMock()
+        cursor.fetchone.return_value = ("Cached H3 summary.",)
+        mock_conn.return_value.cursor.return_value = cursor
+
+        first, first_degraded = generate_h3_summary(state="WV", total=100, active=10, abandoned=90)
+        second, second_degraded = generate_h3_summary(
+            state="WV", total=100, active=10, abandoned=90
+        )
+        assert first == second == "Cached H3 summary."
+        assert first_degraded is False
+        assert second_degraded is False
+        # Cursor only opened once — the second call must short-circuit on cache.
+        assert mock_conn.return_value.cursor.call_count == 1
+
+    @patch("app.prose_client._get_connection")
+    def test_fallback_used_when_cortex_raises(self, mock_conn):
+        mock_conn.side_effect = RuntimeError("cortex down")
+
+        text, degraded = generate_h3_summary(state="KY", total=800, active=30, abandoned=770)
+        assert degraded is True
+        assert "KY" in text
+        assert "800" in text
+
+    @patch("app.prose_client._get_connection")
+    def test_fallback_not_cached(self, mock_conn):
+        """A fallback response must not get pinned under the Cortex byline —
+        the next request needs to re-attempt Cortex in case it recovered."""
+        mock_conn.side_effect = RuntimeError("cortex down")
+
+        generate_h3_summary(state="WY", total=50, active=5, abandoned=45)
+
+        # Next call: Cortex back online. Must call the cursor again.
+        mock_conn.side_effect = None
+        cursor = MagicMock()
+        cursor.fetchone.return_value = ("Cortex recovered.",)
+        mock_conn.return_value.cursor.return_value = cursor
+
+        text, degraded = generate_h3_summary(state="WY", total=50, active=5, abandoned=45)
+        assert degraded is False
+        assert text == "Cortex recovered."
+
+    @patch("app.prose_client._get_connection")
+    def test_national_scope_when_state_none(self, mock_conn):
+        mock_conn.side_effect = RuntimeError("cortex down")
+
+        text, degraded = generate_h3_summary(state=None, total=10_000, active=200, abandoned=9_800)
+        assert degraded is True
+        # National fallback doesn't template any state name.
+        assert "10,000" in text
+        assert "None" not in text
+
+    @patch("app.prose_client._get_connection")
+    def test_zero_total_does_not_divide_by_zero(self, mock_conn):
+        cursor = MagicMock()
+        cursor.fetchone.return_value = ("Empty map.",)
+        mock_conn.return_value.cursor.return_value = cursor
+
+        text, degraded = generate_h3_summary(state="AK", total=0, active=0, abandoned=0)
+        # No ZeroDivisionError; Cortex is still asked (caller gates on total>0
+        # at the endpoint layer, but the generator itself must be safe).
+        assert degraded is False
+        assert text == "Empty map."
 
 
 if __name__ == "__main__":
