@@ -7,8 +7,8 @@ flowchart TB
     subgraph BROWSER["BROWSER (client-side)"]
         GEO[Geolocation API<br/>→ lat/lon]
         PIP[Point-in-polygon<br/>eGRID GeoJSON ~1MB]
-        MAP[MapLibre GL JS<br/>zoom sequence]
-        PIX[PixiJS<br/>particles + ticker]
+        MAP[MapLibre GL JS<br/>satellite basemap<br/>animated flow lines]
+        TICKER[Tonnage ticker<br/>requestAnimationFrame]
         CHAT[Chat UI<br/>chips + transcript]
         GEO --> PIP
     end
@@ -25,16 +25,12 @@ flowchart TB
         RO_EXEC[SQL Execution<br/>READONLY_ROLE<br/>500-row cap, 10s timeout]
     end
 
-    GEMINI[Gemini Flash<br/>grief-coded prose<br/>cached per-subregion]
-
     PIP -->|POST subregion_id| MINE_EP
     CHAT -->|POST question| ASK_EP
     MINE_EP -->|SQL via APP_ROLE| DB
     MINE_EP -->|Snowflake down| FALLBACK
-    MINE_EP -->|mine record| GEMINI
-    GEMINI -->|prose| MINE_EP
     MINE_EP -->|JSON payload| MAP
-    MAP --> PIX
+    MAP --> TICKER
     ASK_EP -->|REST API| CORTEX
     CORTEX -->|generated SELECT| RO_EXEC
     RO_EXEC -->|rows as dicts| ASK_EP
@@ -44,7 +40,6 @@ flowchart TB
     style DB fill:#29b5e8,color:#fff
     style CORTEX fill:#29b5e8,color:#fff
     style RO_EXEC fill:#29b5e8,color:#fff
-    style GEMINI fill:#4285f4,color:#fff
     style BROWSER fill:#e8f5e9
     style API fill:#e8f5e9
     style SNOW fill:#e3f2fd
@@ -69,7 +64,8 @@ flowchart LR
     Q[User question] --> V{Pydantic validation<br/>regex + length}
     V -->|valid| CA[Cortex Analyst]
     V -->|invalid| R422[422 reject]
-    CA -->|SQL| CHK{SQL validation<br/>SELECT only, no DML,<br/>no multi-statement}
+    CA -->|SQL| STRIP[Strip trailing<br/>semicolon]
+    STRIP --> CHK{SQL validation<br/>SELECT only, no DML,<br/>no remaining semicolons}
     CHK -->|safe| EXEC[Execute via<br/>READONLY_ROLE]
     CHK -->|unsafe| RVAL[ValueError reject]
     EXEC -->|500 rows max<br/>10s timeout| RESP[Response]

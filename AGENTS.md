@@ -88,7 +88,7 @@ UNEARTHED_DB
 │   └── (intermediate transforms)
 └── MRT          — consumption-ready views
     ├── V_MINE_FOR_PLANT        (mine rankings per plant)
-    └── V_MINE_FOR_SUBREGION    (mine rankings per eGRID subregion + Cortex summary)
+    └── V_MINE_FOR_SUBREGION    (mine rankings per eGRID subregion)
 ```
 
 ### SQL Standards
