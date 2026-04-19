@@ -74,7 +74,7 @@
 	}
 </script>
 
-<SectionRail number="05" label="Ask the records" class="cortex-section">
+<SectionRail number="06" label="Ask the records" class="cortex-section">
 	<div class="header">
 		<span class="badge">
 			<span class="pulse" aria-hidden="true"></span>

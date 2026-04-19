@@ -20,7 +20,7 @@
 	onDestroy(() => { if (raf) cancelAnimationFrame(raf); });
 </script>
 
-<SectionRail number="06" label="While you read" class="ticker-section">
+<SectionRail number="07" label="While you read" class="ticker-section">
 	<div class="counter">
 		<span class="number">{tons.toFixed(2)}</span>
 		<span class="unit-primary">tons of coal extracted while you've been reading</span>
