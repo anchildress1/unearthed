@@ -8,14 +8,15 @@ flowchart TB
         GEO[Geolocation / Geocoding<br/>→ lat/lon → subregion]
         SCROLL[Scroll sections<br/>glassmorphism data reveals]
         MAP[Google Maps JS API<br/>satellite + animated arc]
-        CHAT[Cortex Analyst chat<br/>chips + expandable SQL]
+        H3UI[H3 density section<br/>Google Maps hexbins +<br/>Cortex summary byline]
+        CHAT[Cortex Analyst chat<br/>chips + visible SQL per turn]
         GEO --> SCROLL
     end
 
     subgraph API["CLOUD RUN (FastAPI, Python 3.12)"]
         MINE_EP[POST /mine-for-me<br/>→ mine data + prose]
         ASK_EP[POST /ask<br/>→ answer + SQL + results]
-        H3_EP[GET /h3-density<br/>→ H3 hexbin scar grid]
+        H3_EP[GET /h3-density<br/>→ hexbin cells + registry totals +<br/>Cortex summary + degraded flag]
         EMIT_EP[GET /emissions/{plant}<br/>→ CO2/SO2/NOx from EPA]
         FALLBACK[Fallback JSON<br/>19 subregions]
     end
@@ -24,7 +25,7 @@ flowchart TB
         DB[(UNEARTHED_DB<br/>6 tables + 2 views)]
         ACCIDENTS[(MSHA_ACCIDENTS<br/>fatalities + injuries)]
         CORTEX[Cortex Analyst<br/>semantic model YAML]
-        COMPLETE[Cortex Complete<br/>llama3.1-70b prose]
+        COMPLETE[Cortex Complete<br/>openai-gpt-5.2<br/>mine prose + H3 summary<br/>honest degraded flag]
         H3[H3 Geospatial<br/>hexbin density]
         RO_EXEC[SQL Execution<br/>READONLY_ROLE]
     end
@@ -35,8 +36,8 @@ flowchart TB
 
     SCROLL -->|POST subregion_id| MINE_EP
     CHAT -->|POST question| ASK_EP
-    MAP -->|GET| H3_EP
-    SCROLL -->|GET| EMIT_EP
+    H3UI -->|GET| H3_EP
+    SCROLL -->|GET /emissions/:plant| EMIT_EP
     MINE_EP -->|query| DB
     MINE_EP -->|fatality stats| ACCIDENTS
     MINE_EP -->|Snowflake down| FALLBACK
@@ -48,6 +49,7 @@ flowchart TB
     RO_EXEC -->|rows| ASK_EP
     ASK_EP -->|answer + SQL| CHAT
     H3_EP -->|H3_LATLNG_TO_CELL| H3
+    H3_EP -->|totals → summary| COMPLETE
     EMIT_EP -->|JOIN| EPA
 
     style DB fill:#29b5e8,color:#fff

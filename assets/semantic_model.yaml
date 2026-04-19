@@ -27,17 +27,52 @@ tables:
         expr: TRY_TO_NUMBER(REPLACE(MINE_ID, '"', ''))
         data_type: NUMBER
       - name: mine_name
-        description: Current name of the mine
+        synonyms:
+          - mine
+          - mine name
+          - pit
+          - colliery
+        description: >
+          Current name of the mine. Use ILIKE with a trailing wildcard
+          when matching a short form of the name (e.g. 'Bailey%').
         expr: TRIM(REPLACE(CURRENT_MINE_NAME, '"', ''))
         data_type: VARCHAR
+        sample_values:
+          - Bailey Mine
+          - Black Thunder
+          - North Antelope Rochelle Mine
+          - Buckingham Mine No. 6
+          - Marshall County Mine
+          - Century Mine
+          - Enlow Fork Mine
       - name: mine_operator
+        synonyms:
+          - operator
+          - company
+          - owner
+          - mining company
         description: Current operator of the mine
         expr: TRIM(REPLACE(CURRENT_OPERATOR_NAME, '"', ''))
         data_type: VARCHAR
+        sample_values:
+          - Consol Pennsylvania Coal Company
+          - Peabody Powder River Mining LLC
+          - Arch Resources WY LLC
+          - Murray American Energy Inc
       - name: mine_state
-        description: State where the mine is located
+        synonyms:
+          - state
+          - us state
+        description: Two-letter US state code where the mine is located (e.g. 'WY', 'WV', 'KY')
         expr: TRIM(REPLACE(STATE, '"', ''))
         data_type: VARCHAR
+        sample_values:
+          - WY
+          - WV
+          - KY
+          - PA
+          - IL
+          - MT
       - name: mine_county
         description: County where the mine is located
         expr: TRIM(REPLACE(FIPS_CNTY_NM, '"', ''))
@@ -121,11 +156,25 @@ tables:
         expr: PLANT_ID
         data_type: NUMBER
       - name: plant_name
+        synonyms:
+          - plant
+          - power plant
+          - facility
+          - generating station
         description: Name of the receiving power plant
         expr: PLANT_NAME
         data_type: VARCHAR
+        sample_values:
+          - Cross
+          - Gavin
+          - Bruce Mansfield
+          - Rockport
+          - Cardinal
+          - Mountaineer
       - name: plant_state
-        description: State of the receiving power plant
+        synonyms:
+          - plant state
+        description: Two-letter state code of the receiving power plant
         expr: PLANT_STATE
         data_type: VARCHAR
       - name: coalmine_msha_id
@@ -382,3 +431,63 @@ verified_queries:
       GROUP BY TRIM(REPLACE(m.CURRENT_OPERATOR_NAME, '"', ''))
       ORDER BY total_production_tons DESC
       LIMIT 1
+
+  - name: fatalities_at_mine
+    question: "How many fatalities at Black Thunder mine?"
+    sql: >
+      SELECT TRIM(REPLACE(m.CURRENT_MINE_NAME, '"', '')) AS mine_name,
+        SUM(CASE WHEN TRIM(REPLACE(a.DEGREE_INJURY, '"', '')) = 'FATALITY'
+          THEN 1 ELSE 0 END) AS fatalities,
+        COUNT(*) AS total_incidents
+      FROM UNEARTHED_DB.RAW.MSHA_ACCIDENTS a
+      JOIN UNEARTHED_DB.RAW.MSHA_MINES m
+        ON TRY_TO_NUMBER(REPLACE(a.MINE_ID, '"', '')) = TRY_TO_NUMBER(REPLACE(m.MINE_ID, '"', ''))
+      WHERE TRIM(REPLACE(m.CURRENT_MINE_NAME, '"', '')) ILIKE 'Black Thunder%'
+        AND REPLACE(m.COAL_METAL_IND, '"', '') = 'C'
+        AND REPLACE(a.COAL_METAL_IND, '"', '') = 'C'
+      GROUP BY TRIM(REPLACE(m.CURRENT_MINE_NAME, '"', ''))
+
+  - name: production_by_mine_since_year
+    question: "How much has Black Thunder produced since 2020?"
+    sql: >
+      SELECT TRIM(REPLACE(m.CURRENT_MINE_NAME, '"', '')) AS mine_name,
+        SUM(p.COAL_PRODUCTION) AS total_tons
+      FROM UNEARTHED_DB.RAW.MSHA_QUARTERLY_PRODUCTION p
+      JOIN UNEARTHED_DB.RAW.MSHA_MINES m
+        ON TRY_TO_NUMBER(REPLACE(p.MINE_ID, '"', '')) = TRY_TO_NUMBER(REPLACE(m.MINE_ID, '"', ''))
+      WHERE TRIM(REPLACE(m.CURRENT_MINE_NAME, '"', '')) ILIKE 'Black Thunder%'
+        AND p.CAL_YR >= 2020
+        AND REPLACE(m.COAL_METAL_IND, '"', '') = 'C'
+        AND REPLACE(p.COAL_METAL_IND, '"', '') = 'C'
+      GROUP BY TRIM(REPLACE(m.CURRENT_MINE_NAME, '"', ''))
+
+  - name: mines_supplying_plant
+    question: "Which mines supplied Cross in 2024? Rank by tonnage."
+    sql: >
+      SELECT fr.COALMINE_NAME,
+        TRIM(REPLACE(m.CURRENT_OPERATOR_NAME, '"', '')) AS operator,
+        TRIM(REPLACE(m.STATE, '"', '')) AS state,
+        SUM(TRY_TO_NUMBER(REPLACE(fr.QUANTITY, ',', ''), 18, 1)) AS total_tons
+      FROM UNEARTHED_DB.RAW.EIA_923_FUEL_RECEIPTS fr
+      LEFT JOIN UNEARTHED_DB.RAW.MSHA_MINES m
+        ON TRY_TO_NUMBER(fr.COALMINE_MSHA_ID)
+           = TRY_TO_NUMBER(REPLACE(m.MINE_ID, '"', ''))
+      WHERE fr.PLANT_NAME ILIKE 'Cross%'
+        AND fr.FUEL_GROUP = 'Coal'
+        AND fr.YEAR = 2024
+      GROUP BY fr.COALMINE_NAME,
+        TRIM(REPLACE(m.CURRENT_OPERATOR_NAME, '"', '')),
+        TRIM(REPLACE(m.STATE, '"', ''))
+      ORDER BY total_tons DESC
+
+  - name: is_mine_active_black_thunder
+    question: "Is Black Thunder still active?"
+    sql: >
+      SELECT TRIM(REPLACE(CURRENT_MINE_NAME, '"', '')) AS mine_name,
+        TRIM(REPLACE(CURRENT_MINE_STATUS, '"', '')) AS mine_status,
+        TRIM(REPLACE(CURRENT_MINE_TYPE, '"', '')) AS mine_type,
+        TRIM(REPLACE(CURRENT_OPERATOR_NAME, '"', '')) AS operator,
+        TRIM(REPLACE(STATE, '"', '')) AS state
+      FROM UNEARTHED_DB.RAW.MSHA_MINES
+      WHERE TRIM(REPLACE(CURRENT_MINE_NAME, '"', '')) ILIKE 'Black Thunder%'
+        AND REPLACE(COAL_METAL_IND, '"', '') = 'C'

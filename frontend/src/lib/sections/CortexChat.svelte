@@ -1,38 +1,57 @@
 <script>
 	import { fetchAsk } from '$lib/api.js';
+	import SectionRail from '$lib/components/SectionRail.svelte';
 
 	const props = $props();
 	let question = $state('');
-	let transcript = $state([]);
+	// Single-entry view—asking a new question replaces the prior one so the
+	// page stays focused on the latest answer instead of growing a scrolling
+	// transcript the user has to hunt through.
+	let entry = $state(null);
 	let asking = $state(false);
+	// SQL + interpretation are *proof* (for judges, for skeptics), but most
+	// users just want the answer. Collapsed by default; expanded per-entry
+	// via this flag when the user clicks "show how Cortex got there".
+	let showProof = $state(false);
 
 	const chips = $derived([
 		`How much has ${props.mineName} produced since 2020?`,
 		`Which mines supplied ${props.plantName} in 2024? Rank by tonnage.`,
 		`Is ${props.mineName} still active?`,
 		`How many fatalities at ${props.mineName}?`,
-		'Who is the largest coal supplier in this state?',
+		`Who is the largest coal supplier in Wyoming?`,
 	]);
 
 	async function ask(q) {
 		if (asking || !q.trim()) return;
 		asking = true;
+		showProof = false;
 		console.log('[unearthed] cortex query:', q);
-		const entry = { question: q, answer: null, error: null, sql: null, results: null };
-		transcript = [...transcript, entry];
+		entry = {
+			question: q,
+			answer: null,
+			interpretation: null,
+			error: null,
+			sql: null,
+			results: null,
+			suggestions: [],
+		};
 		question = '';
 		try {
 			const result = await fetchAsk(q, props.subregionId);
-			entry.answer = result.answer || result.interpretation || '';
-			entry.sql = result.sql;
-			entry.error = result.error;
-			entry.results = result.results;
-			transcript = [...transcript];
+			entry = {
+				...entry,
+				answer: result.answer || '',
+				interpretation: result.interpretation || '',
+				sql: result.sql,
+				error: result.error,
+				results: result.results,
+				suggestions: !result.sql ? result.suggestions || [] : [],
+			};
 			console.log('[unearthed] cortex response:', entry.answer?.slice(0, 100));
 		} catch (e) {
 			console.error('[unearthed] cortex error:', e);
-			entry.error = 'Could not reach the data assistant.';
-			transcript = [...transcript];
+			entry = { ...entry, error: 'Could not reach the data assistant.' };
 		} finally {
 			asking = false;
 		}
@@ -42,21 +61,44 @@
 		e.preventDefault();
 		ask(question);
 	}
+
+	// Cortex result rows are arbitrary JSON — a nested struct or variant cell
+	// would render as "[object Object]" via default coercion, which looks
+	// broken next to formatted numbers. JSON-stringify objects so the raw
+	// shape is visible instead of the coercion artifact.
+	function formatCell(val) {
+		if (val == null) return '';
+		if (typeof val === 'number') return val.toLocaleString();
+		if (typeof val === 'object') return JSON.stringify(val);
+		return val;
+	}
 </script>
 
-<section class="cortex">
+<SectionRail number="06" label="Ask the records" class="cortex-section">
 	<div class="header">
-		<span class="badge">cortex analyst</span>
-		<span class="live">● live</span>
+		<span class="badge">
+			<span class="pulse" aria-hidden="true"></span>
+			<span>snowflake cortex analyst</span>
+			<span class="status" class:active={asking}>{asking ? 'querying' : 'live'}</span>
+		</span>
 	</div>
 
-	<h3>Ask the data.</h3>
+	<h3>Interrogate the <em>records</em>.</h3>
 	<p class="sub">
-		Powered by <strong>Snowflake Cortex Analyst</strong>. Your question becomes SQL.
-		The SQL runs against federal mine safety records. The answer comes back with its source.
+		Your question becomes <strong>SQL</strong>. The SQL runs against federal mine data
+		pooled in Snowflake. The answer comes back with the generated query attached —
+		<em>honesty, not hallucination</em>.
 	</p>
 
-	<div class="chips">
+	<div class="pipeline" aria-hidden="true">
+		<span class="p-step"><span class="p-num">01</span> natural language</span>
+		<span class="p-arrow">→</span>
+		<span class="p-step"><span class="p-num">02</span> generated SQL</span>
+		<span class="p-arrow">→</span>
+		<span class="p-step"><span class="p-num">03</span> federal data</span>
+	</div>
+
+	<div class="chips" role="list" aria-label="Suggested questions">
 		{#each chips as chip}
 			<button class="chip" onclick={() => ask(chip)} disabled={asking}>{chip}</button>
 		{/each}
@@ -68,76 +110,108 @@
 			name="question"
 			type="text"
 			bind:value={question}
-			placeholder="Ask anything about this mine, this plant, or your grid..."
+			placeholder="Ask anything about this mine, this plant, or your grid…"
 			aria-label="Ask a question"
 			maxlength="500"
 			disabled={asking}
 		/>
-		<button type="submit" disabled={asking}>{asking ? '...' : 'Ask'}</button>
+		<button type="submit" disabled={asking}>{asking ? 'asking…' : 'ask →'}</button>
 	</form>
 
-	{#if transcript.length > 0}
-		<div class="transcript">
-			{#each transcript as entry}
-				<div class="entry glass">
-					<p class="q">{entry.question}</p>
+	{#if entry}
+		<div class="entry glass">
+			<p class="q"><span class="q-mark">&gt;</span> {entry.question}</p>
 
-					{#if entry.error}
-						<p class="error">{entry.error}</p>
-					{/if}
+			{#if entry.error}
+				<p class="error">{entry.error}</p>
+			{/if}
 
-					{#if entry.answer}
-						<p class="answer">{entry.answer}</p>
-					{/if}
+			{#if entry.answer}
+				<p class="answer">{entry.answer}</p>
+			{/if}
 
-					{#if entry.results && entry.results.length === 0}
-						<p class="no-results">Query ran successfully but returned no rows.</p>
-					{:else if entry.results && entry.results.length > 0}
-						<div class="results">
-							<table>
-								<thead>
-									<tr>
-										{#each Object.keys(entry.results[0]) as col}
-											<th>{col.replace(/_/g, ' ')}</th>
-										{/each}
-									</tr>
-								</thead>
-								<tbody>
-									{#each entry.results as row}
-										<tr>
-											{#each Object.values(row) as val}
-												<td>{typeof val === 'number' ? val.toLocaleString() : val}</td>
-											{/each}
-										</tr>
+			{#if entry.results && entry.results.length === 0 && !entry.error}
+				<p class="no-results">Query ran successfully but returned no rows.</p>
+			{:else if entry.results && entry.results.length > 0}
+				<div class="results">
+					<table>
+						<thead>
+							<tr>
+								{#each Object.keys(entry.results[0]) as col}
+									<th>{col.replace(/_/g, ' ')}</th>
+								{/each}
+							</tr>
+						</thead>
+						<tbody>
+							{#each entry.results as row}
+								<tr>
+									{#each Object.values(row) as val}
+										<td>{formatCell(val)}</td>
 									{/each}
-								</tbody>
-							</table>
-						</div>
-					{/if}
-
-					{#if entry.sql}
-						<details class="sql-details">
-							<summary>Show SQL</summary>
-							<pre>{entry.sql}</pre>
-						</details>
-					{/if}
-
-					<div class="source">
-						<span class="source-tag">source: MSHA + EIA federal records via Snowflake</span>
-					</div>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
 				</div>
-			{/each}
+			{/if}
+
+			{#if !entry.sql && !entry.error && entry.answer}
+				<p class="hint">
+					Cortex answered from its interpretation layer without running a query.
+					Try rephrasing with a specific mine, plant, operator, or state name—or pick one below.
+				</p>
+			{/if}
+
+			{#if entry.suggestions && entry.suggestions.length > 0}
+				<div class="follow-ups">
+					{#each entry.suggestions as suggestion}
+						<button class="chip" onclick={() => ask(suggestion)} disabled={asking}>
+							{suggestion}
+						</button>
+					{/each}
+				</div>
+			{/if}
+
+			{#if entry.sql || entry.interpretation}
+				<!--
+					Proof drawer. Everyday readers want the answer; judges and
+					skeptics want to see Cortex's work. Hidden by default,
+					expanded on click—the tag below doubles as the affordance.
+				-->
+				<button
+					type="button"
+					class="proof-toggle"
+					aria-expanded={showProof}
+					aria-controls="cortex-proof"
+					onclick={() => (showProof = !showProof)}
+				>
+					<span class="caret" aria-hidden="true">{showProof ? '▾' : '▸'}</span>
+					{showProof ? 'hide' : 'show'} how Cortex got there
+				</button>
+				{#if showProof}
+					<div class="proof" id="cortex-proof">
+						{#if entry.sql}
+							<div class="proof-stage">
+								<span class="stage-num">02</span>
+								<span class="stage-label">generated SQL · Cortex Analyst</span>
+							</div>
+							<pre class="sql-pre">{entry.sql}</pre>
+						{/if}
+						{#if entry.interpretation}
+							<div class="proof-stage">
+								<span class="stage-num">03</span>
+								<span class="stage-label">Cortex interpretation</span>
+							</div>
+							<p class="interp">{entry.interpretation}</p>
+						{/if}
+					</div>
+				{/if}
+			{/if}
 		</div>
 	{/if}
-</section>
+</SectionRail>
 
 <style>
-	.cortex {
-		padding: var(--section-pad);
-		max-width: 740px;
-		margin: 0 auto;
-	}
-
 	.header {
 		display: flex;
 		align-items: center;
@@ -146,44 +220,88 @@
 	}
 
 	.badge {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
 		font-family: var(--mono);
 		font-size: 0.6rem;
 		text-transform: uppercase;
 		letter-spacing: 0.2em;
-		color: var(--accent);
-		border: 1px solid rgba(194,84,45,0.3);
-		padding: 0.25rem 0.6rem;
+		color: var(--rust);
+		border: 1px solid oklch(58% 0.14 36 / 0.3);
+		padding: 0.3rem 0.65rem 0.3rem 0.55rem;
 		border-radius: 3px;
 	}
 
-	.live {
+	/* Soft breathing dot. Rust dim → bright tier → dim, matching the two-
+	   tier palette. Reduced-motion fallback keeps the dot visible but still,
+	   since the animation is decorative (the nearby label says "live"). */
+	.pulse {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: var(--rust);
+		box-shadow: 0 0 0 0 var(--rust-glow);
+		animation: cortex-pulse 2.2s ease-in-out infinite;
+	}
+	@keyframes cortex-pulse {
+		0%, 100% {
+			background: var(--rust);
+			box-shadow: 0 0 0 0 oklch(58% 0.14 36 / 0);
+		}
+		50% {
+			background: var(--rust-bright);
+			box-shadow: 0 0 0 4px oklch(58% 0.14 36 / 0.18);
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.pulse { animation: none; }
+	}
+
+	.status {
+		color: var(--text-ghost);
+		font-size: 0.5rem;
+		letter-spacing: 0.18em;
+		padding-left: 0.4rem;
+		border-left: 1px solid oklch(58% 0.14 36 / 0.25);
+	}
+	.status.active { color: var(--rust-bright); }
+
+	/* The form chrome sits too close to the sub paragraph without an extra
+	   breath of space before it—the rest of the sections end their header
+	   on the h3 or a summary block, so this nudge is specific to CortexChat. */
+	.sub {
+		margin-bottom: 1.4rem;
+	}
+
+	.pipeline {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.7rem;
+		margin-bottom: 1.4rem;
 		font-family: var(--mono);
 		font-size: 0.55rem;
 		text-transform: uppercase;
-		letter-spacing: 0.15em;
-		color: var(--green);
+		letter-spacing: 0.16em;
+		color: var(--text-ghost);
 	}
-
-	h3 {
-		font-family: var(--serif);
-		font-size: clamp(2rem, 4vw, 3rem);
+	.p-step {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		padding: 0.3rem 0.55rem;
+		border: 1px solid rgba(255, 255, 255, 0.06);
+		border-radius: 3px;
+		background: rgba(255, 255, 255, 0.015);
+	}
+	.p-num {
+		color: var(--rust);
 		font-weight: 400;
-		color: var(--text);
-		margin-bottom: 0.5rem;
 	}
-
-	.sub {
-		font-family: var(--serif);
-		font-size: 0.9rem;
-		font-weight: 300;
-		color: var(--text-dim);
-		line-height: 1.7;
-		margin-bottom: 1.5rem;
-		max-width: 560px;
-	}
-	.sub strong {
-		color: var(--accent);
-		font-weight: 400;
+	.p-arrow {
+		color: var(--text-ghost);
+		font-size: 0.8rem;
 	}
 
 	.chips {
@@ -204,7 +322,7 @@
 		cursor: pointer;
 		transition: all 0.2s;
 	}
-	.chip:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+	.chip:hover:not(:disabled) { border-color: var(--rust); color: var(--rust); }
 	.chip:disabled { opacity: 0.3; cursor: not-allowed; }
 
 	.form {
@@ -225,14 +343,14 @@
 		border-radius: 6px;
 		outline: none;
 	}
-	input:focus { border-color: var(--accent); }
+	input:focus { border-color: var(--rust); }
 	input::placeholder { color: var(--text-ghost); font-style: italic; }
 
 	button[type="submit"] {
 		font-family: var(--mono);
 		font-size: 0.7rem;
 		padding: 0.7rem 1rem;
-		background: var(--accent);
+		background: var(--rust);
 		color: #fff;
 		border: none;
 		border-radius: 6px;
@@ -241,41 +359,144 @@
 	}
 	button[type="submit"]:disabled { opacity: 0.3; cursor: not-allowed; }
 
-	.transcript { display: flex; flex-direction: column; gap: 1rem; }
-
-	.entry { padding: 1.2rem 1.4rem; }
+	.entry { padding: 1.3rem 1.5rem; }
 
 	.q {
 		font-family: var(--serif);
-		font-weight: 600;
+		font-weight: 400;
+		font-style: italic;
+		font-size: 1.05rem;
+		color: var(--text);
+		line-height: 1.5;
+		margin-bottom: 0.6rem;
+	}
+	.q-mark {
+		font-family: var(--mono);
+		font-style: normal;
+		font-size: 0.65rem;
+		color: var(--rust);
+		letter-spacing: 0.1em;
+		margin-right: 0.4rem;
+	}
+
+	/* Pill-style toggle so the caret + border read unmistakably as "this is
+	   a button that toggles". The caret flips between ▸ (collapsed) and ▾
+	   (expanded) to reinforce the two-way affordance. */
+	.proof-toggle {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-top: 0.9rem;
+		padding: 0.4rem 0.8rem;
+		background: rgba(255, 255, 255, 0.02);
+		border: 1px solid var(--border-glass);
+		border-radius: 2rem;
+		font-family: var(--mono);
+		font-size: 0.6rem;
+		text-transform: uppercase;
+		letter-spacing: 0.15em;
+		color: var(--text-ghost);
+		cursor: pointer;
+		transition: color 0.15s, border-color 0.15s, background 0.15s;
+	}
+	.proof-toggle:hover {
+		color: var(--rust);
+		border-color: oklch(58% 0.14 36 / 0.45);
+		background: oklch(58% 0.14 36 / 0.06);
+	}
+	.proof-toggle[aria-expanded="true"] {
+		color: var(--rust);
+		border-color: oklch(58% 0.14 36 / 0.35);
+	}
+	.proof-toggle .caret {
+		font-size: 0.7rem;
+		line-height: 1;
+		transform: translateY(-0.5px);
+	}
+
+	.proof {
+		margin-top: 0.6rem;
+		padding-top: 0.8rem;
+		border-top: 1px solid rgba(255, 255, 255, 0.05);
+	}
+	.proof-stage {
+		display: flex;
+		align-items: baseline;
+		gap: 0.5rem;
+		margin-top: 0.9rem;
+		margin-bottom: 0.4rem;
+	}
+	.proof-stage:first-child { margin-top: 0; }
+	.stage-num {
+		font-family: var(--mono);
+		font-size: 0.6rem;
+		color: var(--rust);
+		letter-spacing: 0.12em;
+		font-weight: 400;
+	}
+	.stage-label {
+		font-family: var(--mono);
+		font-size: 0.5rem;
+		text-transform: uppercase;
+		letter-spacing: 0.2em;
+		color: var(--text-ghost);
+	}
+	.interp {
+		font-family: var(--serif);
 		font-size: 0.9rem;
-		color: var(--accent);
-		margin-bottom: 0.8rem;
+		font-weight: 300;
+		line-height: 1.7;
+		color: var(--text-dim);
+		font-style: italic;
 	}
 
 	.answer {
 		font-family: var(--serif);
-		font-size: 0.95rem;
+		font-size: 0.98rem;
 		font-weight: 300;
 		line-height: 1.8;
 		color: var(--text);
-		margin-bottom: 0.8rem;
+		margin-bottom: 0.4rem;
 	}
 
 	.error {
-		color: var(--accent);
+		color: var(--rust);
 		font-size: 0.85rem;
 		font-style: italic;
-		margin-bottom: 0.5rem;
 	}
 
-	.results { margin: 0.8rem 0; overflow-x: auto; }
+	.no-results {
+		font-family: var(--mono);
+		font-size: 0.7rem;
+		color: var(--text-ghost);
+		font-style: italic;
+	}
+
+	.hint {
+		font-family: var(--serif);
+		font-size: 0.85rem;
+		font-style: italic;
+		color: var(--text-dim);
+		line-height: 1.55;
+		margin: 0.4rem 0 0.6rem;
+		padding-left: 0.75rem;
+		border-left: 2px solid oklch(58% 0.14 36 / 0.45);
+	}
+
+	.follow-ups {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.4rem;
+		margin: 0.4rem 0 0.2rem;
+	}
+
+	.results { margin: 0.4rem 0 0.2rem; overflow-x: auto; }
 	table { width: 100%; border-collapse: collapse; }
 	th, td {
 		text-align: left;
-		padding: 0.4rem 0.6rem;
-		border-bottom: 1px solid rgba(255,255,255,0.04);
-		font-size: 0.8rem;
+		padding: 0.45rem 0.7rem;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+		font-size: 0.82rem;
 	}
 	th {
 		font-family: var(--mono);
@@ -283,44 +504,22 @@
 		text-transform: uppercase;
 		letter-spacing: 0.1em;
 		color: var(--text-ghost);
+		font-weight: 400;
 	}
-	td { color: var(--text-dim); }
+	td { color: var(--text-dim); font-family: var(--serif); }
 
-	.sql-details { margin-top: 0.5rem; }
-	.sql-details summary {
-		font-family: var(--mono);
-		font-size: 0.65rem;
-		text-transform: uppercase;
-		letter-spacing: 0.1em;
-		color: var(--accent);
-		cursor: pointer;
-		padding: 0.3rem 0;
-	}
-	.sql-details pre {
-		margin-top: 0.5rem;
-		padding: 0.8rem;
-		background: rgba(0,0,0,0.4);
+	.sql-pre {
+		margin: 0;
+		padding: 0.9rem 1rem;
+		background: rgba(0, 0, 0, 0.45);
 		border-radius: 6px;
-		border: 1px solid rgba(255,255,255,0.03);
+		border-left: 2px solid var(--rust);
 		font-family: var(--mono);
-		font-size: 0.7rem;
-		color: var(--accent);
+		font-size: 0.72rem;
+		color: var(--rust);
 		white-space: pre-wrap;
 		word-break: break-word;
-		line-height: 1.5;
+		line-height: 1.55;
 		overflow-x: auto;
-	}
-
-	.source {
-		margin-top: 0.6rem;
-		padding-top: 0.5rem;
-		border-top: 1px solid rgba(255,255,255,0.03);
-	}
-	.source-tag {
-		font-family: var(--mono);
-		font-size: 0.5rem;
-		text-transform: uppercase;
-		letter-spacing: 0.12em;
-		color: var(--text-ghost);
 	}
 </style>

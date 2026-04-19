@@ -1,179 +1,171 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
+	import SectionRail from '$lib/components/SectionRail.svelte';
+	import {
+		loadGoogleMaps,
+		createDarkMap,
+		createFlowOverlay,
+		createLabeledMarker,
+		circleIcon,
+		MAP_COLORS,
+	} from '$lib/maps.js';
 
 	let { data } = $props();
 	let mapEl;
 	let mapError = $state(null);
-	let animInterval = null;
+	let flowOverlay = null;
+	// onMount has an `await` before overlay attachment, so the component can
+	// unmount (HMR, fast re-trace) before the overlay is assigned. `cancelled`
+	// gates every post-await side-effect so we don't strand animation loops
+	// on a dead component.
+	let cancelled = false;
 
 	onMount(async () => {
 		try {
-			if (!window.google?.maps) {
-				console.log('[unearthed] loading Google Maps...');
-				await loadGoogleMaps();
-			}
-
-			const { Map } = await google.maps.importLibrary('maps');
+			await loadGoogleMaps();
+			if (cancelled) return;
 
 			const mine = { lat: data.mine_coords[0], lng: data.mine_coords[1] };
 			const plant = { lat: data.plant_coords[0], lng: data.plant_coords[1] };
+			const user = data.user_coords
+				? { lat: data.user_coords[0], lng: data.user_coords[1] }
+				: null;
 
+			const map = createDarkMap(mapEl);
 			const bounds = new google.maps.LatLngBounds();
 			bounds.extend(mine);
 			bounds.extend(plant);
+			if (user) bounds.extend(user);
+			map.fitBounds(bounds, { top: 40, bottom: 40, left: 40, right: 40 });
 
-			const map = new Map(mapEl, {
-				mapTypeId: 'hybrid',
-				disableDefaultUI: true,
-				zoomControl: true,
-				gestureHandling: 'greedy',
-				styles: [{ featureType: 'all', elementType: 'labels', stylers: [{ visibility: 'simplified' }] }],
-			});
-			map.fitBounds(bounds, { top: 100, bottom: 100, left: 100, right: 100 });
+			// One coal flow—mine → plant → user—drawn as one continuous SVG
+			// path so the reveal and pulse read as a single route, not two
+			// separate relationships. The stack doesn't interrupt the coal;
+			// it only converts it.
+			const waypoints = user ? [mine, plant, user] : [mine, plant];
+			flowOverlay = createFlowOverlay(map, waypoints);
 
-			// Build curved arc path
-			const arcPath = buildArc(mine, plant, 50);
+			// Fan the three cards out by relative geography so two close-together
+			// markers don't stack their labels. Northmost floats above, southmost
+			// drops below, anyone in between slides to the side the other two
+			// aren't using. Cards render as HTML overlays (OverlayView), so
+			// "above/below/left/right" are real CSS transforms, not nudges.
+			const placement = computeLabelPlacement({ mine, plant, user });
 
-			// Static arc line
-			new google.maps.Polyline({
+			createLabeledMarker(
 				map,
-				path: arcPath,
-				strokeColor: '#c2542d',
-				strokeWeight: 2.5,
-				strokeOpacity: 0.5,
-				geodesic: false,
-			});
-
-			// Animated dot traversing the arc
-			const dot = new google.maps.Marker({
+				anchorMarker(map, mine, MAP_COLORS.rust),
+				{ type: 'MINE', name: data.mine, placement: placement.mine },
+			);
+			createLabeledMarker(
 				map,
-				position: arcPath[0],
-				icon: {
-					path: google.maps.SymbolPath.CIRCLE,
-					scale: 5,
-					fillColor: '#c2542d',
-					fillOpacity: 1,
-					strokeColor: '#fff',
-					strokeWeight: 1.5,
-				},
-				zIndex: 10,
-			});
-
-			let dotIndex = 0;
-			animInterval = setInterval(() => {
-				dotIndex = (dotIndex + 1) % arcPath.length;
-				dot.setPosition(arcPath[dotIndex]);
-			}, 80);
-
-			// Mine marker
-			addLabeledMarker(map, mine, 'MINE', data.mine, '#c2542d');
-			// Plant marker
-			addLabeledMarker(map, plant, 'PLANT', data.plant, '#5a7a5a');
-
-			console.log('[unearthed] map rendered');
+				anchorMarker(map, plant, MAP_COLORS.moss),
+				{ type: 'PLANT', name: data.plant, placement: placement.plant },
+			);
+			if (user) {
+				createLabeledMarker(
+					map,
+					anchorMarker(map, user, MAP_COLORS.you),
+					{ type: 'YOU', name: 'your meter', placement: placement.user },
+				);
+			}
 		} catch (e) {
 			console.error('[unearthed] map error:', e);
 			mapError = 'Map could not load.';
 		}
 	});
 
-	onDestroy(() => { if (animInterval) clearInterval(animInterval); });
+	onDestroy(() => {
+		cancelled = true;
+		if (flowOverlay) flowOverlay.setMap(null);
+	});
 
-	function buildArc(from, to, segments) {
-		const points = [];
-		for (let i = 0; i <= segments; i++) {
-			const t = i / segments;
-			const lat = from.lat + (to.lat - from.lat) * t;
-			const lng = from.lng + (to.lng - from.lng) * t;
-			const arc = Math.sin(t * Math.PI) * Math.abs(to.lng - from.lng) * 0.15;
-			points.push({ lat: lat + arc, lng });
+	function anchorMarker(map, pos, color) {
+		return new google.maps.Marker({
+			map,
+			position: pos,
+			icon: circleIcon({ color }),
+		});
+	}
+
+	// Fan the three labels so they don't stack when markers are close.
+	// Latitude ordering drives the primary assignment: northmost floats
+	// above, southmost drops below. Any middle point slides to whichever
+	// side it sits on relative to the other two's longitude midpoint. The
+	// returned values are keys of PIN_TRANSFORMS in maps.js.
+	function computeLabelPlacement({ mine, plant, user }) {
+		const points = [
+			{ key: 'mine', lat: mine.lat, lng: mine.lng },
+			{ key: 'plant', lat: plant.lat, lng: plant.lng },
+		];
+		if (user) points.push({ key: 'user', lat: user.lat, lng: user.lng });
+
+		const byLat = [...points].sort((a, b) => b.lat - a.lat);
+		const slot = { [byLat[0].key]: 'above', [byLat[byLat.length - 1].key]: 'below' };
+		if (byLat.length === 3) slot[byLat[1].key] = 'side';
+
+		function sidePlacementFor(key) {
+			const me = points.find((p) => p.key === key);
+			const others = points.filter((p) => p.key !== key);
+			const avgLng = others.reduce((s, p) => s + p.lng, 0) / others.length;
+			return me.lng >= avgLng ? 'right' : 'left';
 		}
-		return points;
-	}
 
-	function addLabeledMarker(map, pos, type, name, color) {
-		const marker = new google.maps.Marker({
-			map, position: pos, title: name,
-			icon: { path: google.maps.SymbolPath.CIRCLE, scale: 7, fillColor: color, fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 },
-		});
-		const el = document.createElement('div');
-		const typeEl = document.createElement('div');
-		typeEl.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:10px;color:#807b75;text-transform:uppercase;letter-spacing:0.1em;padding:2px 4px";
-		typeEl.textContent = type;
-		const nameEl = document.createElement('div');
-		nameEl.style.cssText = "font-family:Newsreader,serif;font-size:13px;color:#1a1a1a;padding:0 4px 2px";
-		nameEl.textContent = name;
-		el.appendChild(typeEl);
-		el.appendChild(nameEl);
-		const info = new google.maps.InfoWindow({ content: el });
-		info.open(map, marker);
-	}
-
-	function loadGoogleMaps() {
-		return new Promise((resolve, reject) => {
-			const key = import.meta.env.VITE_GOOGLE_MAPS_KEY || '';
-			if (!key) {
-				reject(new Error('VITE_GOOGLE_MAPS_KEY not set — map cannot load'));
-				return;
-			}
-			const s = document.createElement('script');
-			s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&v=weekly&libraries=maps,marker`;
-			s.async = true;
-			s.onload = resolve;
-			s.onerror = () => reject(new Error('Google Maps failed to load'));
-			document.head.appendChild(s);
-		});
+		const out = {};
+		for (const p of points) {
+			if (slot[p.key] === 'side') out[p.key] = sidePlacementFor(p.key);
+			else out[p.key] = slot[p.key];
+		}
+		return out;
 	}
 </script>
 
-<section class="map-section">
-	<h3>
-		The <em>line</em> — from your meter,<br/>to the stack, to the mountain.
-	</h3>
+<SectionRail number="03" label="The route" class="map-section">
+	<div class="map-header">
+		<h3>
+			Your <em>meter</em> pulls from the stack.<br/>
+			The stack pulls from the <em>mountain</em>.
+		</h3>
+		<p class="sub">
+			One rust line is the coal—from the <span class="rust">seam it was cut out of</span>,
+			to the <span class="rust">stack that burned it</span>, to
+			<span class="rust">your meter</span>. One route, one color.
+			<strong>Close markers fan their labels out</strong> so nothing stacks on top of anything else.
+		</p>
+	</div>
 
 	<div class="map-frame glass">
 		{#if mapError}
 			<p class="placeholder">{mapError}</p>
 		{/if}
-		<div class="map-container" bind:this={mapEl}></div>
+		<div class="map-container" bind:this={mapEl} role="img" aria-label="Map from coal mine to power plant to your meter"></div>
 	</div>
 
 	<div class="legend">
 		<span class="legend-item"><span class="dot mine"></span> coal mine</span>
 		<span class="legend-item"><span class="dot plant"></span> power plant</span>
-		<span class="legend-item"><span class="line-sample"></span> coal supply route</span>
+		{#if data.user_coords}
+			<span class="legend-item"><span class="dot you"></span> you</span>
+		{/if}
+		<span class="legend-item"><span class="line-sample rust"></span> the coal, from mine to your meter</span>
 	</div>
-</section>
+</SectionRail>
 
 <style>
-	.map-section {
-		padding: var(--section-pad);
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-	}
-
-	h3 {
-		font-family: var(--serif);
-		font-size: clamp(1.8rem, 4vw, 3rem);
-		font-weight: 400;
-		color: var(--text);
-		text-align: center;
+	.map-header {
+		max-width: 720px;
 		margin-bottom: 2rem;
-		line-height: 1.2;
 	}
-	h3 em { color: var(--accent); font-style: italic; }
 
 	.map-frame {
 		width: 100%;
-		max-width: 1000px;
 		overflow: hidden;
 		padding: 0;
 	}
 
 	.map-container {
 		width: 100%;
-		height: clamp(400px, 55vh, 600px);
+		height: clamp(420px, 58vh, 620px);
 	}
 
 	.placeholder {
@@ -186,17 +178,19 @@
 
 	.legend {
 		display: flex;
-		gap: 1.5rem;
-		margin-top: 1rem;
+		flex-wrap: wrap;
+		gap: 1.2rem;
+		margin-top: 0.8rem;
+		padding: 0 0.2rem;
 		font-family: var(--mono);
-		font-size: 0.6rem;
+		font-size: 0.58rem;
 		text-transform: uppercase;
-		letter-spacing: 0.1em;
+		letter-spacing: 0.14em;
 		color: var(--text-ghost);
 	}
 
 	.legend-item {
-		display: flex;
+		display: inline-flex;
 		align-items: center;
 		gap: 0.4rem;
 	}
@@ -207,13 +201,15 @@
 		border-radius: 50%;
 		border: 1.5px solid #fff;
 	}
-	.dot.mine { background: var(--accent); }
+	.dot.mine { background: var(--rust); }
 	.dot.plant { background: var(--green); }
+	.dot.you { background: #e8dfcc; }
 
 	.line-sample {
 		width: 20px;
 		height: 2px;
-		background: var(--accent);
 		opacity: 0.6;
 	}
+	.line-sample.rust { background: var(--rust); }
+	.line-sample.moss { background: var(--green); }
 </style>

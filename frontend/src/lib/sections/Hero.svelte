@@ -43,7 +43,7 @@
 			showStatePicker = true;
 			return;
 		}
-		onTrace(subregion);
+		onTrace(subregion, { lat, lon });
 	}
 
 	async function handleSubmit(e) {
@@ -71,6 +71,10 @@
 
 	function handleStateGo() {
 		if (!selectedState) return;
+		// Clear any stale error from an earlier address/geolocation attempt
+		// so the user isn't told "CA is outside the US grid" after they've
+		// already picked California from the dropdown.
+		localError = null;
 		const sub = subregionForState(selectedState);
 		if (!sub || !hasCoalData(sub)) {
 			localError = `No coal data for ${stateLabels[selectedState]}.`;
@@ -81,13 +85,22 @@
 </script>
 
 <section class="hero" aria-label="Find your mine">
+	<header class="hero-chrome" aria-hidden="true">
+		<span class="rail-num">N° 01</span>
+		<span class="rail-rule"></span>
+		<span class="rail-label">Locate</span>
+	</header>
+
 	<div class="hero-inner">
 		<h1>
-			You <span class="rust">came</span> home.<br/>
-			You turned <span class="rust">on</span> <em>a light.</em>
+			<span class="beat">You <span class="rust">came</span> home.</span>
+			<span class="beat">You turned <span class="rust">on</span> <em>a light.</em></span>
 		</h1>
 
-		<p class="sub">tell us where that light is</p>
+		<p class="lede">
+			Somewhere, a mountain was cut open to keep it burning.<br/>
+			<span class="lede-quiet">Tell us where that light is—we'll trace the wire back.</span>
+		</p>
 
 		<div class="input-group glass">
 			<form class="form" onsubmit={handleSubmit}>
@@ -95,15 +108,15 @@
 					id="address"
 					name="address"
 					type="text"
-					placeholder="Enter address or zip code"
+					placeholder="Address, city, or zip code"
 					aria-label="Enter address or zip code"
 					bind:value={address}
 					maxlength="200"
 					autocomplete="off"
 					disabled={loading}
 				/>
-				<button type="submit" disabled={loading}>
-					{loading ? '...' : 'trace →'}
+				<button class="primary" type="submit" disabled={loading}>
+					{loading ? '…' : 'trace →'}
 				</button>
 			</form>
 
@@ -115,30 +128,32 @@
 
 			{#if showStatePicker}
 				<div class="state-pick">
-					<select bind:value={selectedState}>
-						<option value="">Select a state...</option>
+					<select bind:value={selectedState} aria-label="Select a state">
+						<option value="">Select a state…</option>
 						{#each states as code}
 							<option value={code}>{stateLabels[code] || code}</option>
 						{/each}
 					</select>
-					<button onclick={handleStateGo} disabled={!selectedState || loading}>Show me</button>
+					<button onclick={handleStateGo} disabled={!selectedState || loading}>
+						Show me
+					</button>
 				</div>
 			{/if}
 		</div>
 
-		{#if localError || error}
-			<p class="err">{localError || error}</p>
-		{/if}
-
-		{#if loading}
-			<p class="loading">Tracing your grid...</p>
-		{/if}
-
-		<p class="hint">We find the nearest coal-burning power plant on your grid — nothing is stored or shared.</p>
+		<div class="status" aria-live="polite">
+			{#if loading}
+				<p class="loading">Following the wire back…</p>
+			{:else if localError || error}
+				<p class="err">{localError || error}</p>
+			{:else}
+				<p class="hint">Your address is never stored.</p>
+			{/if}
+		</div>
 	</div>
 
 	<a class="credit" href="https://www.flickr.com/photos/nationalmemorialforthemountains/255887679/" target="_blank" rel="noopener">
-		Photo: Kent Kessinger / iLoveMountains.org — Flight courtesy SouthWings
+		Photo: Kent Kessinger · iLoveMountains.org<br/>Flight courtesy SouthWings
 	</a>
 </section>
 
@@ -146,45 +161,119 @@
 	.hero {
 		min-height: 100vh;
 		display: flex;
-		align-items: center;
-		padding: var(--section-pad);
+		flex-direction: column;
+		justify-content: center;
+		padding: clamp(2.5rem, 6vh, 4.5rem) clamp(1.5rem, 5vw, 4rem)
+			clamp(3rem, 10vh, 5rem);
 		position: relative;
 	}
 
-	.hero-inner {
-		max-width: 720px;
+	/* Horizontal chrome strip — a quiet editorial marker above the hero
+	   copy. Matches SectionRail's top-of-section chrome so every section
+	   on the page (Hero through Ticker) reads the same way. */
+	.hero-chrome {
+		display: flex;
+		align-items: center;
+		gap: 0.9rem;
+		margin-bottom: clamp(1.5rem, 3vh, 2.5rem);
+	}
+	.rail-num {
+		font-family: var(--mono);
+		font-size: 0.7rem;
+		font-weight: 400;
+		letter-spacing: 0.14em;
+		color: var(--rust);
+		white-space: nowrap;
+	}
+	.rail-rule {
+		height: 1px;
+		flex: 0 0 clamp(2.5rem, 6vw, 5rem);
+		background: linear-gradient(
+			to right,
+			rgba(255, 255, 255, 0.18),
+			rgba(255, 255, 255, 0.02)
+		);
+	}
+	.rail-label {
+		font-family: var(--mono);
+		font-size: 0.68rem;
+		font-weight: 400;
+		letter-spacing: 0.22em;
+		text-transform: uppercase;
+		color: var(--text-dim);
+		white-space: nowrap;
 	}
 
+	/* Full-bleed hero content — no two-column grid, no middle-of-page
+	   measure cap. Headline runs edge-to-edge with the section's gutter
+	   padding as its only constraint. Supporting copy (lede, input group,
+	   status) keeps its own narrower measure below so prose stays
+	   readable even while the layout feels open. */
+	.hero-inner {
+		width: 100%;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		text-align: left;
+		gap: 1.5rem;
+	}
+	.hero-inner > :not(h1) {
+		max-width: min(780px, 100%);
+		width: 100%;
+	}
+
+	/* ---- Headline ----
+	   Each sentence is one emotional beat and gets its own single row —
+	   no column cap, no mid-sentence wrap. The desktop scale runs up to
+	   ~104px and tightens tracking because a display serif at that size
+	   otherwise reads airy. Small screens drop `nowrap` so the beat wraps
+	   instead of overflowing the viewport. */
 	h1 {
 		font-family: var(--serif);
-		font-size: clamp(3rem, 8vw, 5.8rem);
+		font-size: clamp(2.6rem, 7.8vw, 7rem);
 		font-weight: 400;
-		line-height: 1.05;
+		line-height: 1.04;
 		color: var(--text);
-		margin-bottom: 2.5rem;
-		letter-spacing: -0.01em;
+		letter-spacing: -0.025em;
+		margin: 0;
+		width: 100%;
+	}
+	h1 .beat {
+		display: block;
+		white-space: nowrap;
 	}
 	h1 em {
 		font-style: italic;
 		color: var(--text);
 	}
 	:global(.rust) {
-		color: var(--accent);
+		color: var(--rust);
 	}
 
-	.sub {
-		font-family: var(--mono);
-		font-size: 0.7rem;
-		text-transform: uppercase;
-		letter-spacing: 0.18em;
+	/* ---- Lede ---- */
+	.lede {
+		font-family: var(--serif);
+		font-size: clamp(1rem, 1.4vw, 1.15rem);
+		font-weight: 300;
+		font-style: italic;
+		line-height: 1.65;
 		color: var(--text-dim);
-		margin-bottom: 1.2rem;
+		max-width: 44ch;
+		margin: 0;
+	}
+	.lede-quiet {
+		color: var(--text-ghost);
+		font-style: normal;
+		font-size: 0.92em;
 	}
 
 	/* ---- Glass input group ---- */
 	.input-group {
-		padding: 1.5rem;
-		max-width: 460px;
+		width: 100%;
+		max-width: 520px;
+		padding: 1.25rem 1.25rem 1.4rem;
+		display: flex;
+		flex-direction: column;
 	}
 
 	.form {
@@ -194,18 +283,20 @@
 
 	input[type="text"] {
 		flex: 1;
+		min-width: 0;
 		font-family: var(--serif);
-		font-size: 0.95rem;
-		padding: 0.8rem 1rem;
-		background: rgba(0, 0, 0, 0.4);
+		font-size: 0.98rem;
+		padding: 0.85rem 1rem;
+		background: rgba(0, 0, 0, 0.42);
 		color: var(--text);
-		border: 1px solid rgba(255, 255, 255, 0.06);
+		border: 1px solid rgba(255, 255, 255, 0.07);
 		border-radius: 6px;
 		outline: none;
+		transition: border-color 0.2s, box-shadow 0.2s;
 	}
 	input[type="text"]:focus {
-		border-color: var(--accent);
-		box-shadow: 0 0 0 1px var(--accent-glow);
+		border-color: var(--rust);
+		box-shadow: 0 0 0 1px var(--rust-glow);
 	}
 	input[type="text"]::placeholder {
 		color: var(--text-ghost);
@@ -214,48 +305,62 @@
 
 	button {
 		font-family: var(--mono);
-		font-size: 0.75rem;
-		padding: 0.8rem 1.2rem;
+		font-size: 0.72rem;
+		padding: 0.85rem 1.1rem;
 		background: transparent;
-		color: var(--accent);
-		border: 1px solid rgba(194, 84, 45, 0.4);
+		color: var(--rust);
+		border: 1px solid oklch(58% 0.14 36 / 0.4);
 		border-radius: 6px;
 		cursor: pointer;
-		letter-spacing: 0.08em;
+		letter-spacing: 0.1em;
 		white-space: nowrap;
 		transition: all 0.2s ease;
 	}
 	button:hover:not(:disabled) {
-		background: var(--accent);
+		background: var(--rust);
 		color: var(--bg);
-		border-color: var(--accent);
+		border-color: var(--rust);
 	}
 	button:disabled {
-		opacity: 0.3;
+		opacity: 0.35;
 		cursor: not-allowed;
+	}
+	button.primary {
+		background: oklch(58% 0.14 36 / 0.15);
 	}
 
 	.divider {
 		display: flex;
 		align-items: center;
-		gap: 0.6rem;
-		margin: 0.8rem 0;
-		font-size: 0.7rem;
+		justify-content: center;
+		gap: 0.7rem;
+		margin: 1rem 0;
+		font-family: var(--mono);
+		font-size: 0.6rem;
+		text-transform: uppercase;
+		letter-spacing: 0.2em;
 		color: var(--text-ghost);
 	}
-	.divider::before, .divider::after {
+	.divider::before,
+	.divider::after {
 		content: '';
 		flex: 1;
 		height: 1px;
-		background: rgba(255,255,255,0.05);
+		background: linear-gradient(
+			to right,
+			transparent,
+			rgba(255, 255, 255, 0.08),
+			transparent
+		);
 	}
 
 	.geo-btn {
 		width: 100%;
 		font-family: var(--serif);
-		font-size: 0.9rem;
+		font-size: 0.92rem;
 		font-style: italic;
-		padding: 0.7rem;
+		padding: 0.78rem 1rem;
+		letter-spacing: 0.02em;
 	}
 
 	.state-pick {
@@ -265,59 +370,106 @@
 	}
 	select {
 		flex: 1;
+		min-width: 0;
 		font-family: var(--serif);
-		font-size: 0.9rem;
-		padding: 0.6rem 0.8rem;
-		background: rgba(0,0,0,0.4);
+		font-size: 0.92rem;
+		padding: 0.7rem 0.85rem;
+		background: rgba(0, 0, 0, 0.42) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%239a9490' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E") no-repeat right 0.85rem center;
 		color: var(--text);
-		border: 1px solid rgba(255,255,255,0.06);
+		border: 1px solid rgba(255, 255, 255, 0.07);
 		border-radius: 6px;
 		appearance: none;
 		outline: none;
+		padding-right: 2rem;
+	}
+	select:focus {
+		border-color: var(--rust);
 	}
 
+	/* ---- Status line (reserved space—never shifts layout) ---- */
+	.status {
+		min-height: 3.2rem;
+		display: flex;
+		align-items: flex-start;
+		justify-content: center;
+		width: 100%;
+		max-width: 520px;
+	}
+	.err,
+	.loading,
+	.hint {
+		margin: 0;
+		line-height: 1.6;
+		text-align: center;
+	}
 	.err {
-		color: var(--accent);
-		font-size: 0.85rem;
+		color: var(--rust);
+		font-size: 0.88rem;
 		font-style: italic;
-		margin-top: 1rem;
-		max-width: 460px;
 	}
-
 	.loading {
 		color: var(--text-dim);
-		font-size: 0.85rem;
+		font-size: 0.88rem;
 		font-style: italic;
-		margin-top: 1rem;
 	}
-
 	.hint {
-		font-size: 0.7rem;
+		font-family: var(--mono);
+		font-size: 0.62rem;
+		text-transform: uppercase;
+		letter-spacing: 0.18em;
 		color: var(--text-ghost);
-		margin-top: 2rem;
-		max-width: 400px;
-		line-height: 1.5;
+		max-width: 48ch;
 	}
-
+	/* ---- Photo credit: anchored bottom-right of the hero ---- */
 	.credit {
 		position: absolute;
-		bottom: 1.2rem;
-		right: var(--section-pad);
+		bottom: clamp(1rem, 3vh, 1.8rem);
+		right: clamp(1.25rem, 4vw, 3rem);
 		font-family: var(--mono);
-		font-size: 0.55rem;
+		font-size: 0.52rem;
 		color: var(--text-ghost);
-		opacity: 0.5;
+		opacity: 0.45;
 		text-decoration: none;
-		max-width: 260px;
 		text-align: right;
-		line-height: 1.4;
-		letter-spacing: 0.02em;
+		line-height: 1.55;
+		letter-spacing: 0.04em;
 		transition: opacity 0.3s;
 	}
-	.credit:hover { opacity: 1; }
-
-	@media (max-width: 768px) {
-		.hero { padding: 1.5rem; }
-		.input-group { max-width: 100%; }
+	.credit:hover {
+		opacity: 0.9;
 	}
+
+	@media (max-width: 720px) {
+		.hero {
+			padding: 2.25rem 1.25rem 4rem;
+		}
+		.hero-chrome {
+			margin-bottom: 1.25rem;
+		}
+		.rail-rule {
+			flex: 0 0 2rem;
+		}
+		.hero-inner {
+			gap: 1.3rem;
+			max-width: 100%;
+		}
+		/* On narrow screens each beat would overflow the viewport at nowrap —
+		   let it wrap onto two lines there so the headline is still readable. */
+		h1 .beat {
+			white-space: normal;
+		}
+		.form {
+			flex-direction: column;
+		}
+		button {
+			width: 100%;
+		}
+		.credit {
+			position: static;
+			text-align: center;
+			margin-top: 2rem;
+			display: block;
+		}
+	}
+
 </style>

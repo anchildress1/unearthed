@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 from pathlib import Path
 
 import snowflake.connector
@@ -8,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.models import AskRequest, AskResponse, MineForMeRequest, MineForMeResponse
-from app.prose_client import generate_prose
+from app.prose_client import generate_h3_summary, generate_prose
 from app.snowflake_client import (
     _get_connection,
     execute_analyst_sql,
@@ -48,43 +49,151 @@ if _STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
 _H3_DENSITY_SQL = """
+WITH clean AS (
+    SELECT
+        TRY_TO_DOUBLE(REPLACE(LATITUDE, '"', '')) AS lat_num,
+        TRY_TO_DOUBLE(REPLACE(LONGITUDE, '"', '')) AS lng_num,
+        TRIM(REPLACE(CURRENT_MINE_STATUS, '"', '')) AS status_txt,
+        TRIM(REPLACE(STATE, '"', '')) AS state_txt,
+        REPLACE(COAL_METAL_IND, '"', '') AS coal_txt
+    FROM UNEARTHED_DB.RAW.MSHA_MINES
+)
 SELECT
-    H3_LATLNG_TO_CELL_STRING(
-        TRY_TO_DOUBLE(REPLACE(LATITUDE, '"', '')),
-        TRY_TO_DOUBLE(REPLACE(LONGITUDE, '"', '')),
-        {resolution}
-    ) AS h3,
-    AVG(TRY_TO_DOUBLE(REPLACE(LATITUDE, '"', ''))) AS lat,
-    AVG(TRY_TO_DOUBLE(REPLACE(LONGITUDE, '"', ''))) AS lng,
+    H3_LATLNG_TO_CELL_STRING(lat_num, lng_num, {resolution}) AS h3,
+    AVG(lat_num) AS lat,
+    AVG(lng_num) AS lng,
     COUNT(*) AS total,
-    SUM(CASE WHEN TRIM(REPLACE(CURRENT_MINE_STATUS, '"', '')) = 'Active'
-        THEN 1 ELSE 0 END) AS active,
-    SUM(CASE WHEN TRIM(REPLACE(CURRENT_MINE_STATUS, '"', '')) != 'Active'
-        THEN 1 ELSE 0 END) AS abandoned
-FROM UNEARTHED_DB.RAW.MSHA_MINES
-WHERE REPLACE(COAL_METAL_IND, '"', '') = 'C'
-    AND TRY_TO_DOUBLE(REPLACE(LATITUDE, '"', '')) IS NOT NULL
+    SUM(CASE WHEN status_txt = 'Active' THEN 1 ELSE 0 END) AS active,
+    SUM(CASE WHEN status_txt != 'Active' THEN 1 ELSE 0 END) AS abandoned
+FROM clean
+-- Bounding box: continental US + mainland Alaska. Rejects (0,0) null-island
+-- entries and stray ocean coordinates MSHA's registry occasionally ships when
+-- a mine's address was never geocoded cleanly — without this, resolution-5
+-- hexes land in the Atlantic and drag the viewport off the mainland.
+-- Aleutian Islands west of the antimeridian (positive longitudes) are outside
+-- this box on purpose: MSHA has no recorded coal mines there, and widening the
+-- filter to wrap the dateline would re-admit the very ocean outliers we're
+-- trying to drop.
+WHERE coal_txt = 'C'
+    AND lat_num IS NOT NULL
+    AND lng_num IS NOT NULL
+    AND lat_num BETWEEN 24 AND 72
+    AND lng_num BETWEEN -180 AND -65
+    {state_clause}
 GROUP BY h3
-HAVING total >= 5
+HAVING total >= {min_mines}
 ORDER BY total DESC
 """
 
+# Registry totals are computed independently of the hex-density query so the
+# Cortex summary reads from "MSHA's full registry" rather than "the hexes the
+# map happens to render at this resolution." The density query drops
+# null-coord rows, ocean outliers, and small clusters (HAVING total >= 5 on
+# the national view) — all sensible for rendering hexes, all wrong for a
+# sentence that claims "MSHA has X coal mines on record." Sharing a state
+# filter with the density query is fine because that IS a scoping choice the
+# reader asked for; the bounding-box and clustering filters are not.
+_H3_REGISTRY_TOTALS_SQL = """
+WITH clean AS (
+    SELECT
+        TRIM(REPLACE(CURRENT_MINE_STATUS, '"', '')) AS status_txt,
+        TRIM(REPLACE(STATE, '"', '')) AS state_txt,
+        REPLACE(COAL_METAL_IND, '"', '') AS coal_txt
+    FROM UNEARTHED_DB.RAW.MSHA_MINES
+)
+SELECT
+    COUNT(*) AS total,
+    SUM(CASE WHEN status_txt = 'Active' THEN 1 ELSE 0 END) AS active,
+    SUM(CASE WHEN status_txt != 'Active' THEN 1 ELSE 0 END) AS abandoned
+FROM clean
+WHERE coal_txt = 'C'
+    {state_clause}
+"""
+
+_STATE_CODE_PATTERN = re.compile(r"^[A-Za-z]{2}$")
+
 
 @app.get("/h3-density", responses={400: {"description": "Invalid resolution (must be 2-7)"}})
-def h3_density(resolution: int = 4):
-    """H3 hexbin mine density — active vs abandoned extraction footprint."""
+def h3_density(resolution: int = 4, state: str | None = None):
+    """H3 hexbin mine density — active vs abandoned extraction footprint.
+
+    When ``state`` is a 2-letter US state code, only mines in that state are
+    returned and the small-cluster HAVING threshold is dropped to 1 so a
+    single-mine hex still shows up on the focused view.
+    """
     if resolution < 2 or resolution > 7:
         raise HTTPException(status_code=400, detail="Resolution must be 2-7")
     from app.config import settings
 
+    state_clause = ""
+    bind: dict[str, object] = {}
+    min_mines = 5
+    if state:
+        if not _STATE_CODE_PATTERN.match(state):
+            raise HTTPException(status_code=400, detail="State must be a 2-letter code")
+        state_clause = "AND state_txt = %(state)s"
+        bind["state"] = state.upper()
+        min_mines = 1
+
+    sql = _H3_DENSITY_SQL.format(
+        resolution=int(resolution),
+        state_clause=state_clause,
+        min_mines=min_mines,
+    )
+
+    totals_sql = _H3_REGISTRY_TOTALS_SQL.format(state_clause=state_clause)
+
     conn = _get_connection(role=settings.snowflake_readonly_role)
     cur = conn.cursor(snowflake.connector.DictCursor)
     try:
-        cur.execute(_H3_DENSITY_SQL.format(resolution=int(resolution)))
+        cur.execute(sql, bind)
         rows = [dict(r) for r in cur.fetchall()]
+        cur.execute(totals_sql, bind)
+        totals_row = cur.fetchone() or {}
     finally:
         cur.close()
-    return {"resolution": resolution, "cells": rows}
+
+    # Registry totals come from the unfiltered coal-mine registry (optionally
+    # scoped to the requested state). Hex cells may drop rows — null coords,
+    # ocean outliers, small-cluster HAVING threshold — but the Cortex summary
+    # and the frontend legend must both report "MSHA has X mines on record"
+    # honestly, not "X mines visible at this zoom."
+    total = int(totals_row.get("TOTAL") or 0)
+    active = int(totals_row.get("ACTIVE") or 0)
+    abandoned = int(totals_row.get("ABANDONED") or 0)
+
+    # Cortex-generated explanation of the density map. The whole point of this
+    # site is that Cortex explains the data, so we always return a summary. The
+    # generator returns a ``degraded`` flag when the template fallback fires
+    # (Cortex unavailable or empty response); the endpoint surfaces that flag
+    # so the frontend can hide the "Cortex, on this map" byline — showing
+    # fallback prose under a model byline would misattribute the template to
+    # Cortex. An unexpected ImportError/AttributeError here also counts as
+    # degraded so the caller never sees the fallback masquerading as model output.
+    summary = ""
+    summary_degraded = False
+    if total > 0:
+        try:
+            summary, summary_degraded = generate_h3_summary(
+                state=(state.upper() if state else None),
+                total=total,
+                active=active,
+                abandoned=abandoned,
+                role=settings.snowflake_readonly_role,
+            )
+        except Exception:
+            logger.exception("H3 summary generation crashed outside its own guard")
+            summary = ""
+            summary_degraded = True
+
+    return {
+        "resolution": resolution,
+        "state": state,
+        "cells": rows,
+        "totals": {"total": total, "active": active, "abandoned": abandoned},
+        "summary": summary,
+        "summary_degraded": summary_degraded,
+    }
 
 
 _EMISSIONS_SQL = """
@@ -141,7 +250,19 @@ DEFAULT_SUGGESTIONS = [
 ]
 
 
-@app.post("/mine-for-me", response_model=MineForMeResponse)
+@app.post(
+    "/mine-for-me",
+    response_model=MineForMeResponse,
+    responses={
+        404: {
+            "description": (
+                "No mine-to-plant shipment is on record for the given subregion. "
+                "Returned when both the Snowflake query and the bundled fallback "
+                "JSON have no row for this eGRID subregion_id."
+            ),
+        },
+    },
+)
 def mine_for_me(req: MineForMeRequest):
     degraded = False
     mine_data = None
@@ -205,6 +326,8 @@ def ask(req: AskRequest):
     error = result.get("error")
     sql = result.get("sql")
     interpretation = result["interpretation"]
+    answer = result["answer"]
+
     if sql:
         try:
             results = execute_analyst_sql(sql)
@@ -214,13 +337,27 @@ def ask(req: AskRequest):
                 "We generated a query but could not execute it. "
                 "Please try rephrasing your question."
             )
-            result["answer"] = "I could not answer that confidently."
+            answer = "I could not answer that confidently."
             interpretation = None
+    elif error:
+        # Cortex Analyst itself failed upstream (timeout, 5xx, fallback
+        # payload from `query_cortex_analyst`). Surface as a warning so it
+        # doesn't get conflated with semantic-model coverage gaps below.
+        logger.warning(
+            "Cortex Analyst returned an error for question: %s; error: %s",
+            question,
+            error,
+        )
+    else:
+        # Cortex answered conversationally without producing SQL — the
+        # semantic model didn't match the question shape. Debug-level so
+        # the signal is reviewable in logs without polluting info output.
+        logger.debug("Cortex Analyst returned no SQL for question: %s", question)
 
     suggestions = result.get("suggestions") or DEFAULT_SUGGESTIONS
 
     return AskResponse(
-        answer=result["answer"],
+        answer=answer,
         interpretation=interpretation,
         sql=sql,
         error=error,

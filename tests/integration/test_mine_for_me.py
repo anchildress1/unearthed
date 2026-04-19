@@ -2,6 +2,8 @@
 
 from unittest.mock import patch
 
+import pytest
+
 from tests.conftest import SAMPLE_MINE_DATA
 
 
@@ -16,7 +18,7 @@ class TestMineForMeEndpoint:
         data = resp.json()
         assert data["mine"] == "Bailey Mine"
         assert data["plant"] == "Cross"
-        assert data["tons"] == 1247001.0
+        assert data["tons"] == pytest.approx(1247001.0)
         assert data["prose"] == "Grief prose."
         assert data["subregion_id"] == "SRVC"
         assert data["degraded"] is False

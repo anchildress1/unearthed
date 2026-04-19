@@ -23,7 +23,7 @@ The backend exposes these FastAPI endpoints:
 |---|---|---|---|
 | `/mine-for-me` | POST | `{subregion_id}` | Mine + plant data, Cortex Complete prose, coords |
 | `/ask` | POST | `{question, subregion_id?}` | Cortex Analyst answer + SQL + results |
-| `/h3-density` | GET | `?resolution=4` | H3 hexbin mine density (active vs abandoned) |
+| `/h3-density` | GET | `?resolution=4&state=WV` | H3 hexbin cells + unfiltered registry `totals` (`total`/`active`/`abandoned`) + Cortex-generated `summary` (with `summary_degraded` flag when template fallback fires) |
 | `/emissions/{plant}` | GET | plant name | CO2/SO2/NOx from EPA Marketplace data |
 
 Subregion IDs validated with `^[A-Za-z0-9]{2,10}$`. Unknown subregions return **404**.
@@ -56,6 +56,7 @@ Snowflake is the sole external dependency. Fallbacks:
 | Snowflake + no fallback | Return **404** (no fake placeholder data) |
 | Cortex Analyst | Display fallback message with default suggestions, reveal page continues normally |
 | Analyst SQL execution | Set `error` field with explicit message; answer text still returned |
+| Cortex Complete (H3 summary) | Template fallback returned with `summary_degraded: true`; frontend hides the "Cortex, on this map" byline so template prose is never mis-attributed to the model. Fallbacks are **not cached** so recovery shows up on the next request. |
 
 Never let a single API failure break the reveal page.
 
@@ -116,13 +117,27 @@ SNOWFLAKE_PUBLIC_DATA_FREE       — Marketplace (free, no load needed)
 
 ### Cortex AI Usage
 
-One Cortex feature in use:
+Two Cortex features in use:
 
 | Feature | Purpose | Where Used |
 |---|---|---|
 | Cortex Analyst | NL-to-SQL via semantic model YAML | `/ask` endpoint, runtime user questions |
+| Cortex Complete (`openai-gpt-5.2`) | Short safety prose from MSHA_ACCIDENTS stats | `/mine-for-me` response, in-process cache per subregion |
+| Cortex Complete (`openai-gpt-5.2`) | 2-3 sentence explanation of the H3 density map | `/h3-density` `summary` field, in-process cache per scope (state / national) |
 
 - **Cortex Analyst semantic model:** Checked into repo as YAML. Covers only the 4-5 chip question patterns — not open-ended.
+- **Cortex Complete prompts:** Injuries lead, fatalities land second — see `app/prose_client.py`. H3 summary prompt leads with what the reader sees, then the scale. Both strip outer quotes before returning.
+- **Honest attribution:** Both `generate_prose` and `generate_h3_summary` return `(text, degraded)`. Only Cortex output is cached — template fallbacks are not, so a recovered model shows up on the next request and the "Cortex, on this map" / "Cortex, reading the record" bylines never sit over template prose.
+- **Honest totals:** `/h3-density` runs a second unfiltered count query and returns `totals` alongside the hex cells. The hex SQL drops null-coord rows, ocean outliers, and small clusters for legibility; the `totals` payload does none of that so the Cortex summary and the frontend legend both claim "X mines on record" against MSHA's full registry, not the hexes visible at this resolution. `generate_h3_summary` accepts a `role` kwarg so the readonly endpoint can scope the Cortex connection to `UNEARTHED_READONLY_ROLE` instead of the default app role.
+
+### Snowflake-Native Features Beyond Cortex
+
+Two endpoints lean on Snowflake's built-in geospatial / Marketplace story:
+
+| Endpoint | Snowflake capability | UI |
+|---|---|---|
+| `/h3-density` | `H3_LATLNG_TO_CELL_STRING` for hexbin aggregation | `H3Density.svelte` — national footprint section |
+| `/emissions/{plant}` | EPA Clean Air Markets via Snowflake Marketplace (free) | Inline card on `PlantReveal.svelte` |
 
 ### Security
 
@@ -142,11 +157,23 @@ One Cortex feature in use:
 
 ## 4. Frontend Rules
 
-### Map (MapLibre GL)
+### Map (Google Maps JavaScript API)
 
-- Zoom sequence: user location -> power plant -> source mine. Arc line drawn between all three points.
-- Sequence must complete within **8 seconds** from payload receipt to final zoom.
+- Loader lives in `frontend/src/lib/maps.js` — one idempotent script tag shared by `MapSection` (mine→plant→meter) and `H3Density` (hexbin), with a 15s watchdog and poll-for-ready so a cached script can't hang the promise forever.
+- `DARK_STATE_STYLES` + `MAP_COLORS` are the single source of truth for both maps. No cloud-registered `mapId` — that would silently disable the local style array.
+- `MapSection` arc: mine → plant → your meter, one rust color, animated dot rides the geodesic. Labels fan out (above / below / side) to avoid InfoWindow stacking.
+- `H3Density`: resolution-5 hexbins, bigger dot = more mines, rust→ash gradient for active→abandoned. SQL filters null-island and ocean outliers at the query layer.
 - All three pins and labels must be readable on mobile (>= 375px wide) without horizontal scroll.
+
+### Section chrome (editorial unification)
+
+**One title treatment for the whole page.** `SectionRail.svelte` is the canonical wrapper — every scroll section uses it. The component owns:
+
+- The left-rail number + label (`N° 02 / Your coal`) — chrome, not content.
+- Canonical `h2`/`h3` typography (serif, clamped, `em` accent) — do NOT re-declare in sections. If a title doesn't match, it's a bug in the section, not a license to override.
+- The `.sub` subtitle pattern.
+- The `.cortex-note` block (rust border-left) signaling Cortex-written text.
+- The **three-line anchor pattern** via `:global(.anchor-primary)` + `:global(.anchor-secondary)`: big value / serif plain-English primary / mono uppercase tag. Used by PlantReveal cards, the land-disturbed block, the emissions panel, and the H3 tallies. **Do not re-declare these per section.** If you need a larger closing beat (Ticker), define a distinct class — don't shadow the canonical one.
 
 ### Share URL
 
