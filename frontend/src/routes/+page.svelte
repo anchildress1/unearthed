@@ -19,9 +19,9 @@
 	// Keying on subregion alone would skip the remount and leave
 	// MapSection / H3Density / CortexChat holding stale onMount state.
 	let traceNonce = $state(0);
-	let resultsEl;
+	let resultsEl = $state();
 
-	async function onTrace(subregionId, userCoords = null) {
+	async function onTrace(subregionId, userCoords = null, { pushUrl = true } = {}) {
 		loading = true;
 		error = null;
 		console.log('[unearthed] tracing subregion:', subregionId);
@@ -33,6 +33,17 @@
 				mineData.user_coords = [userCoords.lat, userCoords.lon];
 			}
 			console.log('[unearthed] loaded:', mineData.mine, '→', mineData.plant);
+			// Push the subregion into the URL on fresh traces so refresh
+			// survives: the browser restores the scroll position, onMount
+			// replays the trace from ?m=XYZ, and the user lands back on the
+			// same results page instead of on empty space below the hero.
+			// pushUrl=false when we're *handling* the share URL on mount so
+			// we don't stack a duplicate history entry.
+			if (browser && pushUrl) {
+				const url = new URL(window.location.href);
+				url.searchParams.set('m', subregionId);
+				window.history.pushState({}, '', url);
+			}
 			// tick() waits for Svelte to commit the {#if mineData} block so the
 			// results container is in the DOM and `resultsEl` is bound before
 			// we try to scroll to it.
@@ -54,7 +65,9 @@
 		const sub = params.get('m');
 		if (sub && /^[A-Za-z0-9]{2,10}$/.test(sub)) {
 			console.log('[unearthed] share URL:', sub);
-			onTrace(sub.toUpperCase());
+			// pushUrl=false: the URL is already ?m=XYZ, don't stack a dup
+			// history entry on the initial replay.
+			onTrace(sub.toUpperCase(), null, { pushUrl: false });
 		}
 	});
 </script>

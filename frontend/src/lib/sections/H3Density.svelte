@@ -113,7 +113,11 @@
 					console.warn('[unearthed] eGRID overlay unavailable:', err.message);
 					return null;
 				}),
-				loadGoogleMaps(),
+				// Bootstrap first, then pull in just the `maps` library we
+				// use here (Map, Marker, Polygon, InfoWindow, LatLngBounds,
+				// SymbolPath). Dynamic import means unused libraries — like
+				// `places` or `geometry` — never hit the wire.
+				loadGoogleMaps().then(() => google.maps.importLibrary('maps')),
 			]);
 		} catch (e) {
 			console.warn('[unearthed] h3-density fetch failed:', e.message);

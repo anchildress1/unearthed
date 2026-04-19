@@ -11,23 +11,25 @@
 </script>
 
 <!--
-	Editorial section wrapper. Horizontal chrome strip at the top sets the
-	section's identity (N° + verb/noun); content flows full-bleed beneath
-	it with generous gutters only. No two-column grid — the page no longer
-	reads as "rail + column," it reads as full-width stacked sections with
-	quiet editorial markers.
+	Editorial section wrapper. The chrome (N° / hairline / rotated label) is a
+	narrow vertical rail pinned in the left gutter, matching the Hero section's
+	signature column. Content flows in a flex column to the right of the rail
+	so every section below the hero reads as a continuation of the same
+	magazine-spread frame — not as disconnected full-bleed blocks.
 
-	aria-hidden on the chrome because it's decorative; the real section
-	heading inside the content is what assistive tech reads.
+	aria-hidden on the chrome because it's decorative; the real section heading
+	inside the content is what assistive tech reads.
 -->
 <section class="section-rail {className}" use:reveal={revealOptions}>
-	<header class="rail-chrome" aria-hidden="true">
-		<span class="rail-num">N° {number}</span>
-		<span class="rail-rule"></span>
-		<span class="rail-label">{label}</span>
-	</header>
-	<div class="rail-content">
-		{@render children()}
+	<div class="section-layout">
+		<header class="rail-chrome" aria-hidden="true">
+			<span class="rail-num">N° {number}</span>
+			<span class="rail-rule"></span>
+			<span class="rail-label">{label}</span>
+		</header>
+		<div class="rail-content">
+			{@render children()}
+		</div>
 	</div>
 </section>
 
@@ -38,16 +40,34 @@
 		position: relative;
 	}
 
-	/* ---- Horizontal chrome strip ---- */
-	.rail-chrome {
+	/* ---- Editorial two-column layout ----
+	   Mirrors Hero's `.hero-layout`: a narrow left-gutter rail + a content
+	   column that fills the rest of the frame. `align-items: stretch` so
+	   the rail runs the full height of the content block and the hairline
+	   reads as the section's editorial spine. */
+	.section-layout {
 		display: flex;
-		align-items: center;
-		gap: 0.9rem;
-		margin-bottom: clamp(1.5rem, 3vh, 2.5rem);
+		align-items: stretch;
+		gap: clamp(1.25rem, 3vw, 2.25rem);
 		width: 100%;
 	}
 
+	/* ---- Vertical chrome rail ----
+	   N° caps the top, rotated label anchors the bottom, hairline rule
+	   flexes to fill whatever distance sits between them. Same construction
+	   Hero uses so the mark reads as a single, continuous page signature
+	   from section 01 through the end of the story. */
+	.rail-chrome {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.8rem;
+		flex: 0 0 auto;
+		padding: 0.35rem 0;
+	}
+
 	.rail-num {
+		display: block;
 		font-family: var(--mono);
 		font-size: 0.7rem;
 		font-weight: 400;
@@ -56,21 +76,27 @@
 		white-space: nowrap;
 	}
 
+	/* 1px-wide vertical hairline. `display: block` is required because the
+	   element is an empty <span>; without it the width/height won't paint
+	   reliably. The gradient fades both ends so the rule feels etched
+	   rather than stamped. */
 	.rail-rule {
-		/* Horizontal hairline between the number and the label. Does not
-		   claim a fixed width — it expands to bracket the chrome pair and
-		   stops well before the content edge so prose doesn't read as
-		   fenced by it. */
-		height: 1px;
-		flex: 0 0 clamp(2.5rem, 6vw, 5rem);
+		display: block;
+		width: 1px;
+		flex: 1 1 auto;
+		min-height: 3rem;
+		align-self: center;
 		background: linear-gradient(
-			to right,
-			rgba(255, 255, 255, 0.18),
-			rgba(255, 255, 255, 0.02)
+			to bottom,
+			rgba(255, 255, 255, 0.04),
+			rgba(255, 255, 255, 0.22) 15%,
+			rgba(255, 255, 255, 0.22) 85%,
+			rgba(255, 255, 255, 0.04)
 		);
 	}
 
 	.rail-label {
+		display: block;
 		font-family: var(--mono);
 		font-size: 0.68rem;
 		font-weight: 400;
@@ -78,16 +104,23 @@
 		text-transform: uppercase;
 		color: var(--text-dim);
 		white-space: nowrap;
+		/* Real sideways text (not a transform rotation) so the label stays
+		   accessible to screen readers even though the parent is aria-hidden.
+		   `rotate(180deg)` flips the glyph-order so the label reads bottom-
+		   to-top, aligning with the rail's visual spine. */
+		writing-mode: vertical-rl;
+		transform: rotate(180deg);
 	}
 
-	/* ---- Content (global so sections can extend it) ----
-	   Full-bleed inside the section's gutter padding. Individual sections
-	   cap prose paragraphs on `.sub` (640px) and decorative blocks like
-	   tallies on their own max-widths, so reading measure stays comfortable
-	   without framing the whole section as a column. */
-	.section-rail > :global(.rail-content) {
-		width: 100%;
+	/* ---- Content column ----
+	   Flex-1 so the column owns every pixel the rail doesn't. Each section
+	   caps its own reading-measure inside (PlantReveal's prose at 600px,
+	   H3Density's header at 720px, etc.); this wrapper just guarantees the
+	   rail and the content live in the same editorial frame. */
+	.section-rail > .section-layout > :global(.rail-content) {
+		flex: 1 1 0;
 		min-width: 0;
+		width: 100%;
 	}
 
 	/* ---- Shared section-header pattern ----
@@ -98,9 +131,6 @@
 	.section-rail :global(h2),
 	.section-rail :global(h3) {
 		font-family: var(--serif);
-		/* Header scale that the PlantReveal section used before unification —
-		   the user's explicit "previously perfect" reference. Every section
-		   inherits this now so headers read identically across the page. */
 		font-size: clamp(2.5rem, 6vw, 4.5rem);
 		font-weight: 400;
 		line-height: 1.1;
@@ -205,11 +235,33 @@
 		.section-rail {
 			padding: clamp(2.5rem, 6vh, 4rem) 1.25rem;
 		}
+		/* Collapse the two-column editorial layout into a single column on
+		   narrow screens — the chrome stacks above the content with the
+		   label reading left-to-right again. Same collapse pattern as Hero. */
+		.section-layout {
+			flex-direction: column;
+			gap: 1rem;
+		}
 		.rail-chrome {
-			margin-bottom: 1.25rem;
+			flex-direction: row;
+			align-items: center;
+			gap: 0.8rem;
+			padding: 0;
 		}
 		.rail-rule {
+			width: 2rem;
+			height: 1px;
+			min-height: 0;
 			flex: 0 0 2rem;
+			background: linear-gradient(
+				to right,
+				rgba(255, 255, 255, 0.22),
+				rgba(255, 255, 255, 0.04)
+			);
+		}
+		.rail-label {
+			writing-mode: horizontal-tb;
+			transform: none;
 		}
 	}
 </style>

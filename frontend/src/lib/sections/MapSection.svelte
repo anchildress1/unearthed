@@ -23,6 +23,15 @@
 	onMount(async () => {
 		try {
 			await loadGoogleMaps();
+			// Pull in exactly the libraries this section needs. `maps` gives
+			// us `Map`, `Marker`, `LatLngBounds`, `SymbolPath`, `OverlayView`;
+			// `geometry` gives `spherical.interpolate` for the flow path.
+			// Once imported, the classes are also attached to `google.maps.*`
+			// so the existing `new google.maps.Marker(...)` call keeps working.
+			await Promise.all([
+				google.maps.importLibrary('maps'),
+				google.maps.importLibrary('geometry'),
+			]);
 			if (cancelled) return;
 
 			const mine = { lat: data.mine_coords[0], lng: data.mine_coords[1] };
@@ -211,5 +220,4 @@
 		opacity: 0.6;
 	}
 	.line-sample.rust { background: var(--rust); }
-	.line-sample.moss { background: var(--green); }
 </style>

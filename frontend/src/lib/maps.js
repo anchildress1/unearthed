@@ -12,88 +12,79 @@
  * single source of truth for how both maps look.
  */
 
-let _scriptPromise = null;
-
-// Hard cap so a missing/blocked Google Maps response can't hang the UI
-// indefinitely. 15s is comfortably above typical cold-load times and well
-// below anything a user would wait without assuming the page is broken.
-const MAPS_LOAD_TIMEOUT_MS = 15000;
-
+/**
+ * Install the Google Maps Dynamic Library Import bootstrap.
+ *
+ * The traditional `<script src="…/js?libraries=…">` loader only exposes
+ * the classic globals and does NOT install `google.maps.importLibrary`.
+ * The Places API (New) classes — `AutocompleteSuggestion`, `Place`, etc.
+ * — are only reachable via `importLibrary`, so the Hero autocomplete
+ * fails without this bootstrap.
+ *
+ * Bootstrap snippet is verbatim from the 2024+ Maps JS API docs, wrapped
+ * to take `key` and `v` as config. It synchronously defines
+ * `google.maps.importLibrary`; callers then each `await importLibrary(X)`
+ * for exactly the library they need — Hero needs 'places', MapSection
+ * needs 'maps' + 'geometry', H3Density needs 'maps'. The bootstrap
+ * batches concurrent requests into a single script tag, so four callers
+ * asking for four libraries still trigger one network fetch.
+ *
+ * Do not pre-import libraries here. Each caller is responsible for
+ * requesting the scope it uses — that's the whole point of dynamic
+ * import (billing is per-library, unused libraries shouldn't load at
+ * all). Loading 'places' alongside 'maps' meant every landing-page view
+ * pulled the Places API even when the user never typed into the input.
+ */
 export function loadGoogleMaps() {
-	if (_scriptPromise) return _scriptPromise;
+	if (globalThis.window === undefined) {
+		return Promise.reject(new Error('loadGoogleMaps can only run in the browser'));
+	}
+	if (typeof globalThis.google?.maps?.importLibrary === 'function') {
+		return Promise.resolve();
+	}
+	const key = import.meta.env.VITE_GOOGLE_MAPS_KEY || '';
+	if (!key) {
+		return Promise.reject(new Error('VITE_GOOGLE_MAPS_KEY not set — map cannot load'));
+	}
 
-	_scriptPromise = new Promise((resolve, reject) => {
-		if (globalThis.window === undefined) {
-			reject(new Error('loadGoogleMaps can only run in the browser'));
-			return;
-		}
-		if (globalThis.google?.maps) {
-			resolve();
-			return;
-		}
-		const key = import.meta.env.VITE_GOOGLE_MAPS_KEY || '';
-		if (!key) {
-			reject(new Error('VITE_GOOGLE_MAPS_KEY not set — map cannot load'));
-			return;
-		}
+	((g) => {
+		var h,
+			a,
+			k,
+			p = 'The Google Maps JavaScript API',
+			c = 'google',
+			l = 'importLibrary',
+			q = '__ib__',
+			m = document,
+			b = window;
+		b = b[c] || (b[c] = {});
+		var d = b.maps || (b.maps = {}),
+			r = new Set(),
+			e = new URLSearchParams(),
+			u = () =>
+				h ||
+				(h = new Promise(async (f, n) => {
+					await (a = m.createElement('script'));
+					e.set('libraries', [...r] + '');
+					for (k in g)
+						e.set(
+							k.replace(/[A-Z]/g, (t) => '_' + t[0].toLowerCase()),
+							g[k],
+						);
+					e.set('callback', c + '.maps.' + q);
+					a.src = `https://maps.${c}apis.com/maps/api/js?` + e;
+					d[q] = f;
+					a.onerror = () => (h = n(Error(p + ' could not load.')));
+					a.nonce = m.querySelector('script[nonce]')?.nonce || '';
+					m.head.append(a);
+				}));
+		d[l]
+			? // eslint-disable-next-line no-console
+				console.warn(p + ' only loads once. Ignoring:', g)
+			: (d[l] = (f, ...n) => r.add(f) && u().then(() => d[l](f, ...n)));
+	})({ key, v: 'weekly' });
 
-		// A single shared script tag: if another component added it before us
-		// and it's already loaded, `load` will not fire again and an
-		// addEventListener('load', …) listener would hang forever. Poll
-		// briefly for `window.google.maps` to cover the "already loaded
-		// between the readiness check above and the querySelector below"
-		// race. The timeout below bounds every path so a genuinely stuck
-		// load still surfaces to the caller.
-		const watchdog = setTimeout(
-			() => reject(new Error('Google Maps script timed out')),
-			MAPS_LOAD_TIMEOUT_MS,
-		);
-		const succeed = () => {
-			clearTimeout(watchdog);
-			resolve();
-		};
-		const fail = (err) => {
-			clearTimeout(watchdog);
-			reject(err);
-		};
-
-		const existing = document.querySelector('script[data-unearthed-maps]');
-		if (existing) {
-			const poll = setInterval(() => {
-				if (globalThis.google?.maps) {
-					clearInterval(poll);
-					succeed();
-				}
-			}, 50);
-			existing.addEventListener('load', () => {
-				clearInterval(poll);
-				succeed();
-			});
-			existing.addEventListener('error', () => {
-				clearInterval(poll);
-				fail(new Error('Google Maps failed to load'));
-			});
-			// Give the watchdog responsibility for stopping the poll if
-			// neither event fires and google never appears.
-			setTimeout(() => clearInterval(poll), MAPS_LOAD_TIMEOUT_MS);
-			return;
-		}
-		const s = document.createElement('script');
-		s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&v=weekly&libraries=geometry,places&loading=async`;
-		s.async = true;
-		s.dataset.unearthedMaps = '1';
-		s.onload = () => succeed();
-		s.onerror = () => fail(new Error('Google Maps failed to load'));
-		document.head.appendChild(s);
-	}).catch((err) => {
-		// Reset so the next caller can retry after a transient failure
-		// (network blip, ad-blocker toggled off, etc.) instead of being
-		// locked onto a permanently-rejected promise for the page lifetime.
-		_scriptPromise = null;
-		throw err;
-	});
-
-	return _scriptPromise;
+	return Promise.resolve();
 }
 
 /**

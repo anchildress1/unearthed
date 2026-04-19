@@ -31,8 +31,11 @@
 
 	onMount(async () => {
 		try {
+			console.log('[unearthed] loading Google Maps…');
 			await loadGoogleMaps();
+			console.log('[unearthed] Maps script loaded, importing places…');
 			placesLib = await google.maps.importLibrary('places');
+			console.log('[unearthed] Places library ready:', Object.keys(placesLib));
 			placesReady = true;
 		} catch (e) {
 			console.error('[unearthed] Places library unavailable:', e);
@@ -45,7 +48,12 @@
 	}
 
 	async function fetchPredictions(input) {
-		if (!placesReady || !input || input.trim().length < 3) {
+		if (!placesReady) {
+			console.warn('[unearthed] fetchPredictions skipped — places not ready');
+			predictions = [];
+			return;
+		}
+		if (!input || input.trim().length < 3) {
 			predictions = [];
 			return;
 		}
@@ -53,12 +61,24 @@
 		try {
 			const { suggestions } = await placesLib.AutocompleteSuggestion.fetchAutocompleteSuggestions({
 				input,
-				includedRegionCodes: ['us'],
+				// Hard restrict to US CLDR regions. `region` on its own only
+				// biases — it would still happily suggest Paris, France for
+				// "par". The app only has coal-supply data for US plants, so
+				// non-US suggestions are misleading even as autofill candidates.
+				// CLDR codes cover the states + territories we actually carry.
+				includedRegionCodes: ['us', 'pr', 'vi', 'gu', 'mp', 'as'],
+				language: 'en-US',
 				sessionToken,
 			});
-			predictions = (suggestions || [])
+			const kept = (suggestions || [])
 				.filter((s) => s.placePrediction)
 				.slice(0, 5);
+			console.log(
+				'[unearthed] autocomplete:', input,
+				'→', (suggestions || []).length, 'suggestions,',
+				kept.length, 'predictions kept',
+			);
+			predictions = kept;
 		} catch (e) {
 			console.warn('[unearthed] autocomplete fetch failed:', e);
 			predictions = [];
@@ -117,7 +137,13 @@
 		try {
 			const { suggestions } = await placesLib.AutocompleteSuggestion.fetchAutocompleteSuggestions({
 				input: address,
-				includedRegionCodes: ['us'],
+				// Same US-territory restriction as fetchPredictions above — when
+				// the user hits trace without picking from the dropdown, we ask
+				// Places for the top match and resolve that. Without the hard
+				// restrict, "london" could resolve to a UK address that has no
+				// US eGRID subregion and would error downstream.
+				includedRegionCodes: ['us', 'pr', 'vi', 'gu', 'mp', 'as'],
+				language: 'en-US',
 				sessionToken,
 			});
 			const top = suggestions?.find((s) => s.placePrediction)?.placePrediction;
@@ -165,13 +191,14 @@
 </script>
 
 <section class="hero" aria-label="Find your mine">
-	<header class="hero-chrome" aria-hidden="true">
-		<span class="rail-num">N° 01</span>
-		<span class="rail-rule"></span>
-		<span class="rail-label">Locate</span>
-	</header>
+	<div class="hero-layout">
+		<header class="hero-chrome" aria-hidden="true">
+			<span class="rail-num">N° 01</span>
+			<span class="rail-rule"></span>
+			<span class="rail-label">Locate</span>
+		</header>
 
-	<div class="hero-inner">
+		<div class="hero-inner">
 		<h1>
 			<span class="beat">You <span class="rust">came</span> home.</span>
 			<span class="beat">You turned <span class="rust">on</span> <em>a light.</em></span>
@@ -247,6 +274,7 @@
 				<p class="hint">Your address is never stored.</p>
 			{/if}
 		</div>
+		</div>
 	</div>
 
 	<a class="credit" href="https://www.flickr.com/photos/nationalmemorialforthemountains/255887679/" target="_blank" rel="noopener">
@@ -265,16 +293,33 @@
 		position: relative;
 	}
 
-	/* Horizontal chrome strip — a quiet editorial marker above the hero
-	   copy. Matches SectionRail's top-of-section chrome so every section
-	   on the page (Hero through Ticker) reads the same way. */
+	/* Editorial two-column layout. The chrome (N° 01 / rule / LOCATE) is a
+	   narrow vertical rail in the left gutter that runs alongside the
+	   headline column — like the signature mark in a magazine spread. On
+	   narrow screens the rail collapses above the content via the media
+	   query below. */
+	.hero-layout {
+		display: flex;
+		align-items: stretch;
+		gap: clamp(1.25rem, 3vw, 2.25rem);
+		width: 100%;
+	}
+
+	/* Vertical chrome rail — pinned in the left gutter and stretched to
+	   match the full height of the hero content column. N° caps the top,
+	   LOCATE anchors the bottom, and the hairline rule flexes to bridge
+	   whatever distance sits between them. The rail "runs the length of
+	   the editorial frame." */
 	.hero-chrome {
 		display: flex;
+		flex-direction: column;
 		align-items: center;
-		gap: 0.9rem;
-		margin-bottom: clamp(1.5rem, 3vh, 2.5rem);
+		gap: 0.8rem;
+		flex: 0 0 auto;
+		padding: 0.35rem 0;
 	}
 	.rail-num {
+		display: block;
 		font-family: var(--mono);
 		font-size: 0.7rem;
 		font-weight: 400;
@@ -282,16 +327,29 @@
 		color: var(--rust);
 		white-space: nowrap;
 	}
+	/* 1px-wide vertical hairline — `display: block` is required because the
+	   element is an empty <span>; without it the width/height don't paint
+	   reliably. `margin-left` centers the rule visually under the N°
+	   numeral so the column reads as a single stacked marker. */
 	.rail-rule {
-		height: 1px;
-		flex: 0 0 clamp(2.5rem, 6vw, 5rem);
+		display: block;
+		width: 1px;
+		/* Flex to fill whatever vertical space sits between N° and LOCATE,
+		   so the rule spans the full editorial frame height. min-height is
+		   a safety floor when the hero content is unusually short. */
+		flex: 1 1 auto;
+		min-height: 3rem;
+		align-self: center;
 		background: linear-gradient(
-			to right,
-			rgba(255, 255, 255, 0.18),
-			rgba(255, 255, 255, 0.02)
+			to bottom,
+			rgba(255, 255, 255, 0.04),
+			rgba(255, 255, 255, 0.22) 15%,
+			rgba(255, 255, 255, 0.22) 85%,
+			rgba(255, 255, 255, 0.04)
 		);
 	}
 	.rail-label {
+		display: block;
 		font-family: var(--mono);
 		font-size: 0.68rem;
 		font-weight: 400;
@@ -299,6 +357,13 @@
 		text-transform: uppercase;
 		color: var(--text-dim);
 		white-space: nowrap;
+		/* Rotate so the label reads vertically alongside the headline,
+		   classic magazine-rail typography. `writing-mode: vertical-rl`
+		   gives real sideways text (not a transform rotation) so it stays
+		   accessible to screen readers even though the parent is
+		   aria-hidden. */
+		writing-mode: vertical-rl;
+		transform: rotate(180deg);
 	}
 
 	/* Full-bleed hero content — no two-column grid, no middle-of-page
@@ -576,11 +641,31 @@
 		.hero {
 			padding: 2.25rem 1.25rem 4rem;
 		}
+		/* Collapse the two-column editorial layout into a single column
+		   on narrow screens — the chrome stacks above the content with
+		   the label reading left-to-right again. */
+		.hero-layout {
+			flex-direction: column;
+			gap: 1rem;
+		}
 		.hero-chrome {
-			margin-bottom: 1.25rem;
+			flex-direction: row;
+			align-items: center;
+			gap: 0.8rem;
+			padding-top: 0;
 		}
 		.rail-rule {
-			flex: 0 0 2rem;
+			width: 2rem;
+			height: 1px;
+			background: linear-gradient(
+				to right,
+				rgba(255, 255, 255, 0.22),
+				rgba(255, 255, 255, 0.04)
+			);
+		}
+		.rail-label {
+			writing-mode: horizontal-tb;
+			transform: none;
 		}
 		.hero-inner {
 			gap: 1.3rem;

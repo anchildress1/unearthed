@@ -196,7 +196,7 @@
 	}
 
 	.prose {
-		max-width: 600px;
+		max-width: min(820px, 100%);
 		margin-bottom: 3rem;
 	}
 	.prose p {
@@ -206,10 +206,6 @@
 		line-height: 1.8;
 		color: var(--text-dim);
 		margin-bottom: 0.8rem;
-	}
-	.prose strong {
-		color: var(--text);
-		font-weight: 400;
 	}
 	.prose :global(.rust) { color: var(--rust); }
 
@@ -221,7 +217,7 @@
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
 		gap: 1px;
-		max-width: 600px;
+		max-width: min(820px, 100%);
 		background: var(--rule);
 		border: 1px solid var(--border-glass);
 		border-radius: 12px;
@@ -257,7 +253,7 @@
 	.mountain {
 		margin-top: 1.6rem;
 		padding: 1.4rem 1.4rem 1.1rem;
-		max-width: 600px;
+		max-width: min(820px, 100%);
 	}
 	.mountain-title {
 		font-family: var(--serif);
@@ -312,7 +308,7 @@
 	.emissions {
 		margin-top: 1.6rem;
 		padding: 1.4rem 1.4rem 1.1rem;
-		max-width: 600px;
+		max-width: min(820px, 100%);
 	}
 	.emissions-title {
 		font-family: var(--serif);

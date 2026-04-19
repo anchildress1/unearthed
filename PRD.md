@@ -117,9 +117,11 @@ Public federal data (MSHA Mines, MSHA Quarterly Production, EIA-923 Fuel Receipt
 **P0-6. Share URL.**
 - URL structure: `/?m=SRVC` (eGRID subregion ID).
 - Open Graph tags updated client-side with mine name after reveal.
+- Every successful trace writes the subregion into the URL via `history.pushState`, so a refresh replays the trace from the param instead of losing state.
 
 **Acceptance criteria:**
 - Given I arrive at the page via a share URL, when the page loads, then it jumps straight to that subregion's reveal without re-geolocating.
+- Given I trace an address and refresh the page, then the results render again and the browser restores my scroll position to where I was reading.
 
 **P0-7. Cortex Analyst "Ask your grid" chat.**
 - Semantic model YAML defined over the 5 raw tables (MSHA_MINES, MSHA_QUARTERLY_PRODUCTION, EIA_923_FUEL_RECEIPTS, EIA_860_PLANTS, PLANT_SUBREGION_LOOKUP). MRT views serve `/mine-for-me` via hand-written SQL, not Analyst. Restricted to safe, meaningful questions: mine production over time, plant-to-mine contracts, operator-level rollups, subregion-level totals.
