@@ -14,25 +14,45 @@
 		'Who is the largest coal supplier in this state?',
 	]);
 
+	const ID_COLUMNS = /\b(ID|MINE_ID|PLANT_ID|MSHA_ID)\b/i;
+
+	function formatCell(val, col) {
+		if (typeof val === 'number' && !ID_COLUMNS.test(col)) return val.toLocaleString();
+		return val;
+	}
+
 	async function ask(q) {
 		if (asking || !q.trim()) return;
 		asking = true;
 		console.log('[unearthed] cortex query:', q);
-		const entry = { question: q, answer: null, error: null, sql: null, results: null };
-		transcript = [...transcript, entry];
+		// Collapse previous entries, prepend new one at the top
+		for (const e of transcript) e.collapsed = true;
+		transcript.unshift({
+			question: q,
+			answer: null,
+			interpretation: null,
+			error: null,
+			sql: null,
+			results: null,
+			loading: true,
+			collapsed: false,
+		});
 		question = '';
 		try {
 			const result = await fetchAsk(q, props.subregionId);
-			entry.answer = result.answer || result.interpretation || '';
-			entry.sql = result.sql;
-			entry.error = result.error;
-			entry.results = result.results;
-			transcript = [...transcript];
-			console.log('[unearthed] cortex response:', entry.answer?.slice(0, 100));
+			const answer = result.answer || '';
+			const interpretation = result.interpretation || '';
+			transcript[0].answer = answer;
+			transcript[0].interpretation = interpretation;
+			transcript[0].sql = result.sql;
+			transcript[0].error = result.error;
+			transcript[0].results = result.results;
+			transcript[0].loading = false;
+			console.log('[unearthed] cortex response:', (answer || interpretation)?.slice(0, 100));
 		} catch (e) {
 			console.error('[unearthed] cortex error:', e);
-			entry.error = 'Could not reach the data assistant.';
-			transcript = [...transcript];
+			transcript[0].error = 'Could not reach the data assistant.';
+			transcript[0].loading = false;
 		} finally {
 			asking = false;
 		}
@@ -79,53 +99,77 @@
 	{#if transcript.length > 0}
 		<div class="transcript">
 			{#each transcript as entry}
-				<div class="entry glass">
-					<p class="q">{entry.question}</p>
+				{#if entry.collapsed}
+					<button class="collapsed-entry glass" onclick={() => entry.collapsed = false}>
+						<span class="q-collapsed">{entry.question}</span>
+					</button>
+				{:else}
+					<div class="entry glass">
+						<p class="q">{entry.question}</p>
 
-					{#if entry.error}
-						<p class="error">{entry.error}</p>
-					{/if}
+						{#if entry.loading}
+							<div class="typing">
+								<span class="dot"></span>
+								<span class="dot"></span>
+								<span class="dot"></span>
+							</div>
+						{:else}
+							{#if entry.error}
+								<p class="error">{entry.error}</p>
+							{/if}
 
-					{#if entry.answer}
-						<p class="answer">{entry.answer}</p>
-					{/if}
+							{#if entry.answer}
+								<p class="answer">{entry.answer}</p>
+							{/if}
 
-					{#if entry.results && entry.results.length === 0}
-						<p class="no-results">Query ran successfully but returned no rows.</p>
-					{:else if entry.results && entry.results.length > 0}
-						<div class="results">
-							<table>
-								<thead>
-									<tr>
-										{#each Object.keys(entry.results[0]) as col}
-											<th>{col.replace(/_/g, ' ')}</th>
-										{/each}
-									</tr>
-								</thead>
-								<tbody>
-									{#each entry.results as row}
-										<tr>
-											{#each Object.values(row) as val}
-												<td>{typeof val === 'number' ? val.toLocaleString() : val}</td>
+							{#if entry.results && entry.results.length === 0}
+								<p class="no-results">Query ran successfully but returned no rows.</p>
+							{:else if entry.results && entry.results.length > 0}
+								{@const cols = Object.keys(entry.results[0])}
+								<div class="results">
+									<table>
+										<thead>
+											<tr>
+												{#each cols as col}
+													<th>{col.replace(/_/g, ' ')}</th>
+												{/each}
+											</tr>
+										</thead>
+										<tbody>
+											{#each entry.results as row}
+												<tr>
+													{#each cols as col}
+														<td>{formatCell(row[col], col)}</td>
+													{/each}
+												</tr>
 											{/each}
-										</tr>
-									{/each}
-								</tbody>
-							</table>
-						</div>
-					{/if}
+										</tbody>
+									</table>
+								</div>
+							{/if}
 
-					{#if entry.sql}
-						<details class="sql-details">
-							<summary>Show SQL</summary>
-							<pre>{entry.sql}</pre>
-						</details>
-					{/if}
+							{#if !entry.error && !entry.answer && (!entry.results || entry.results.length === 0)}
+								<p class="no-results">No data matched that question. Try rephrasing or ask about a specific mine, plant, or year.</p>
+							{/if}
 
-					<div class="source">
-						<span class="source-tag">source: MSHA + EIA federal records via Snowflake</span>
+							{#if entry.sql || entry.interpretation}
+								<details class="sql-details">
+									<summary>Show query details</summary>
+									{#if entry.interpretation}
+										<p class="interpretation">{entry.interpretation}</p>
+									{/if}
+									{#if entry.sql}
+										<pre>{entry.sql}</pre>
+									{/if}
+								</details>
+							{/if}
+
+							<div class="source">
+								<span class="source-tag">source: MSHA + EIA federal records via Snowflake</span>
+							</div>
+						{/if}
 					</div>
-				</div>
+				{/if}
 			{/each}
 		</div>
 	{/if}
@@ -241,9 +285,25 @@
 	}
 	button[type="submit"]:disabled { opacity: 0.3; cursor: not-allowed; }
 
-	.transcript { display: flex; flex-direction: column; gap: 1rem; }
+	.transcript { display: flex; flex-direction: column; gap: 0.5rem; }
 
 	.entry { padding: 1.2rem 1.4rem; }
+
+	.collapsed-entry {
+		display: block;
+		width: 100%;
+		text-align: left;
+		padding: 0.7rem 1.2rem;
+		cursor: pointer;
+		transition: border-color 0.2s;
+	}
+	.collapsed-entry:hover { border-color: var(--accent); }
+	.q-collapsed {
+		font-family: var(--serif);
+		font-size: 0.8rem;
+		color: var(--text-ghost);
+		font-style: italic;
+	}
 
 	.q {
 		font-family: var(--serif);
@@ -251,6 +311,25 @@
 		font-size: 0.9rem;
 		color: var(--accent);
 		margin-bottom: 0.8rem;
+	}
+
+	.typing {
+		display: flex;
+		gap: 0.35rem;
+		padding: 0.6rem 0;
+	}
+	.dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: var(--text-ghost);
+		animation: pulse 1.4s ease-in-out infinite;
+	}
+	.dot:nth-child(2) { animation-delay: 0.2s; }
+	.dot:nth-child(3) { animation-delay: 0.4s; }
+	@keyframes pulse {
+		0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); }
+		40% { opacity: 1; transform: scale(1); }
 	}
 
 	.answer {
@@ -287,6 +366,14 @@
 	td { color: var(--text-dim); }
 
 	.sql-details { margin-top: 0.5rem; }
+	.interpretation {
+		font-family: var(--mono);
+		font-size: 0.65rem;
+		letter-spacing: 0.06em;
+		color: var(--text-ghost);
+		margin: 0.5rem 0;
+		line-height: 1.6;
+	}
 	.sql-details summary {
 		font-family: var(--mono);
 		font-size: 0.65rem;
