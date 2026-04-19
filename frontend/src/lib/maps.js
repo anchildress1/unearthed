@@ -67,7 +67,7 @@ function installImportLibraryShim(config) {
 
 	if (maps.importLibrary) {
 		// eslint-disable-next-line no-console
-		console.warn(`${ERROR_PREFIX} only loads once. Ignoring:`, config);
+		console.warn(ERROR_PREFIX, 'only loads once. Ignoring:', config);
 		return;
 	}
 
