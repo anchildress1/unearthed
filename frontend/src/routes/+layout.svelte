@@ -77,8 +77,11 @@
 		position: absolute;
 		inset: 0;
 		background:
-			radial-gradient(ellipse 100% 80% at 50% 35%, transparent 25%, var(--bg) 100%),
-			linear-gradient(to bottom, transparent 60%, var(--bg) 100%);
+			radial-gradient(ellipse 70% 55% at 40% 40%, transparent 0%, var(--bg) 100%),
+			linear-gradient(to top, var(--bg) 0%, transparent 40%),
+			linear-gradient(to bottom, var(--bg) 0%, transparent 30%),
+			linear-gradient(to left, var(--bg) 0%, transparent 35%),
+			linear-gradient(to right, var(--bg) 0%, transparent 35%);
 	}
 
 	/* Film grain texture */
