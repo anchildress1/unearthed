@@ -129,12 +129,15 @@ export const DARK_STATE_STYLES = [
 
 /**
  * Palette shared across both maps. The CSS layer uses the same tokens as
- * custom properties (`--accent`, `--green`, …), but Google Maps icons and
+ * custom properties (`--rust`, `--green`, …), but Google Maps icons and
  * polylines need raw hex strings — icons are drawn on a separate canvas
  * that doesn't see CSS vars. Keeping one JS source of truth avoids drift.
+ * `rust` matches the OKLCH `--rust` dim tier; reserve `rustBright` for
+ * charged moments (selection, active state).
  */
 export const MAP_COLORS = Object.freeze({
-	accent: '#f47249',
+	rust: '#be573b',
+	rustBright: '#f47249',
 	moss: '#5a7a5a',
 	you: '#e8dfcc',
 	ash: '#a89e92',

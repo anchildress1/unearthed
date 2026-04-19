@@ -57,7 +57,7 @@
 		font-size: 0.7rem;
 		font-weight: 400;
 		letter-spacing: 0.14em;
-		color: var(--accent);
+		color: var(--rust);
 		white-space: nowrap;
 	}
 
@@ -111,7 +111,7 @@
 	}
 	.section-rail :global(h2 em),
 	.section-rail :global(h3 em) {
-		color: var(--accent);
+		color: var(--rust);
 		font-style: italic;
 	}
 	.section-rail :global(.sub) {
@@ -127,7 +127,7 @@
 		font-weight: 400;
 	}
 	.section-rail :global(.sub .rust) {
-		color: var(--accent);
+		color: var(--rust);
 		font-style: italic;
 	}
 	.section-rail :global(.sub .ash) {
@@ -135,7 +135,7 @@
 		font-style: italic;
 	}
 	.section-rail :global(.sub em) {
-		color: var(--accent);
+		color: var(--rust);
 		font-style: italic;
 	}
 
@@ -165,7 +165,7 @@
 		line-height: 1.3;
 	}
 
-	/* Cortex-context explanation block. The accent border-left is the
+	/* Cortex-context explanation block. The rust border-left is the
 	   sitewide signal for "this text was written by Cortex." Used by
 	   H3Density's density summary and the CortexChat hint. */
 	.section-rail :global(.cortex-note) {
@@ -176,8 +176,8 @@
 		color: var(--text);
 		margin-top: 1.3rem;
 		padding: 0.8rem 1rem;
-		background: rgba(244, 114, 73, 0.04);
-		border-left: 2px solid var(--accent);
+		background: oklch(58% 0.14 36 / 0.06);
+		border-left: 2px solid var(--rust);
 		border-radius: 3px;
 	}
 	.section-rail :global(.cortex-note-tag) {
@@ -186,7 +186,7 @@
 		font-size: 0.55rem;
 		text-transform: uppercase;
 		letter-spacing: 0.2em;
-		color: var(--accent);
+		color: var(--rust);
 		margin-bottom: 0.4rem;
 	}
 

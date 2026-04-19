@@ -82,7 +82,7 @@
 		font-family: var(--mono);
 		font-size: clamp(3rem, 10vw, 6rem);
 		font-weight: 300;
-		color: var(--accent);
+		color: var(--rust);
 		line-height: 1;
 	}
 	/* Three-line anchor pattern—serif plain-English primary, mono
@@ -115,7 +115,7 @@
 		line-height: 1.6;
 		margin-bottom: 4rem;
 	}
-	.closing em { color: var(--accent); font-style: italic; }
+	.closing em { color: var(--rust); font-style: italic; }
 
 	/* Dedication: quieter than .closing—the page has already said the loud
 	   things; this block lowers the voice to acknowledge the people. A thin
@@ -144,7 +144,7 @@
 		color: var(--text);
 	}
 	.ded-close em {
-		color: var(--accent);
+		color: var(--rust);
 		font-style: italic;
 	}
 
@@ -159,5 +159,5 @@
 		letter-spacing: 0.05em;
 	}
 	.footer a { color: var(--text-dim); }
-	.footer a:hover { color: var(--accent); }
+	.footer a:hover { color: var(--rust); }
 </style>

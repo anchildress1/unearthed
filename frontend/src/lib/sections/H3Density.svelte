@@ -161,9 +161,9 @@
 			const poly = new google.maps.Polygon({
 				map,
 				paths,
-				fillColor: isUserRegion ? MAP_COLORS.accent : MAP_COLORS.white,
+				fillColor: isUserRegion ? MAP_COLORS.rust : MAP_COLORS.white,
 				fillOpacity: isUserRegion ? 0.08 : 0.015,
-				strokeColor: isUserRegion ? MAP_COLORS.accent : MAP_COLORS.white,
+				strokeColor: isUserRegion ? MAP_COLORS.rust : MAP_COLORS.white,
 				strokeOpacity: isUserRegion ? 0.55 : 0.12,
 				strokeWeight: isUserRegion ? 1 : 0.6,
 				clickable: false,
@@ -212,7 +212,7 @@
 				map,
 				position: { lat: mineCoords[0], lng: mineCoords[1] },
 				title: mineName || 'your mine',
-				icon: circleIcon({ color: MAP_COLORS.accent, scale: 6 }),
+				icon: circleIcon({ color: MAP_COLORS.rust, scale: 6 }),
 				zIndex: 20,
 			});
 			createLabeledMarker(map, marker, { type: 'YOUR MINE', name: mineName });
@@ -292,9 +292,13 @@
 	function color(active, total) {
 		if (!total) return '#7a746c';
 		const ratio = active / total;
-		const r = Math.round(122 + (194 - 122) * ratio);
-		const g = Math.round(116 + (84 - 116) * ratio);
-		const b = Math.round(108 + (45 - 108) * ratio);
+		// Endpoint is --rust in srgb (#be573b). Gradient interpolates in
+		// sRGB for simplicity — the perceptual difference vs OKLCH
+		// interpolation is negligible across this short hue/chroma jump
+		// between ash(#7a746c) and rust(#be573b).
+		const r = Math.round(122 + (190 - 122) * ratio);
+		const g = Math.round(116 + (87 - 116) * ratio);
+		const b = Math.round(108 + (59 - 108) * ratio);
 		return `rgb(${r}, ${g}, ${b})`;
 	}
 </script>
@@ -350,9 +354,9 @@
 	<div class="map-legend">
 		<span class="legend-item">
 			<svg width="56" height="18" viewBox="0 0 56 18" aria-hidden="true">
-				<circle cx="5" cy="9" r="3" fill="#f47249" fill-opacity="0.5" stroke="#f47249" />
-				<circle cx="22" cy="9" r="5" fill="#f47249" fill-opacity="0.45" stroke="#f47249" />
-				<circle cx="45" cy="9" r="8" fill="#f47249" fill-opacity="0.4" stroke="#f47249" />
+				<circle cx="5" cy="9" r="3" fill="#be573b" fill-opacity="0.5" stroke="#be573b" />
+				<circle cx="22" cy="9" r="5" fill="#be573b" fill-opacity="0.45" stroke="#be573b" />
+				<circle cx="45" cy="9" r="8" fill="#be573b" fill-opacity="0.4" stroke="#be573b" />
 			</svg>
 			hex size ∝ mine count
 		</span>
@@ -454,11 +458,11 @@
 		height: 10px;
 		border-radius: 50%;
 	}
-	.swatch.rust { background: var(--accent); }
+	.swatch.rust { background: var(--rust); }
 	.swatch.ash { background: #a89e92; }
 	.swatch.region {
-		background: rgba(244, 114, 73, 0.18);
-		border: 1px solid rgba(244, 114, 73, 0.55);
+		background: oklch(58% 0.14 36 / 0.22);
+		border: 1px solid oklch(58% 0.14 36 / 0.55);
 		border-radius: 2px;
 	}
 
@@ -483,6 +487,6 @@
 		color: var(--text);
 		line-height: 1;
 	}
-	.t-value.rust { color: var(--accent); }
+	.t-value.rust { color: var(--rust); }
 	.t-value.ash { color: #a89e92; }
 </style>

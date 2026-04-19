@@ -44,9 +44,9 @@
 			// One coal flow—mine → plant → user—drawn as one color so the
 			// reader reads it as a single route, not two separate relationships.
 			// The stack doesn't interrupt the coal; it only converts it.
-			mineDotInterval = animateArc(map, mine, plant, MAP_COLORS.accent, 2.5, 0.55);
+			mineDotInterval = animateArc(map, mine, plant, MAP_COLORS.rust, 2.5, 0.55);
 			if (user) {
-				userDotInterval = animateArc(map, plant, user, MAP_COLORS.accent, 2.5, 0.55);
+				userDotInterval = animateArc(map, plant, user, MAP_COLORS.rust, 2.5, 0.55);
 			}
 
 			// Offset labels from their relative geography so two close-together
@@ -57,7 +57,7 @@
 
 			createLabeledMarker(
 				map,
-				anchorMarker(map, mine, MAP_COLORS.accent),
+				anchorMarker(map, mine, MAP_COLORS.rust),
 				{ type: 'MINE', name: data.mine, pixelOffset: offsets.mine },
 			);
 			createLabeledMarker(
@@ -261,7 +261,7 @@
 		border-radius: 50%;
 		border: 1.5px solid #fff;
 	}
-	.dot.mine { background: var(--accent); }
+	.dot.mine { background: var(--rust); }
 	.dot.plant { background: var(--green); }
 	.dot.you { background: #e8dfcc; }
 
@@ -270,6 +270,6 @@
 		height: 2px;
 		opacity: 0.6;
 	}
-	.line-sample.rust { background: var(--accent); }
+	.line-sample.rust { background: var(--rust); }
 	.line-sample.moss { background: var(--green); }
 </style>

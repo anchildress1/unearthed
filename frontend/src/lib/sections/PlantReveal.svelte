@@ -211,7 +211,7 @@
 		color: var(--text);
 		font-weight: 400;
 	}
-	.prose :global(.rust) { color: var(--accent); }
+	.prose :global(.rust) { color: var(--rust); }
 
 	.cards {
 		display: grid;
@@ -234,7 +234,7 @@
 		color: var(--text);
 		line-height: 1;
 	}
-	.card-value.rust { color: var(--accent); }
+	.card-value.rust { color: var(--rust); }
 	.card-value.region {
 		font-family: var(--mono);
 		color: var(--text);
@@ -255,7 +255,7 @@
 		margin-bottom: 0.9rem;
 		letter-spacing: -0.005em;
 	}
-	.mountain-title em { font-style: italic; color: var(--accent); }
+	.mountain-title em { font-style: italic; color: var(--rust); }
 	.mountain-cards {
 		display: grid;
 		grid-template-columns: repeat(2, 1fr);
@@ -277,7 +277,7 @@
 		color: var(--text);
 		line-height: 1;
 	}
-	.m-value.rust { color: var(--accent); }
+	.m-value.rust { color: var(--rust); }
 	.mountain-note {
 		font-family: var(--serif);
 		font-size: 0.9rem;
@@ -312,7 +312,7 @@
 	}
 	.emissions-title em {
 		font-style: italic;
-		color: var(--accent);
+		color: var(--rust);
 	}
 	.emissions-cards {
 		display: grid;
@@ -335,7 +335,7 @@
 		color: var(--text);
 		line-height: 1;
 	}
-	.e-value.rust { color: var(--accent); }
+	.e-value.rust { color: var(--rust); }
 	.emissions-source {
 		font-family: var(--mono);
 		font-size: 0.55rem;
@@ -346,7 +346,7 @@
 		border-top: 1px solid rgba(255, 255, 255, 0.04);
 	}
 	.emissions-source strong {
-		color: var(--accent);
+		color: var(--rust);
 		font-weight: 400;
 	}
 

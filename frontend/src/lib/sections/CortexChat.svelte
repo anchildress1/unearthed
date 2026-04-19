@@ -226,8 +226,8 @@
 		font-size: 0.6rem;
 		text-transform: uppercase;
 		letter-spacing: 0.2em;
-		color: var(--accent);
-		border: 1px solid rgba(194,84,45,0.3);
+		color: var(--rust);
+		border: 1px solid oklch(58% 0.14 36 / 0.3);
 		padding: 0.25rem 0.6rem;
 		border-radius: 3px;
 	}
@@ -261,7 +261,7 @@
 		background: rgba(255, 255, 255, 0.015);
 	}
 	.p-num {
-		color: var(--accent);
+		color: var(--rust);
 		font-weight: 400;
 	}
 	.p-arrow {
@@ -287,7 +287,7 @@
 		cursor: pointer;
 		transition: all 0.2s;
 	}
-	.chip:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+	.chip:hover:not(:disabled) { border-color: var(--rust); color: var(--rust); }
 	.chip:disabled { opacity: 0.3; cursor: not-allowed; }
 
 	.form {
@@ -308,14 +308,14 @@
 		border-radius: 6px;
 		outline: none;
 	}
-	input:focus { border-color: var(--accent); }
+	input:focus { border-color: var(--rust); }
 	input::placeholder { color: var(--text-ghost); font-style: italic; }
 
 	button[type="submit"] {
 		font-family: var(--mono);
 		font-size: 0.7rem;
 		padding: 0.7rem 1rem;
-		background: var(--accent);
+		background: var(--rust);
 		color: #fff;
 		border: none;
 		border-radius: 6px;
@@ -339,7 +339,7 @@
 		font-family: var(--mono);
 		font-style: normal;
 		font-size: 0.65rem;
-		color: var(--accent);
+		color: var(--rust);
 		letter-spacing: 0.1em;
 		margin-right: 0.4rem;
 	}
@@ -365,13 +365,13 @@
 		transition: color 0.15s, border-color 0.15s, background 0.15s;
 	}
 	.proof-toggle:hover {
-		color: var(--accent);
-		border-color: rgba(244, 114, 73, 0.45);
-		background: rgba(244, 114, 73, 0.04);
+		color: var(--rust);
+		border-color: oklch(58% 0.14 36 / 0.45);
+		background: oklch(58% 0.14 36 / 0.06);
 	}
 	.proof-toggle[aria-expanded="true"] {
-		color: var(--accent);
-		border-color: rgba(244, 114, 73, 0.35);
+		color: var(--rust);
+		border-color: oklch(58% 0.14 36 / 0.35);
 	}
 	.proof-toggle .caret {
 		font-size: 0.7rem;
@@ -395,7 +395,7 @@
 	.stage-num {
 		font-family: var(--mono);
 		font-size: 0.6rem;
-		color: var(--accent);
+		color: var(--rust);
 		letter-spacing: 0.12em;
 		font-weight: 400;
 	}
@@ -425,7 +425,7 @@
 	}
 
 	.error {
-		color: var(--accent);
+		color: var(--rust);
 		font-size: 0.85rem;
 		font-style: italic;
 	}
@@ -445,7 +445,7 @@
 		line-height: 1.55;
 		margin: 0.4rem 0 0.6rem;
 		padding-left: 0.75rem;
-		border-left: 2px solid rgba(244, 114, 73, 0.4);
+		border-left: 2px solid oklch(58% 0.14 36 / 0.45);
 	}
 
 	.follow-ups {
@@ -478,10 +478,10 @@
 		padding: 0.9rem 1rem;
 		background: rgba(0, 0, 0, 0.45);
 		border-radius: 6px;
-		border-left: 2px solid var(--accent);
+		border-left: 2px solid var(--rust);
 		font-family: var(--mono);
 		font-size: 0.72rem;
-		color: var(--accent);
+		color: var(--rust);
 		white-space: pre-wrap;
 		word-break: break-word;
 		line-height: 1.55;

@@ -204,7 +204,7 @@
 		font-size: 0.7rem;
 		font-weight: 400;
 		letter-spacing: 0.14em;
-		color: var(--accent);
+		color: var(--rust);
 		white-space: nowrap;
 	}
 	.rail-rule {
@@ -257,7 +257,7 @@
 		color: var(--text);
 	}
 	:global(.rust) {
-		color: var(--accent);
+		color: var(--rust);
 	}
 
 	/* ---- Lede ---- */
@@ -305,8 +305,8 @@
 		transition: border-color 0.2s, box-shadow 0.2s;
 	}
 	input[type="text"]:focus {
-		border-color: var(--accent);
-		box-shadow: 0 0 0 1px var(--accent-glow);
+		border-color: var(--rust);
+		box-shadow: 0 0 0 1px var(--rust-glow);
 	}
 	input[type="text"]::placeholder {
 		color: var(--text-ghost);
@@ -318,8 +318,8 @@
 		font-size: 0.72rem;
 		padding: 0.85rem 1.1rem;
 		background: transparent;
-		color: var(--accent);
-		border: 1px solid rgba(244, 114, 73, 0.4);
+		color: var(--rust);
+		border: 1px solid oklch(58% 0.14 36 / 0.4);
 		border-radius: 6px;
 		cursor: pointer;
 		letter-spacing: 0.1em;
@@ -327,16 +327,16 @@
 		transition: all 0.2s ease;
 	}
 	button:hover:not(:disabled) {
-		background: var(--accent);
+		background: var(--rust);
 		color: var(--bg);
-		border-color: var(--accent);
+		border-color: var(--rust);
 	}
 	button:disabled {
 		opacity: 0.35;
 		cursor: not-allowed;
 	}
 	button.primary {
-		background: rgba(244, 114, 73, 0.12);
+		background: oklch(58% 0.14 36 / 0.15);
 	}
 
 	.divider {
@@ -393,7 +393,7 @@
 		padding-right: 2rem;
 	}
 	select:focus {
-		border-color: var(--accent);
+		border-color: var(--rust);
 	}
 
 	/* ---- Status line (reserved space—never shifts layout) ---- */
@@ -413,7 +413,7 @@
 		text-align: center;
 	}
 	.err {
-		color: var(--accent);
+		color: var(--rust);
 		font-size: 0.88rem;
 		font-style: italic;
 	}

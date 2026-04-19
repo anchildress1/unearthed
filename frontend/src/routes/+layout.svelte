@@ -35,8 +35,15 @@
 		--text: #e8dfcc;
 		--text-dim: #7d7466;
 		--text-ghost: #5c554a;
-		--accent: #f47249;
-		--accent-glow: rgba(244, 114, 73, 0.15);
+		/* Two-tier rust palette. --rust is the dim, iron-oxide primary: it
+		   carries nearly every accent surface (text ems, rules, card values,
+		   the one map route). --rust-bright is held back for charged moments
+		   where the page needs to shout (text selection, forthcoming live
+		   pulses). The OKLCH values are perceptually chosen — same hue, two
+		   luminances — so the bright tier reads as the same color, louder. */
+		--rust: oklch(58% 0.14 36);
+		--rust-bright: oklch(70% 0.17 38);
+		--rust-glow: oklch(58% 0.14 36 / 0.15);
 		--green: #5a7a5a;
 		--border-glass: rgba(255, 255, 255, 0.07);
 		--glass-bg: rgba(255, 255, 255, 0.03);
@@ -63,7 +70,7 @@
 	}
 
 	:global(a) {
-		color: var(--accent);
+		color: var(--rust);
 		text-decoration: none;
 	}
 
@@ -74,14 +81,16 @@
 
 	/* Override the browser's default blue text-selection highlight, which
 	   reads as accessibility-failing chrome against the site's rust/ash
-	   palette. Use the site's accent at low opacity with the text kept at
-	   the base fore color so selected text stays legible. */
+	   palette. Selection is the one moment the page earns the bright tier:
+	   it's a direct response to a user gesture, so the louder rust reads as
+	   interactive feedback without needing extra UI. Text stays at the base
+	   fore color so selected copy is still legible. */
 	:global(::selection) {
-		background: rgba(244, 114, 73, 0.38);
+		background: oklch(70% 0.17 38 / 0.38);
 		color: var(--text);
 	}
 	:global(::-moz-selection) {
-		background: rgba(244, 114, 73, 0.38);
+		background: oklch(70% 0.17 38 / 0.38);
 		color: var(--text);
 	}
 

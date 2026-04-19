@@ -171,7 +171,7 @@ Two endpoints lean on Snowflake's built-in geospatial / Marketplace story:
 - The left-rail number + label (`N° 02 / Your coal`) — chrome, not content.
 - Canonical `h2`/`h3` typography (serif, clamped, `em` accent) — do NOT re-declare in sections. If a title doesn't match, it's a bug in the section, not a license to override.
 - The `.sub` subtitle pattern.
-- The `.cortex-note` block (accent border-left) signaling Cortex-written text.
+- The `.cortex-note` block (rust border-left) signaling Cortex-written text.
 - The **three-line anchor pattern** via `:global(.anchor-primary)` + `:global(.anchor-secondary)`: big value / serif plain-English primary / mono uppercase tag. Used by PlantReveal cards, the land-disturbed block, the emissions panel, and the H3 tallies. **Do not re-declare these per section.** If you need a larger closing beat (Ticker), define a distinct class — don't shadow the canonical one.
 
 ### Share URL
