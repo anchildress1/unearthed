@@ -19,8 +19,10 @@ export async function fetchEmissions(plantName) {
 	return resp.json();
 }
 
-export async function fetchH3Density(resolution = 4) {
-	const resp = await fetch(`/h3-density?resolution=${resolution}`);
+export async function fetchH3Density(resolution = 4, state = null) {
+	const params = new URLSearchParams({ resolution: String(resolution) });
+	if (state) params.set('state', state);
+	const resp = await fetch(`/h3-density?${params}`);
 	if (!resp.ok) {
 		throw new Error(`Failed to load density (${resp.status})`);
 	}

@@ -58,6 +58,7 @@
 			userCoords={mineData.user_coords}
 			mineCoords={mineData.mine_coords}
 			mineName={mineData.mine}
+			mineState={mineData.mine_state}
 			subregionId={mineData.subregion_id}
 		/>
 		<CortexChat subregionId={mineData.subregion_id} mineName={mineData.mine} plantName={mineData.plant} />

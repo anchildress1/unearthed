@@ -4,21 +4,58 @@
 	import { loadSubregionGeoJSON } from '$lib/geo.js';
 	import { reveal } from '$lib/reveal.js';
 
-	let { userCoords = null, mineCoords = null, mineName = '', subregionId = '' } = $props();
+	let {
+		userCoords = null,
+		mineCoords = null,
+		mineName = '',
+		mineState = '',
+		subregionId = '',
+	} = $props();
 
-	// Continental US bounding box — tight enough to keep dots readable.
-	const LAT_MIN = 24;
-	const LAT_MAX = 49.5;
-	const LON_MIN = -125;
-	const LON_MAX = -66;
 	const VIEW_W = 1000;
 	const VIEW_H = 520;
 
 	let cells = $state([]);
-	let subregionPaths = $state([]);
+	let geojson = $state(null);
 	let loaded = $state(false);
 	let errored = $state(false);
 	let hovered = $state(null);
+
+	// Projection bounds — auto-fit to whatever the filtered query returns,
+	// padded out so the hexes don't hug the frame edge.
+	const bounds = $derived.by(() => {
+		let minLat = Infinity, maxLat = -Infinity;
+		let minLng = Infinity, maxLng = -Infinity;
+		for (const c of cells) {
+			const lat = c.LAT ?? c.lat;
+			const lng = c.LNG ?? c.lng;
+			if (lat == null || lng == null) continue;
+			if (lat < minLat) minLat = lat;
+			if (lat > maxLat) maxLat = lat;
+			if (lng < minLng) minLng = lng;
+			if (lng > maxLng) maxLng = lng;
+		}
+		for (const p of [userCoords, mineCoords]) {
+			if (!p) continue;
+			const [lat, lng] = p;
+			if (lat < minLat) minLat = lat;
+			if (lat > maxLat) maxLat = lat;
+			if (lng < minLng) minLng = lng;
+			if (lng > maxLng) maxLng = lng;
+		}
+		// Sensible continental US fallback if no cells returned yet.
+		if (!Number.isFinite(minLat)) {
+			return { minLat: 24, maxLat: 49.5, minLng: -125, maxLng: -66 };
+		}
+		const padLat = Math.max(0.4, (maxLat - minLat) * 0.12);
+		const padLng = Math.max(0.4, (maxLng - minLng) * 0.12);
+		return {
+			minLat: minLat - padLat,
+			maxLat: maxLat + padLat,
+			minLng: minLng - padLng,
+			maxLng: maxLng + padLng,
+		};
+	});
 
 	const totals = $derived.by(() => {
 		let mines = 0;
@@ -39,14 +76,19 @@
 		mineCoords ? project(mineCoords[0], mineCoords[1]) : null,
 	);
 
+	const subregionPaths = $derived.by(() => {
+		if (!geojson) return [];
+		return buildSubregionPaths(geojson);
+	});
+
 	onMount(async () => {
 		try {
-			const [density, geojson] = await Promise.all([
-				fetchH3Density(4),
+			const [density, geo] = await Promise.all([
+				fetchH3Density(5, mineState || null),
 				loadSubregionGeoJSON().catch(() => null),
 			]);
 			cells = density.cells || [];
-			if (geojson) subregionPaths = buildSubregionPaths(geojson);
+			if (geo) geojson = geo;
 		} catch (e) {
 			console.warn('[unearthed] h3-density unavailable:', e.message);
 			errored = true;
@@ -55,19 +97,18 @@
 		}
 	});
 
-	// Lat/lon → SVG coords (equirectangular projection is fine at this scale).
 	function project(lat, lon) {
-		const x = ((lon - LON_MIN) / (LON_MAX - LON_MIN)) * VIEW_W;
-		const y = VIEW_H - ((lat - LAT_MIN) / (LAT_MAX - LAT_MIN)) * VIEW_H;
+		const { minLat, maxLat, minLng, maxLng } = bounds;
+		const x = ((lon - minLng) / (maxLng - minLng)) * VIEW_W;
+		const y = VIEW_H - ((lat - minLat) / (maxLat - minLat)) * VIEW_H;
 		return [x, y];
 	}
 
-	function buildSubregionPaths(geojson) {
-		// Convert eGRID subregion GeoJSON polygons to SVG path strings projected
-		// into our viewBox. Each feature becomes one path so we can tint the
-		// user's subregion separately without rebuilding geometry.
+	function buildSubregionPaths(geo) {
+		// Project each eGRID subregion polygon into the current bounds.
+		// Recomputes whenever bounds change (filtered view uses a tighter bbox).
 		const out = [];
-		for (const feature of geojson.features) {
+		for (const feature of geo.features) {
 			const sub = feature.properties?.Subregion || '';
 			const type = feature.geometry.type;
 			const coords = feature.geometry.coordinates;
@@ -94,41 +135,42 @@
 	}
 
 	function radius(total) {
-		// log scale so a single 500-mine hex doesn't drown out the smaller clusters.
 		return Math.max(3, Math.min(22, Math.sqrt(total) * 1.6));
 	}
 
 	function color(active, total) {
 		if (!total) return '#5a7a5a';
-		const ratio = active / total; // 0 = all abandoned, 1 = all active
-		// Rust (#c2542d) for active, moss-green (#5a7a5a) for abandoned.
+		const ratio = active / total;
 		const r = Math.round(90 + (194 - 90) * ratio);
 		const g = Math.round(122 + (84 - 122) * ratio);
 		const b = Math.round(90 + (45 - 90) * ratio);
 		return `rgb(${r}, ${g}, ${b})`;
 	}
 
-	function onCellHover(c) {
-		hovered = c;
-	}
-	function onCellLeave() {
-		hovered = null;
-	}
+	function onCellHover(c) { hovered = c; }
+	function onCellLeave() { hovered = null; }
 </script>
 
-<section class="h3" aria-label="National coal mining footprint" use:reveal>
+<section class="h3" aria-label="Regional coal mining footprint" use:reveal>
 	<div class="h3-header">
 		<span class="badge">snowflake native · H3 geospatial</span>
 		<h3>
 			One mine fed your lights.<br/>
-			<em>This</em> is the whole seam.
+			<em>This</em> is {mineState ? `${mineState}'s coal country` : 'the whole seam'}.
 		</h3>
 		<p class="sub">
-			Every coal mine in MSHA's registry, clustered into H3 hexes by Snowflake's
-			<code>H3_LATLNG_TO_CELL_STRING</code>. Each circle is a hex —
-			size scales with mine count, color mixes between <span class="rust">rust (still cutting)</span>
-			and <span class="moss">moss (abandoned)</span>. Your dot sits on top so
-			you can see where your one mine lands in the whole seam.
+			{#if mineState}
+				Every coal mine MSHA has on record in {mineState}, clustered into H3 hexes by
+				Snowflake's <code>H3_LATLNG_TO_CELL_STRING</code>. Your mine is the anchor —
+				hex size scales with mine count, color mixes between
+				<span class="rust">rust (still cutting)</span> and
+				<span class="moss">moss (abandoned)</span>.
+			{:else}
+				Every coal mine in MSHA's registry, clustered into H3 hexes by Snowflake's
+				<code>H3_LATLNG_TO_CELL_STRING</code>. Size scales with mine count, color mixes
+				between <span class="rust">rust (still cutting)</span> and
+				<span class="moss">moss (abandoned)</span>.
+			{/if}
 		</p>
 	</div>
 
@@ -142,19 +184,14 @@
 				viewBox="0 0 {VIEW_W} {VIEW_H}"
 				preserveAspectRatio="xMidYMid meet"
 				role="img"
-				aria-label="US coal mine density"
+				aria-label="Regional coal mine density"
 			>
-				<!-- eGRID subregion outlines ground the hexes in US geography -->
 				<g class="subregion-layer" aria-hidden="true">
 					{#each subregionPaths as p}
-						<path
-							d={p.d}
-							class:user-region={p.subregion === subregionId}
-						/>
+						<path d={p.d} class:user-region={p.subregion === subregionId} />
 					{/each}
 				</g>
 
-				<!-- H3 hexes -->
 				<g class="hex-layer">
 					{#each cells as c}
 						{@const lat = c.LAT ?? c.lat}
@@ -181,7 +218,6 @@
 					{/each}
 				</g>
 
-				<!-- Personal reference points: the mine the user is tied to + the user -->
 				{#if mineProj}
 					<g class="anchor mine-anchor">
 						<circle cx={mineProj[0]} cy={mineProj[1]} r="5" class="anchor-core" />
@@ -197,7 +233,6 @@
 					</g>
 				{/if}
 
-				<!-- Hovered-cell tooltip -->
 				{#if hovered}
 					{@const tx = Math.min(hovered.cx + 14, VIEW_W - 150)}
 					{@const ty = Math.max(hovered.cy - 28, 14)}
@@ -215,7 +250,6 @@
 		{/if}
 	</div>
 
-	<!-- Map-scoped legend so the encoding is readable without a caption -->
 	<div class="map-legend">
 		<span class="legend-item">
 			<svg width="46" height="14" viewBox="0 0 46 14" aria-hidden="true">
@@ -240,7 +274,9 @@
 		<div class="tallies">
 			<div class="tally">
 				<span class="t-value">{totals.mines.toLocaleString()}</span>
-				<span class="t-label">coal mines on record</span>
+				<span class="t-label">
+					{mineState ? `coal mines in ${mineState}` : 'coal mines on record'}
+				</span>
 			</div>
 			<div class="tally">
 				<span class="t-value rust">{totals.active.toLocaleString()}</span>
@@ -321,7 +357,6 @@
 		display: block;
 	}
 
-	/* US / subregion outlines */
 	.subregion-layer path {
 		fill: rgba(255, 255, 255, 0.015);
 		stroke: rgba(255, 255, 255, 0.12);
@@ -334,7 +369,6 @@
 		stroke-width: 1;
 	}
 
-	/* User + mine anchors */
 	.anchor-core {
 		fill: #e8e0d4;
 		stroke: #080808;
@@ -367,7 +401,6 @@
 		fill: var(--accent);
 	}
 
-	/* Hover tooltip */
 	.tip-bg {
 		fill: rgba(8, 8, 8, 0.92);
 		stroke: rgba(194, 84, 45, 0.5);

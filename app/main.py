@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 from pathlib import Path
 
 import snowflake.connector
@@ -64,27 +65,51 @@ SELECT
 FROM UNEARTHED_DB.RAW.MSHA_MINES
 WHERE REPLACE(COAL_METAL_IND, '"', '') = 'C'
     AND TRY_TO_DOUBLE(REPLACE(LATITUDE, '"', '')) IS NOT NULL
+    {state_clause}
 GROUP BY h3
-HAVING total >= 5
+HAVING total >= {min_mines}
 ORDER BY total DESC
 """
 
+_STATE_CODE_PATTERN = re.compile(r"^[A-Za-z]{2}$")
+
 
 @app.get("/h3-density", responses={400: {"description": "Invalid resolution (must be 2-7)"}})
-def h3_density(resolution: int = 4):
-    """H3 hexbin mine density — active vs abandoned extraction footprint."""
+def h3_density(resolution: int = 4, state: str | None = None):
+    """H3 hexbin mine density — active vs abandoned extraction footprint.
+
+    When ``state`` is a 2-letter US state code, only mines in that state are
+    returned and the small-cluster HAVING threshold is dropped to 1 so a
+    single-mine hex still shows up on the focused view.
+    """
     if resolution < 2 or resolution > 7:
         raise HTTPException(status_code=400, detail="Resolution must be 2-7")
     from app.config import settings
 
+    state_clause = ""
+    bind: dict[str, object] = {}
+    min_mines = 5
+    if state:
+        if not _STATE_CODE_PATTERN.match(state):
+            raise HTTPException(status_code=400, detail="State must be a 2-letter code")
+        state_clause = "AND TRIM(REPLACE(STATE, '\"', '')) = %(state)s"
+        bind["state"] = state.upper()
+        min_mines = 1
+
+    sql = _H3_DENSITY_SQL.format(
+        resolution=int(resolution),
+        state_clause=state_clause,
+        min_mines=min_mines,
+    )
+
     conn = _get_connection(role=settings.snowflake_readonly_role)
     cur = conn.cursor(snowflake.connector.DictCursor)
     try:
-        cur.execute(_H3_DENSITY_SQL.format(resolution=int(resolution)))
+        cur.execute(sql, bind)
         rows = [dict(r) for r in cur.fetchall()]
     finally:
         cur.close()
-    return {"resolution": resolution, "cells": rows}
+    return {"resolution": resolution, "state": state, "cells": rows}
 
 
 _EMISSIONS_SQL = """
