@@ -143,17 +143,11 @@ One Cortex feature in use:
 - Sequence must complete within **8 seconds** from payload receipt to final zoom.
 - All three pins and labels must be readable on mobile (>= 375px wide) without horizontal scroll.
 
-### Hero Images
-
-- Exactly 2 images: one surface mine, one underground mine. Routed by mine type.
-- **Pre-1980 public domain only.** Library of Congress or Wikimedia with clear provenance.
-- No recent photography. No named living individuals.
-
 ### Share URL
 
-- Structure: `/?m=hobet-wv` (or similar slug).
-- Open Graph tags populated with mine name, share image, and 1-sentence hook.
-- Share URL skips geolocation and jumps straight to that mine's reveal.
+- Structure: `/?m=SRVC` (eGRID subregion ID, not mine slug).
+- Open Graph tags updated client-side with mine name and hook text after reveal.
+- Share URL skips geolocation and jumps straight to that subregion's reveal.
 
 ## 5. Error Handling Philosophy
 
