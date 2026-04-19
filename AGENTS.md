@@ -160,7 +160,7 @@ Two endpoints lean on Snowflake's built-in geospatial / Marketplace story:
 ### Map (Google Maps JavaScript API)
 
 - Loader lives in `frontend/src/lib/maps.js` — one idempotent script tag shared by `Hero` (Places suggestions), `MapSection` (mine→plant→meter), and `H3Density` (hexbin). Loaded with `libraries=geometry,places&loading=async`, plus a 15s watchdog and poll-for-ready so a cached script can't hang the promise forever.
-- **Hero address resolution** goes through GCP end-to-end. Places classes are imported via `google.maps.importLibrary('places')`. As the user types (≥3 chars, debounced) we call `AutocompleteSuggestion.fetchAutocompleteSuggestions` with `includedRegionCodes: ['us']` and a session token, rendering up to 5 predictions in a custom dropdown beneath the existing input — **the input, trace button, and glass styling are untouched**. Clicking a prediction just populates the input (same as typing); hitting `trace →` resolves the chosen (or top) prediction via `place.fetchFields({ fields: ['location'] })` on the Autocomplete-Essentials tier. No Nominatim, no other geocoder.
+- **Hero address resolution** goes through GCP end-to-end via the Places API (New). Places classes are imported through `google.maps.importLibrary('places')` — never the legacy `AutocompleteService`. As the user types (≥3 chars, debounced) we call `AutocompleteSuggestion.fetchAutocompleteSuggestions` with `{ input, includedRegionCodes: ['us', 'pr', 'vi', 'gu', 'mp', 'as'], language: 'en-US', sessionToken }` — a hard restrict to the US + territories we carry eGRID coverage for. `region` alone only *biases* results and would still surface Paris, France for "par"; `includedRegionCodes` is the parameter that excludes non-US predictions entirely. Up to 5 predictions render in a custom dropdown beneath the existing input — **the input, trace button, and glass styling are untouched**. Clicking a prediction just populates the input (same as typing); hitting `trace →` resolves the chosen (or top) prediction via `place.fetchFields({ fields: ['location'] })` on the Autocomplete-Essentials tier. No Nominatim, no other geocoder.
 - `DARK_STATE_STYLES` + `MAP_COLORS` are the single source of truth for both maps. No cloud-registered `mapId` — that would silently disable the local style array.
 - `MapSection` arc: mine → plant → your meter, one rust color, animated dot rides the geodesic. Labels fan out (above / below / side) to avoid InfoWindow stacking.
 - `H3Density`: resolution-5 hexbins, bigger dot = more mines, rust→ash gradient for active→abandoned. SQL filters null-island and ocean outliers at the query layer.
@@ -168,19 +168,47 @@ Two endpoints lean on Snowflake's built-in geospatial / Marketplace story:
 
 ### Section chrome (editorial unification)
 
-**One title treatment for the whole page.** `SectionRail.svelte` is the canonical wrapper — every scroll section uses it. The component owns:
+**One title treatment for the whole page.** `SectionRail.svelte` is the canonical wrapper — every scroll section uses it, and it must mirror the Hero section's editorial signature so the page reads as one magazine spread instead of disconnected blocks. The component owns:
 
-- The left-rail number + label (`N° 02 / Your coal`) — chrome, not content.
+- **Vertical left-gutter rail.** The chrome (`N° ## / hairline / rotated label`) is a narrow flex column pinned in the left gutter; the content column is `flex: 1 1 0` to its right. The hairline uses `flex: 1 1 auto` so it stretches the full height of the content column — N° caps the top, the rotated label anchors the bottom, the rule runs the length of the editorial frame. Exactly matches `Hero.svelte`'s `.hero-layout` structure — if you touch one, touch the other. Do **not** regress to a horizontal chrome strip.
+- **Rotated label.** `writing-mode: vertical-rl; transform: rotate(180deg);` — real sideways text so screen readers still read it. Do not use transform-only rotation (breaks accessibility and paints inconsistently).
+- **Narrow-screen collapse.** At `≤720px` the `.section-layout` flex-direction flips to `column`, the rail goes horizontal, and the label reads left-to-right again. Same breakpoint as Hero.
 - Canonical `h2`/`h3` typography (serif, clamped, `em` accent) — do NOT re-declare in sections. If a title doesn't match, it's a bug in the section, not a license to override.
 - The `.sub` subtitle pattern.
 - The `.cortex-note` block (rust border-left) signaling Cortex-written text.
 - The **three-line anchor pattern** via `:global(.anchor-primary)` + `:global(.anchor-secondary)`: big value / serif plain-English primary / mono uppercase tag. Used by PlantReveal cards, the land-disturbed block, the emissions panel, and the H3 tallies. **Do not re-declare these per section.** If you need a larger closing beat (Ticker), define a distinct class — don't shadow the canonical one.
+- **Section content widths.** Inside the content column, each section caps its own blocks for reading measure (PlantReveal at `min(820px, 100%)`, H3Density header at 720px, Ticker closing at 460px). These caps exist so copy doesn't run too wide; they should not shrink the section to a narrow left-column that leaves the rest of the frame visually empty.
 
 ### Share URL
 
 - Structure: `/?m=SRVC` (eGRID subregion ID, not mine slug).
 - Open Graph tags updated client-side with mine name and hook text after reveal.
 - Share URL skips geolocation and jumps straight to that subregion's reveal.
+- Every successful trace (not just share-link arrivals) calls `history.pushState({}, '', ?m=<subregion>)` so a refresh preserves the trace — `onMount` replays it from the URL, and the browser restores scroll position to where the user was reading. Do not "fix" the refresh-lands-on-empty-space symptom with `scrollRestoration = 'manual'`; the root cause is URL state, and the pushState handles it end-to-end.
+
+### Testing (frontend)
+
+Three tiers, all runnable from `frontend/` with `pnpm`:
+
+| Tier | Command | Stack | Scope |
+|---|---|---|---|
+| Unit / component | `pnpm test` | Vitest + jsdom + @testing-library/svelte | Pure JS modules (`geo.js`, `api.js`, `reveal.js`) and component chrome (`SectionRail.svelte`). Coverage via `pnpm test:coverage`. |
+| E2E | `pnpm test:e2e` | Playwright (Chromium) against the built `vite preview` bundle | Share-URL replay (`/?m=NWPP`), pushState refresh preservation, editorial rail rendering on every section, lowercase token normalization. Backend is mocked at the `page.route` layer — no FastAPI or Snowflake required. |
+| Lighthouse | `pnpm lhci` | @lhci/cli against `vite preview` | Audits `/`. Thresholds are load-bearing and enforced by `lighthouserc.cjs`. |
+
+**Lighthouse thresholds (non-negotiable):**
+
+- Accessibility ≥ **1.00**
+- SEO ≥ **1.00**
+- Best Practices ≥ **0.98**
+- Performance ≥ **0.90**
+
+Missed thresholds fail CI. Fix the root cause — do not relax the gate. A fresh run should produce all-four-green. Known contributors to regressions:
+
+- `errors-in-console` — any 404 (favicon, missing asset) or unhandled console error drops Best Practices. A real `static/favicon.ico` is in-tree; do not delete it.
+- `color-contrast` — dim copy against the near-black background. `--text-ghost` and the `.data-credit` footer color are tuned to ≥4.5:1; darken them and the a11y score falls back to 0.95. Keep the rationale comments in `+layout.svelte`.
+
+E2E specs live in `frontend/e2e/`. Shared backend fixtures are in `e2e/fixtures.js` (`mockBackend(page)` installs routes for `/mine-for-me`, `/emissions/*`, `/h3-density`, `/ask`, plus a swallow-route for `maps.googleapis.com` so the Places bootstrap doesn't stall tests). Register test-specific routes **after** `mockBackend` — Playwright matches most-recent-first.
 
 ## 5. Error Handling Philosophy
 
