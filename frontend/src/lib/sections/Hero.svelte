@@ -1,65 +1,15 @@
 <script>
-	import { onMount } from 'svelte';
 	import {
+		geocodeAddress,
 		loadSubregionGeoJSON,
 		findSubregion,
 		hasCoalData,
 		requestLocation,
 	} from '$lib/geo.js';
-	import { loadGoogleMaps } from '$lib/maps.js';
 
 	let { loading, error, onTrace } = $props();
 	let address = $state('');
 	let localError = $state(null);
-	// Three-state loader for the Places web component:
-	//   'loading' — Maps script in flight, render a disabled skeleton input
-	//   'ready'   — gmp-place-autocomplete is registered, render it
-	//   'failed'  — script load failed; surface an error and lean on the
-	//               geolocation button + state picker fallbacks below.
-	let autocompleteState = $state('loading');
-
-	onMount(async () => {
-		try {
-			await loadGoogleMaps();
-			autocompleteState = 'ready';
-		} catch (e) {
-			console.error('[unearthed] Places autocomplete unavailable:', e);
-			autocompleteState = 'failed';
-		}
-	});
-
-	// Session tokens are handled internally by PlaceAutocompleteElement, so we
-	// can focus on the selection event and only request the minimum field
-	// mask (`location`) to keep billing on the Autocomplete-Essentials tier.
-	async function handlePlaceSelect(event) {
-		localError = null;
-		const prediction = event.placePrediction;
-		if (!prediction) return;
-		const place = prediction.toPlace();
-		try {
-			await place.fetchFields({ fields: ['location'] });
-			const loc = place.location;
-			if (!loc) {
-				localError = 'Could not resolve that place. Pick another suggestion.';
-				return;
-			}
-			await resolveSubregion(loc.lat(), loc.lng());
-		} catch (e) {
-			console.error('[unearthed] Place fetch failed:', e);
-			localError = 'Could not resolve that place. Try again.';
-		}
-	}
-
-	// Svelte action — wire the custom `gmp-select` event to our handler and
-	// clean up on destroy so hot-reloads don't leak listeners.
-	function bindAutocomplete(node) {
-		node.addEventListener('gmp-select', handlePlaceSelect);
-		return {
-			destroy() {
-				node.removeEventListener('gmp-select', handlePlaceSelect);
-			},
-		};
-	}
 
 	// Google Places autocomplete — adds a suggestion dropdown beneath the
 	// existing input and resolves every address through GCP. No Nominatim
@@ -508,17 +458,9 @@
 		flex-direction: column;
 	}
 
-	/* Google Places Autocomplete web component. The element renders its own
-	   internal input and suggestions dropdown; we style the shell so it sits
-	   flush with the rest of the glass input group, and lean on the
-	   browser's default dropdown appearance for the prediction list. */
-	gmp-place-autocomplete {
-		display: block;
-		width: 100%;
-		--gmpx-color-surface: rgba(0, 0, 0, 0.42);
-		--gmpx-color-on-surface: var(--text);
-		--gmpx-color-primary: var(--rust);
-		--gmpx-font-family-base: var(--serif);
+	.form {
+		display: flex;
+		gap: 0.5rem;
 	}
 
 	/* Places suggestions dropdown — sits beneath the form, overlays the
@@ -736,6 +678,9 @@
 		   let it wrap onto two lines there so the headline is still readable. */
 		h1 .beat {
 			white-space: normal;
+		}
+		.form {
+			flex-direction: column;
 		}
 		button {
 			width: 100%;
