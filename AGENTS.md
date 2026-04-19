@@ -79,21 +79,22 @@ All Snowflake identifiers use **UPPERCASE with underscores**.
 
 ```
 UNEARTHED_DB
-├── RAW          — raw ingested CSVs/XLSX, untransformed
+├── RAW          — cleaned CSVs (embedded quotes stripped), original types preserved
 │   ├── MSHA_MINES
 │   ├── MSHA_QUARTERLY_PRODUCTION
 │   ├── MSHA_ACCIDENTS           (fatalities, injuries, narratives)
 │   ├── EIA_923_FUEL_RECEIPTS
 │   ├── EIA_860_PLANTS
 │   └── PLANT_SUBREGION_LOOKUP
-└── MRT          — consumption-ready views
+└── MRT          — consumption-ready views and tables
     ├── V_MINE_FOR_PLANT        (mine rankings per plant)
-    └── V_MINE_FOR_SUBREGION    (mine rankings per eGRID subregion)
+    ├── V_MINE_FOR_SUBREGION    (mine rankings per eGRID subregion)
+    └── EMISSIONS_BY_PLANT      (pre-aggregated EPA CO2/SO2/NOx per coal facility)
 
-SNOWFLAKE_PUBLIC_DATA_FREE       — Marketplace (free, no load needed)
+SNOWFLAKE_PUBLIC_DATA_FREE       — Marketplace (free, source for EMISSIONS_BY_PLANT)
 └── PUBLIC_DATA_FREE
     ├── EPA_CAM_PLANT_UNIT_INDEX (plant emissions metadata)
-    └── EPA_CAM_TIMESERIES       (CO2/SO2/NOx hourly + quarterly)
+    └── EPA_CAM_TIMESERIES       (CO2/SO2/NOx hourly + quarterly, 2.2B rows)
 ```
 
 ### SQL Standards
@@ -138,7 +139,9 @@ One Cortex feature in use:
 
 - Queries against `V_MINE_FOR_SUBREGION` must return in **under 2 seconds** on XS warehouse.
 - Leverage Snowflake's **24-hour result cache** — identical queries return instantly with no compute cost.
-- No clustering keys needed at this data scale (~500 mines after coal filter).
+- **RAW tables are pre-cleaned** — embedded CSV quotes have been stripped. Do NOT wrap columns in `REPLACE(col, '"', '')`. Use column values directly.
+- **Emissions are pre-aggregated** — `MRT.EMISSIONS_BY_PLANT` (240 rows) replaces the 2.2B-row EPA_CAM_TIMESERIES join. Query the MRT table, not the Marketplace tables directly.
+- In-memory caches exist for H3 density, emissions, and Cortex prose. These reset on process restart.
 
 ## 4. Frontend Rules
 
