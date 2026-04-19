@@ -2,6 +2,8 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 
 class TestH3Density:
     @patch("app.main._get_connection")
@@ -55,7 +57,7 @@ class TestEmissions:
         assert resp.status_code == 200
         data = resp.json()
         assert data["plant"] == "Cross"
-        assert data["co2_tons"] == 1000.0
+        assert data["co2_tons"] == pytest.approx(1000.0)
 
     @patch("app.main._get_connection")
     def test_emissions_no_data_returns_nulls(self, mock_conn, client):
