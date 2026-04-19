@@ -381,24 +381,24 @@ verified_queries:
       LIMIT 1
 
   - name: fatalities_at_mine
-    question: "How many fatalities have occurred at Black Thunder Mine?"
+    question: "How many fatalities have occurred at Upper Big Branch Mine?"
     sql: >
       SELECT SUM(CASE WHEN TRIM(a.DEGREE_INJURY) = 'FATALITY' THEN 1 ELSE 0 END) AS fatalities
       FROM UNEARTHED_DB.RAW.MSHA_ACCIDENTS a
       JOIN UNEARTHED_DB.RAW.MSHA_MINES m
         ON a.MINE_ID = m.MINE_ID
-      WHERE TRIM(m.CURRENT_MINE_NAME) ILIKE 'Black Thunder%'
+      WHERE TRIM(m.CURRENT_MINE_NAME) ILIKE 'Upper Big Branch%'
         AND a.COAL_METAL_IND = 'C'
 
   - name: production_by_mine_since_year
-    question: "How much has Black Thunder produced since 2020?"
+    question: "How much has North Antelope Rochelle Mine produced since 2020?"
     sql: >
       SELECT SUM(COAL_PRODUCTION) AS total_tons
       FROM UNEARTHED_DB.RAW.MSHA_QUARTERLY_PRODUCTION
       WHERE MINE_ID IN (
         SELECT MINE_ID
         FROM UNEARTHED_DB.RAW.MSHA_MINES
-        WHERE TRIM(CURRENT_MINE_NAME) ILIKE 'Black Thunder%'
+        WHERE TRIM(CURRENT_MINE_NAME) ILIKE 'North Antelope Rochelle%'
           AND COAL_METAL_IND = 'C'
       )
       AND CAL_YR >= 2020
