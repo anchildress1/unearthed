@@ -29,28 +29,38 @@ _COMPLETE_PROMPT = """You are writing 2-3 sentences for a data visualization abo
 The reader just learned their electricity comes from {mine_name} in {mine_county}, {mine_state}.
 
 Federal mine safety records show:
-- {fatalities} workers have died at this mine
 - {injuries} workers were injured badly enough to miss work
 - {days_lost} total days of work lost to injury
+- {fatalities} workers have died at this mine
 - {incidents} total recorded safety incidents
 
 Write 2-3 SHORT sentences. Rules:
 - Present tense. This is happening now.
-- Lead with deaths if any. Then injuries. Then days lost.
+- Lead with the injuries — these are daily, specific, bodily. Name days lost.
+- Land the fatalities second, as the weight the injuries accumulate toward.
 - No acronyms. No jargon.
 - No hope. No hedging. No "however."
 - Last sentence connects to the reader's electricity.
 - Do NOT name the mine or operator — those are already on screen.
 """
 
-_FALLBACK = (
-    "{fatalities} workers have died at this mine. "
-    "{injuries} more were injured badly enough to miss work — "
-    "{days_lost:,} days lost in total. "
-    "The coal kept moving to your grid."
-)
-
 _FALLBACK_NO_DATA = "This mine ships coal to your power grid. The earth does not grow back."
+
+
+def _build_fallback(*, fatalities: int, injuries: int, days_lost: int) -> str:
+    """Construct a deterministic fallback sentence — injuries first, fatalities second.
+
+    Only emits clauses for non-zero numbers so we never read "0 never came home."
+    """
+    parts: list[str] = []
+    if injuries:
+        parts.append(f"{injuries:,} workers here were hurt badly enough to miss shifts.")
+    if days_lost:
+        parts.append(f"{days_lost:,} days of work lost to injury.")
+    if fatalities:
+        parts.append(f"{fatalities:,} never came home.")
+    parts.append("The coal kept moving to your grid.")
+    return " ".join(parts)
 
 
 def generate_prose(mine_data: dict) -> tuple[str, bool]:
@@ -116,9 +126,8 @@ def _generate(mine_data: dict) -> tuple[str, bool]:
         cur2.close()
 
     # Complete returned empty — use template with real numbers (degraded)
-    return _FALLBACK.format(
+    return _build_fallback(
         fatalities=fatalities,
         injuries=injuries,
         days_lost=days_lost,
-        incidents=incidents,
     ), True
