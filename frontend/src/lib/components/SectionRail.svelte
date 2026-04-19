@@ -113,21 +113,41 @@
 	}
 
 	/* ---- Content column ----
-	   Flex-1 so the column owns every pixel the rail doesn't. Each section
-	   caps its own reading-measure inside (PlantReveal's prose at 600px,
-	   H3Density's header at 720px, etc.); this wrapper just guarantees the
-	   rail and the content live in the same editorial frame. */
+	   Flex-1 so the column owns every pixel the rail doesn't. Some sections
+	   still cap their own reading-measure inside (PlantReveal's prose at
+	   600px); otherwise the canonical `.section-header` / `.sub` below
+	   enforce their own measures. This wrapper just guarantees the rail
+	   and the content live in the same editorial frame. */
 	.section-rail > .section-layout > :global(.rail-content) {
 		flex: 1 1 0;
 		min-width: 0;
 		width: 100%;
+		/* Single canonical column width so every post-hero section ends at
+		   the same right edge. Without this clamp, CortexChat's form + table
+		   sprawl to the viewport while Ticker's internal prose caps (460px,
+		   560px) read as a narrow left column — same rail, two framings.
+		   Matches MapSection's map-frame width (the widest editorial element
+		   on the page). Internal body copy can still set a tighter measure
+		   inside; this just anchors the outer column. */
+		max-width: min(1040px, 100%);
 	}
 
-	/* ---- Shared section-header pattern ----
+	/* ---- Canonical section header wrapper ----
+	   Every section that needs a title + subtitle block wraps them in
+	   `<div class="section-header">`. The wrapper owns the margin-below-
+	   the-header rhythm and intentionally does NOT cap width — the h2/h3
+	   fills the full content column so headlines read as an edge-to-edge
+	   editorial beat, while `.sub` below enforces its own reading measure
+	   via the rule further down. One class, one place — do not re-declare
+	   `.map-header`, `.h3-header`, etc. per section. */
+	.section-rail :global(.section-header) {
+		margin-bottom: 2rem;
+	}
+
+	/* ---- Shared section-header typography ----
 	   Every section gets the same title + subtitle treatment, so "if it's a
-	   title, it looks like all other titles." Sections can still cap their
-	   header's max-width or override margins, but the typography is canonical
-	   here and must not be redefined per section. */
+	   title, it looks like all other titles." Sections must not re-declare
+	   these per file. */
 	.section-rail :global(h2),
 	.section-rail :global(h3) {
 		font-family: var(--serif);
@@ -143,6 +163,11 @@
 		color: var(--rust);
 		font-style: italic;
 	}
+	/* Canonical subtitle. Body-prose typography — NOT a hero beat. `<em>`
+	   falls back to browser-default italic and `<span class="rust">` /
+	   `<span class="ash">` lose their color overrides so inline emphasis
+	   doesn't read as a second headline. Rust coloring is reserved for
+	   h2/h3 `<em>` and for explicit stat values (e.g. `.card-value.rust`). */
 	.section-rail :global(.sub) {
 		font-family: var(--serif);
 		font-size: 0.95rem;
@@ -154,18 +179,6 @@
 	.section-rail :global(.sub strong) {
 		color: var(--text);
 		font-weight: 400;
-	}
-	.section-rail :global(.sub .rust) {
-		color: var(--rust);
-		font-style: italic;
-	}
-	.section-rail :global(.sub .ash) {
-		color: #a89e92;
-		font-style: italic;
-	}
-	.section-rail :global(.sub em) {
-		color: var(--rust);
-		font-style: italic;
 	}
 
 	/* ---- Three-line anchor-text pattern ----

@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 
 SAMPLE_MINE_DATA = {
     "mine": "Bailey Mine",
+    "mine_id": "36609947",
     "mine_operator": "Consol Pennsylvania Coal Company LLC",
     "mine_county": "Greene",
     "mine_state": "PA",

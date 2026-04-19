@@ -177,6 +177,11 @@ export function createDarkMap(el, extra = {}) {
  * `placement` (optional): `'above' | 'below' | 'left' | 'right'` — which
  * side of the marker the card floats on. Used for fan-out when two markers
  * are close enough that their default (above) cards would stack.
+ *
+ * `subtitle` (optional): a third mono line under the name, used to surface
+ * identifiers/geography ("MSHA 46-09627 · Raleigh Co., WV"). All three tag
+ * kinds (MINE / PLANT / METER) share chrome and typography; only the glyph
+ * shape changes so the reader can tell them apart at a glance.
  */
 const PIN_TRANSFORMS = {
 	above: 'translate(-50%, calc(-100% - 14px))',
@@ -185,7 +190,39 @@ const PIN_TRANSFORMS = {
 	right: 'translate(14px, -50%)',
 };
 
-export function createLabeledMarker(map, marker, { type, name, placement = 'above' }) {
+// Semantic glyph per tag type. MINE → rotated square reads as diamond,
+// PLANT → flat square reads as industrial, METER/YOU → circle reads as
+// endpoint. All render at 8px in rust so the tag family stays one voice.
+function glyphShapeFor(type) {
+	const upper = (type || '').toUpperCase();
+	if (upper === 'MINE') return 'diamond';
+	if (upper === 'PLANT') return 'square';
+	return 'circle'; // METER, YOU, and any future point-of-delivery kinds
+}
+
+function buildGlyph(shape) {
+	const el = document.createElement('span');
+	const base = [
+		'display:inline-block',
+		'width:8px',
+		'height:8px',
+		'background:#be573b',
+		'vertical-align:middle',
+		'margin-right:6px',
+		'flex-shrink:0',
+	];
+	if (shape === 'diamond') base.push('transform:rotate(45deg)');
+	else if (shape === 'circle') base.push('border-radius:50%');
+	// square: no extra
+	el.style.cssText = base.join(';');
+	return el;
+}
+
+export function createLabeledMarker(
+	map,
+	marker,
+	{ type, name, subtitle = '', placement = 'above' },
+) {
 	const card = document.createElement('div');
 	card.style.cssText = [
 		'position:absolute',
@@ -201,17 +238,32 @@ export function createLabeledMarker(map, marker, { type, name, placement = 'abov
 		'-webkit-backdrop-filter:blur(8px)',
 		'box-shadow:0 4px 14px rgba(0,0,0,0.4)',
 	].join(';');
-	const typeEl = document.createElement('div');
+
+	// Row 1 — glyph + type eyebrow. Flex so the glyph centers to the cap
+	// height instead of floating above baseline.
+	const typeRow = document.createElement('div');
+	typeRow.style.cssText = 'display:flex;align-items:center';
+	typeRow.appendChild(buildGlyph(glyphShapeFor(type)));
+	const typeEl = document.createElement('span');
 	typeEl.style.cssText =
 		"font-family:'JetBrains Mono',monospace;font-size:9px;color:#be573b;text-transform:uppercase;letter-spacing:0.12em";
 	typeEl.textContent = type;
-	card.appendChild(typeEl);
+	typeRow.appendChild(typeEl);
+	card.appendChild(typeRow);
+
 	if (name) {
 		const nameEl = document.createElement('div');
 		nameEl.style.cssText =
 			"font-family:Newsreader,serif;font-size:12px;color:#e8dfcc;margin-top:1px";
 		nameEl.textContent = name;
 		card.appendChild(nameEl);
+	}
+	if (subtitle) {
+		const subEl = document.createElement('div');
+		subEl.style.cssText =
+			"font-family:'JetBrains Mono',monospace;font-size:9px;color:#a89e92;margin-top:2px;letter-spacing:0.04em";
+		subEl.textContent = subtitle;
+		card.appendChild(subEl);
 	}
 
 	class PinCardOverlay extends google.maps.OverlayView {

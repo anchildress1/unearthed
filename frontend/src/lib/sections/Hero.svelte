@@ -277,9 +277,6 @@
 		</div>
 	</div>
 
-	<a class="credit" href="https://www.flickr.com/photos/nationalmemorialforthemountains/255887679/" target="_blank" rel="noopener">
-		Photo: Kent Kessinger · iLoveMountains.org<br/>Flight courtesy SouthWings
-	</a>
 </section>
 
 <style>
@@ -407,9 +404,6 @@
 	h1 em {
 		font-style: italic;
 		color: var(--text);
-	}
-	:global(.rust) {
-		color: var(--rust);
 	}
 
 	/* ---- Lede ---- */
@@ -618,25 +612,7 @@
 		color: var(--text-ghost);
 		max-width: 48ch;
 	}
-	/* ---- Photo credit: anchored bottom-right of the hero ---- */
-	.credit {
-		position: absolute;
-		bottom: clamp(1rem, 3vh, 1.8rem);
-		right: clamp(1.25rem, 4vw, 3rem);
-		font-family: var(--mono);
-		font-size: 0.52rem;
-		color: var(--text-ghost);
-		opacity: 0.45;
-		text-decoration: none;
-		text-align: right;
-		line-height: 1.55;
-		letter-spacing: 0.04em;
-		transition: opacity 0.3s;
-	}
-	.credit:hover {
-		opacity: 0.9;
-	}
-
+	/* ---- Narrow-screen hero collapse ---- */
 	@media (max-width: 720px) {
 		.hero {
 			padding: 2.25rem 1.25rem 4rem;
@@ -681,12 +657,6 @@
 		}
 		button {
 			width: 100%;
-		}
-		.credit {
-			position: static;
-			text-align: center;
-			margin-top: 2rem;
-			display: block;
 		}
 	}
 

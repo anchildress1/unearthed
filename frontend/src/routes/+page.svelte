@@ -101,35 +101,20 @@
 			<PlantReveal data={mineData} />
 			<MapSection data={mineData} />
 			<!--
-				Two H3Density instances, same data, different viewports. Split
-				per user feedback: the grid framing (N° 04) zooms to the eGRID
-				subregion polygon so the box containing "your electrons" is
-				legible; the seam framing (N° 05) zooms to the hex cluster +
-				user/mine anchors so the coal supply shape is visible. The
-				first strips the Cortex summary + legend + tallies so the
-				chrome only appears once, on the mine framing.
+				N° 04 "The seam": a single hex-cluster heatmap framed tight
+				on "the shape of extraction." The eGRID subregion polygon
+				framing lives upstream on MapSection (N° 03) — keeping the
+				two framings in separate sections stopped the header, copy,
+				legend, and tallies from having to hedge between them.
 			-->
 			<H3Density
 				userCoords={mineData.user_coords}
 				mineCoords={mineData.mine_coords}
 				mineName={mineData.mine}
+				mineId={mineData.mine_id}
+				mineCounty={mineData.mine_county}
 				mineState={mineData.mine_state}
 				subregionId={mineData.subregion_id}
-				zoomTo="grid"
-				number="04"
-				label="Your grid"
-				showChrome={false}
-			/>
-			<H3Density
-				userCoords={mineData.user_coords}
-				mineCoords={mineData.mine_coords}
-				mineName={mineData.mine}
-				mineState={mineData.mine_state}
-				subregionId={mineData.subregion_id}
-				zoomTo="mines"
-				number="05"
-				label="The seam"
-				showChrome={true}
 			/>
 			<CortexChat subregionId={mineData.subregion_id} mineName={mineData.mine} plantName={mineData.plant} />
 			<Ticker data={mineData} />

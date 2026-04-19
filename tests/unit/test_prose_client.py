@@ -91,7 +91,7 @@ class TestGenerateProse:
         cursor.fetchone.return_value = (0, 0, 0, 0)
         mock_conn.return_value.cursor.return_value = cursor
 
-        prose, degraded = generate_prose(
+        prose, degraded, stats = generate_prose(
             {
                 "mine_id": "1234567",
                 "mine": "Unnamed",
@@ -102,6 +102,15 @@ class TestGenerateProse:
         )
         assert prose == _FALLBACK_NO_DATA
         assert degraded is True
+        # A "no accident rows" result must still carry a concrete stats dict —
+        # frontend section-2 renders 0/0/0 as "no safety record on file" rather
+        # than throwing on a missing field.
+        assert stats == {
+            "fatalities": 0,
+            "injuries_lost_time": 0,
+            "days_lost": 0,
+            "incidents": 0,
+        }
 
     @patch("app.prose_client._get_connection")
     def test_uses_template_when_complete_returns_empty(self, mock_conn):
@@ -116,7 +125,7 @@ class TestGenerateProse:
 
         mock_conn.return_value.cursor.side_effect = [stats_cursor, complete_cursor]
 
-        prose, degraded = generate_prose(
+        prose, degraded, stats = generate_prose(
             {
                 "mine_id": "9999999",
                 "mine": "Test Mine",
@@ -134,6 +143,14 @@ class TestGenerateProse:
         assert degraded is True
         # Must follow the injuries-first ordering
         assert prose.index("40") < prose.index("3 were killed")
+        # Raw stats must ride alongside the fallback prose so section 2 can
+        # still render its anchor cards even when Cortex produced empty text.
+        assert stats == {
+            "fatalities": 3,
+            "injuries_lost_time": 40,
+            "days_lost": 800,
+            "incidents": 100,
+        }
 
     @patch("app.prose_client._get_connection")
     def test_uses_cortex_output_when_populated(self, mock_conn):
@@ -145,7 +162,7 @@ class TestGenerateProse:
 
         mock_conn.return_value.cursor.side_effect = [stats_cursor, complete_cursor]
 
-        prose, degraded = generate_prose(
+        prose, degraded, stats = generate_prose(
             {
                 "mine_id": "7777777",
                 "mine": "Another",
@@ -163,6 +180,15 @@ class TestGenerateProse:
         assert degraded is False
         # Outer quotes stripped
         assert prose == "Twenty workers here missed shifts this year."
+        # Cortex-path stats must carry the same record the prompt was built
+        # from — the endpoint surfaces them alongside the prose without a
+        # second MSHA query.
+        assert stats == {
+            "fatalities": 1,
+            "injuries_lost_time": 20,
+            "days_lost": 200,
+            "incidents": 50,
+        }
 
 
 class TestProseCache:
@@ -192,9 +218,14 @@ class TestProseCache:
             "tons_year": 2024,
             "subregion_id": "CACHED",
         }
-        first, _ = generate_prose(payload)
-        second, _ = generate_prose(payload)
-        assert first == second == "Cached prose."
+        first_prose, _, first_stats = generate_prose(payload)
+        second_prose, _, second_stats = generate_prose(payload)
+        assert first_prose == second_prose == "Cached prose."
+        # Cached stats must match the originally-computed ones so the second
+        # render of section 2 doesn't flash a different fatality count.
+        assert first_stats == second_stats
+        assert first_stats["injuries_lost_time"] == 20
+        assert first_stats["fatalities"] == 1
         # Only the first call hit the cursor pipeline
         assert mock_conn.return_value.cursor.call_count == 2
 

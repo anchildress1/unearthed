@@ -68,6 +68,19 @@
 		return { isSurface: true, acres, fields: acres * FIELDS_PER_ACRE };
 	});
 
+	// MSHA accident record counts, surfaced at the top of section 2 so the
+	// human toll anchors the section before the Cortex prose weaves it into
+	// narrative. Zero-values are omitted per card (an absent line reads
+	// cleaner than a zero line), and the whole block is hidden if every
+	// field is zero — "no record" is not a story we want to tell twice.
+	const safetyStats = $derived.by(() => {
+		const fatalities = Number(data.fatalities) || 0;
+		const injuries = Number(data.injuries_lost_time) || 0;
+		const daysLost = Number(data.days_lost) || 0;
+		const any = fatalities > 0 || injuries > 0 || daysLost > 0;
+		return { fatalities, injuries, daysLost, any };
+	});
+
 	// Cortex Complete occasionally produces prose where the closing paragraph
 	// is a near-restatement of an earlier one. Dedup on normalized text so
 	// readers never see the same sentence twice back-to-back.
@@ -91,6 +104,40 @@
 	<h3>
 		Your <em>kilowatt-hour</em><br/>starts here.
 	</h3>
+
+	{#if safetyStats.any}
+		<div class="toll glass" aria-label="Miner safety record on file at this mine">
+			<p class="toll-title">
+				What <em>this mine</em> has cost the people who worked it.
+			</p>
+			<div class="toll-cards">
+				{#if safetyStats.injuries > 0}
+					<div class="t-card">
+						<span class="t-value">{safetyStats.injuries.toLocaleString()}</span>
+						<span class="anchor-primary">lost-time injuries on record</span>
+						<span class="anchor-secondary">shifts that ended at a hospital, not a shower</span>
+					</div>
+				{/if}
+				{#if safetyStats.fatalities > 0}
+					<div class="t-card">
+						<span class="t-value rust">{safetyStats.fatalities.toLocaleString()}</span>
+						<span class="anchor-primary">miners killed on the job</span>
+						<span class="anchor-secondary">fatalities in the MSHA registry</span>
+					</div>
+				{/if}
+				{#if safetyStats.daysLost > 0}
+					<div class="t-card">
+						<span class="t-value">{safetyStats.daysLost.toLocaleString()}</span>
+						<span class="anchor-primary">days of work lost to injury</span>
+						<span class="anchor-secondary">time taken from miners and their families</span>
+					</div>
+				{/if}
+			</div>
+			<p class="toll-source">
+				MSHA accident records, cumulative on file · <strong>federal public data</strong>
+			</p>
+		</div>
+	{/if}
 
 	<div class="prose">
 		{#if paragraphs.length > 0}
@@ -195,6 +242,58 @@
 		align-content: center;
 	}
 
+	/* Miner toll block — anchors section 2 before the prose weaves the
+	   numbers into narrative. Matches the .emissions / .mountain pattern so
+	   the three post-hero anchor cards read as one ledger voice. */
+	.toll {
+		margin-bottom: 1.6rem;
+		padding: 1.4rem 1.4rem 1.1rem;
+		max-width: min(820px, 100%);
+	}
+	.toll-title {
+		font-family: var(--serif);
+		font-size: 1rem;
+		font-weight: 300;
+		color: var(--text-dim);
+		margin-bottom: 0.9rem;
+		letter-spacing: -0.005em;
+	}
+	.toll-cards {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+		gap: 0.6rem;
+		margin-bottom: 0.8rem;
+	}
+	.t-card {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		padding: 0.5rem 0.7rem;
+		border-left: 1px solid rgba(255, 255, 255, 0.05);
+	}
+	.t-card:first-child { border-left: none; padding-left: 0; }
+	.t-value {
+		font-family: var(--mono);
+		font-size: 1.3rem;
+		font-weight: 300;
+		color: var(--text);
+		line-height: 1;
+	}
+	.t-value.rust { color: var(--rust); }
+	.toll-source {
+		font-family: var(--mono);
+		font-size: 0.55rem;
+		text-transform: uppercase;
+		letter-spacing: 0.14em;
+		color: var(--text-ghost);
+		padding-top: 0.6rem;
+		border-top: 1px solid rgba(255, 255, 255, 0.04);
+	}
+	.toll-source strong {
+		color: var(--rust);
+		font-weight: 400;
+	}
+
 	.prose {
 		max-width: min(820px, 100%);
 		margin-bottom: 3rem;
@@ -263,7 +362,9 @@
 		margin-bottom: 0.9rem;
 		letter-spacing: -0.005em;
 	}
-	.mountain-title em { font-style: italic; color: var(--rust); }
+	/* <em> stays italic by browser default. No rust coloring: this is a
+	   prose block-header, not a hero heading, so the hero palette doesn't
+	   leak in. */
 	.mountain-cards {
 		display: grid;
 		grid-template-columns: repeat(2, 1fr);
@@ -318,10 +419,8 @@
 		margin-bottom: 0.9rem;
 		letter-spacing: -0.005em;
 	}
-	.emissions-title em {
-		font-style: italic;
-		color: var(--rust);
-	}
+	/* Same rule as .mountain-title: browser-default italic for <em>, no rust
+	   color bleed. Hero styling stays at h2/h3/.sub. */
 	.emissions-cards {
 		display: grid;
 		grid-template-columns: repeat(3, 1fr);
@@ -363,5 +462,7 @@
 		.e-card:nth-child(3) { border-left: none; padding-left: 0; }
 		.mountain-cards { grid-template-columns: 1fr; }
 		.m-card { border-left: none; padding-left: 0; }
+		.toll-cards { grid-template-columns: 1fr; }
+		.t-card { border-left: none; padding-left: 0; }
 	}
 </style>

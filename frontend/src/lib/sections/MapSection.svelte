@@ -64,18 +64,33 @@
 			createLabeledMarker(
 				map,
 				anchorMarker(map, mine, MAP_COLORS.rust),
-				{ type: 'MINE', name: data.mine, placement: placement.mine },
+				{
+					type: 'MINE',
+					name: data.mine,
+					subtitle: mineSubtitle(data),
+					placement: placement.mine,
+				},
 			);
 			createLabeledMarker(
 				map,
 				anchorMarker(map, plant, MAP_COLORS.moss),
-				{ type: 'PLANT', name: data.plant, placement: placement.plant },
+				{
+					type: 'PLANT',
+					name: data.plant,
+					subtitle: plantSubtitle(data),
+					placement: placement.plant,
+				},
 			);
 			if (user) {
 				createLabeledMarker(
 					map,
 					anchorMarker(map, user, MAP_COLORS.you),
-					{ type: 'YOU', name: 'your meter', placement: placement.user },
+					{
+						type: 'METER',
+						name: 'your meter',
+						subtitle: meterSubtitle(data),
+						placement: placement.user,
+					},
 				);
 			}
 		} catch (e) {
@@ -88,6 +103,37 @@
 		cancelled = true;
 		if (flowOverlay) flowOverlay.setMap(null);
 	});
+
+	// Tag subtitles. All three tag kinds share chrome and typography; the
+	// subtitle is the place where each kind speaks in its own register
+	// (MSHA ID + county, plant operator, EPA subregion). Empty strings
+	// render nothing — the helper skips the row — so missing data degrades
+	// cleanly instead of showing "undefined". Formats mirror the editorial
+	// designs in the PRD: identifier · geography.
+	function mineSubtitle(d) {
+		const parts = [];
+		if (d.mine_id) parts.push(`MSHA ${d.mine_id}`);
+		if (d.mine_county && d.mine_state) {
+			parts.push(`${d.mine_county} Co., ${d.mine_state}`);
+		} else if (d.mine_state) {
+			parts.push(d.mine_state);
+		}
+		return parts.join(' · ');
+	}
+
+	function plantSubtitle(d) {
+		const parts = [];
+		if (d.plant_operator) parts.push(d.plant_operator);
+		if (d.subregion_id) parts.push(`subregion ${d.subregion_id}`);
+		return parts.join(' · ');
+	}
+
+	function meterSubtitle(d) {
+		// No reverse-geocoding yet, so the honest identifier is the eGRID
+		// subregion the meter pools into. Keeps the tag structure consistent
+		// with MINE/PLANT without inventing an address we don't have.
+		return d.subregion_id ? `EPA subregion ${d.subregion_id}` : '';
+	}
 
 	function anchorMarker(map, pos, color) {
 		return new google.maps.Marker({
@@ -130,17 +176,11 @@
 </script>
 
 <SectionRail number="03" label="The route" class="map-section">
-	<div class="map-header">
+	<div class="section-header">
 		<h3>
 			Your <em>meter</em> pulls from the stack.<br/>
 			The stack pulls from the <em>mountain</em>.
 		</h3>
-		<p class="sub">
-			One rust line is the coal—from the <span class="rust">seam it was cut out of</span>,
-			to the <span class="rust">stack that burned it</span>, to
-			<span class="rust">your meter</span>. One route, one color.
-			<strong>Close markers fan their labels out</strong> so nothing stacks on top of anything else.
-		</p>
 	</div>
 
 	<div class="map-frame glass">
@@ -161,15 +201,20 @@
 </SectionRail>
 
 <style>
-	.map-header {
-		max-width: 720px;
-		margin-bottom: 2rem;
-	}
-
+	/* Matted frame. The `.glass` class supplies the 1px border + radius;
+	   internal padding insets the map tiles so the frame reads as chrome
+	   around the map, not as a flush full-bleed panel. `max-width` keeps
+	   the map editorial-width instead of stretching to the full column. */
 	.map-frame {
 		width: 100%;
+		max-width: min(1080px, 100%);
 		overflow: hidden;
-		padding: 0;
+		padding: clamp(0.6rem, 1.2vw, 1rem);
+		/* Left-aligned inside the content column so the matted frame lines
+		   up with the headline, sub, legend, and every other section body
+		   — all of which flow from the left edge of the rail's content
+		   column. Centering made the map a visual outlier. */
+		margin: 1rem 0 0;
 	}
 
 	.map-container {

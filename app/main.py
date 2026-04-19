@@ -287,11 +287,12 @@ def mine_for_me(req: MineForMeRequest):
         )
 
     mine_data = {**mine_data, "subregion_id": req.subregion_id}
-    prose, gemini_degraded = generate_prose(mine_data)
+    prose, gemini_degraded, stats = generate_prose(mine_data)
     degraded = degraded or gemini_degraded
 
     return MineForMeResponse(
         mine=mine_data["mine"],
+        mine_id=mine_data.get("mine_id"),
         mine_operator=mine_data["mine_operator"],
         mine_county=mine_data["mine_county"],
         mine_state=mine_data["mine_state"],
@@ -305,6 +306,10 @@ def mine_for_me(req: MineForMeRequest):
         prose=prose,
         subregion_id=req.subregion_id,
         degraded=degraded,
+        fatalities=stats["fatalities"],
+        injuries_lost_time=stats["injuries_lost_time"],
+        days_lost=stats["days_lost"],
+        incidents=stats["incidents"],
     )
 
 

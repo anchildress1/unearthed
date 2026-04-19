@@ -24,6 +24,21 @@
 
 <div class="bg-fixed" aria-hidden="true"></div>
 <div class="bg-grain" aria-hidden="true"></div>
+<!--
+	Photo attribution lives with the fixed background, not inside any one
+	section. `position: fixed` pins it to the viewport so it stays visible
+	for as long as the photo is — which is the entire page, since .bg-fixed
+	is the site-wide background. Moving this out of Hero fixes the "credit
+	scrolls away while the photo it credits is still on screen" bug.
+-->
+<a
+	class="photo-credit"
+	href="https://www.flickr.com/photos/nationalmemorialforthemountains/255887679/"
+	target="_blank"
+	rel="noopener"
+>
+	Photo: Kent Kessinger · iLoveMountains.org<br/>Flight courtesy SouthWings
+</a>
 {@render children()}
 
 <footer class="site-footer">
@@ -100,6 +115,19 @@
 		color: var(--text);
 	}
 
+	/* Sitewide accent-color utility classes. Inline `<span class="rust">`
+	   and `<span class="ash">` in prose stay symmetric — both carry a
+	   color, neither depends on a section-scoped style accidentally
+	   leaking globally. Scoped so it only takes effect when written
+	   explicitly on a span/em; section headings still use the canonical
+	   `h2 em` / `h3 em` rust treatment in SectionRail. */
+	:global(.rust) {
+		color: var(--rust);
+	}
+	:global(.ash) {
+		color: #a89e92;
+	}
+
 	/* Override the browser's default blue text-selection highlight, which
 	   reads as accessibility-failing chrome against the site's rust/ash
 	   palette. Selection is the one moment the page earns the bright tier:
@@ -165,6 +193,40 @@
 		will-change: transform;
 		transform: translate3d(0, 0, 0);
 		backface-visibility: hidden;
+	}
+
+	/* Site-wide photo attribution. Fixed to the viewport so it sticks while
+	   the background does. Larger than the previous hero-local credit
+	   (0.52rem was too small to read) and in the ghost tone so it doesn't
+	   compete with primary content. */
+	.photo-credit {
+		position: fixed;
+		bottom: clamp(1rem, 2.5vh, 1.5rem);
+		right: clamp(1.25rem, 3vw, 2.5rem);
+		z-index: 5;
+		font-family: var(--mono);
+		font-size: 0.7rem;
+		line-height: 1.5;
+		letter-spacing: 0.04em;
+		text-align: right;
+		text-decoration: none;
+		color: var(--text-ghost);
+		opacity: 0.7;
+		transition: opacity 0.25s;
+	}
+	.photo-credit:hover,
+	.photo-credit:focus-visible {
+		opacity: 1;
+		color: var(--text-dim);
+	}
+
+	@media (max-width: 720px) {
+		.photo-credit {
+			font-size: 0.62rem;
+			bottom: 0.75rem;
+			right: 0.9rem;
+			line-height: 1.4;
+		}
 	}
 
 	@media (max-width: 768px) {

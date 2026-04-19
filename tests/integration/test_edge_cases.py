@@ -4,6 +4,17 @@ from unittest.mock import patch
 
 from tests.conftest import SAMPLE_MINE_DATA
 
+# Generic MSHA safety-stats payload for mocked generate_prose returns. Real
+# values are exercised in the unit tests and in the dedicated happy-path
+# integration test; these edge-case tests only need the third tuple slot
+# populated so the endpoint still returns a schema-valid response.
+_STATS = {
+    "fatalities": 0,
+    "injuries_lost_time": 0,
+    "days_lost": 0,
+    "incidents": 0,
+}
+
 
 class TestAskEdgeCases:
     """Edge cases for the /ask endpoint."""
@@ -129,7 +140,10 @@ class TestHttpMethods:
 class TestResponseHeaders:
     """Verify response headers on API endpoints."""
 
-    @patch("app.main.generate_prose", return_value=("Prose.", False))
+    @patch(
+        "app.main.generate_prose",
+        return_value=("Prose.", False, _STATS),
+    )
     @patch("app.main.query_mine_for_subregion", return_value=SAMPLE_MINE_DATA)
     def test_mine_for_me_no_cache_header(self, mock_sf, mock_prose, client):
         """API JSON responses should not include cache-control by default."""
@@ -151,7 +165,10 @@ class TestResponseHeaders:
 class TestConcurrentFailures:
     """Both Snowflake and Gemini fail simultaneously."""
 
-    @patch("app.main.generate_prose", return_value=("Fallback.", True))
+    @patch(
+        "app.main.generate_prose",
+        return_value=("Fallback.", True, _STATS),
+    )
     @patch("app.main.load_fallback_data", return_value=SAMPLE_MINE_DATA)
     @patch("app.main.query_mine_for_subregion", side_effect=Exception("SF down"))
     def test_both_snowflake_and_prose_degraded(self, mock_sf, mock_fb, mock_prose, client):
@@ -173,7 +190,10 @@ class TestConcurrentFailures:
 class TestResponsePayloadBounds:
     """Verify response payloads stay within reasonable bounds."""
 
-    @patch("app.main.generate_prose", return_value=("Short prose.", False))
+    @patch(
+        "app.main.generate_prose",
+        return_value=("Short prose.", False, _STATS),
+    )
     @patch("app.main.query_mine_for_subregion", return_value=SAMPLE_MINE_DATA)
     def test_mine_for_me_response_under_10kb(self, mock_sf, mock_prose, client):
         resp = client.post("/mine-for-me", json={"subregion_id": "SRVC"})

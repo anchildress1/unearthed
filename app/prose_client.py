@@ -216,24 +216,48 @@ def _build_fallback(*, fatalities: int, injuries: int, days_lost: int) -> str:
     return " ".join(parts)
 
 
-def generate_prose(mine_data: dict) -> tuple[str, bool]:
+def generate_prose(mine_data: dict) -> tuple[str, bool, dict]:
+    """Generate memorial prose for a mine and return its raw safety stats alongside.
+
+    Returns ``(prose, degraded, stats)``. ``stats`` is always a dict — never
+    None — so the API response schema is stable regardless of the prose path.
+    Keys: ``fatalities``, ``injuries_lost_time``, ``days_lost``, ``incidents``.
+    When the underlying SQL pull fails or returns nothing, every stat is 0;
+    the section header treats that as "no safety record on file" rather than
+    "zero incidents." Prose is cached per-subregion only when Cortex succeeds
+    — a cached fallback would pin the template under a "Cortex" byline long
+    after the model recovers.
+    """
     subregion_id = mine_data.get("subregion_id", "")
 
-    if subregion_id and subregion_id in _prose_cache:
-        return _prose_cache[subregion_id]
+    cached = _prose_cache.get(subregion_id) if subregion_id else None
+    if cached is not None:
+        return cached
 
+    empty_stats = {
+        "fatalities": 0,
+        "injuries_lost_time": 0,
+        "days_lost": 0,
+        "incidents": 0,
+    }
     try:
-        prose, degraded = _generate(mine_data)
+        prose, degraded, stats = _generate(mine_data)
         if subregion_id and not degraded:
-            _prose_cache[subregion_id] = (prose, degraded)
-        return prose, degraded
+            _prose_cache[subregion_id] = (prose, degraded, stats)
+        return prose, degraded, stats
     except Exception:
         logger.exception("Prose generation failed")
-        return _FALLBACK_NO_DATA, True
+        return _FALLBACK_NO_DATA, True, empty_stats
 
 
-def _generate(mine_data: dict) -> tuple[str, bool]:
-    """Returns (prose, degraded). degraded=True if Complete failed."""
+def _generate(mine_data: dict) -> tuple[str, bool, dict]:
+    """Returns (prose, degraded, stats). degraded=True if Complete failed.
+
+    ``stats`` mirrors the four fields pulled from MSHA_ACCIDENTS (incidents,
+    fatalities, lost-time injuries, days lost) so callers can surface the raw
+    numbers alongside the prose without re-querying. Numbers are cumulative
+    across MSHA's accident record (roughly 1983–present), not per-year.
+    """
     conn = _get_connection()
 
     cur = conn.cursor()
@@ -243,16 +267,28 @@ def _generate(mine_data: dict) -> tuple[str, bool]:
     finally:
         cur.close()
 
+    empty_stats = {
+        "fatalities": 0,
+        "injuries_lost_time": 0,
+        "days_lost": 0,
+        "incidents": 0,
+    }
     if not row:
-        return _FALLBACK_NO_DATA, True
+        return _FALLBACK_NO_DATA, True, empty_stats
 
     fatalities = int(row[1] or 0)
     injuries = int(row[2] or 0)
     days_lost = int(row[3] or 0)
     incidents = int(row[0] or 0)
+    stats = {
+        "fatalities": fatalities,
+        "injuries_lost_time": injuries,
+        "days_lost": days_lost,
+        "incidents": incidents,
+    }
 
     if fatalities == 0 and injuries == 0:
-        return _FALLBACK_NO_DATA, True
+        return _FALLBACK_NO_DATA, True, stats
 
     prompt = _COMPLETE_PROMPT.format(
         plant_name=mine_data.get("plant", ""),
@@ -280,13 +316,17 @@ def _generate(mine_data: dict) -> tuple[str, bool]:
         if result and result[0]:
             prose = result[0].strip().strip('"')
             if prose:
-                return prose, False
+                return prose, False, stats
     finally:
         cur2.close()
 
     # Complete returned empty—use template with real numbers (degraded)
-    return _build_fallback(
-        fatalities=fatalities,
-        injuries=injuries,
-        days_lost=days_lost,
-    ), True
+    return (
+        _build_fallback(
+            fatalities=fatalities,
+            injuries=injuries,
+            days_lost=days_lost,
+        ),
+        True,
+        stats,
+    )
