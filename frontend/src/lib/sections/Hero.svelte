@@ -1,4 +1,5 @@
 <script>
+	import { onMount } from 'svelte';
 	import {
 		geocodeAddress,
 		loadSubregionGeoJSON,
@@ -8,12 +9,88 @@
 		subregionForState,
 		STATE_TO_SUBREGION,
 	} from '$lib/geo.js';
+	import { loadGoogleMaps } from '$lib/maps.js';
 
 	let { loading, error, onTrace } = $props();
 	let address = $state('');
 	let showStatePicker = $state(false);
 	let selectedState = $state('');
 	let localError = $state(null);
+
+	// Google Places autocomplete — adds a suggestion dropdown beneath the
+	// address input without replacing it. If Maps fails to load we silently
+	// fall back to the existing submit-and-geocode flow.
+	let placesReady = $state(false);
+	let predictions = $state([]);
+	let showPredictions = $state(false);
+	let sessionToken = null;
+	let debounceId;
+
+	onMount(async () => {
+		try {
+			await loadGoogleMaps();
+			placesReady = true;
+		} catch (e) {
+			console.warn('[unearthed] Places suggestions unavailable:', e);
+		}
+	});
+
+	function newSession() {
+		// eslint-disable-next-line no-undef
+		sessionToken = new google.maps.places.AutocompleteSessionToken();
+	}
+
+	async function fetchPredictions(input) {
+		if (!placesReady || !input || input.trim().length < 3) {
+			predictions = [];
+			return;
+		}
+		if (!sessionToken) newSession();
+		try {
+			// eslint-disable-next-line no-undef
+			const { suggestions } = await google.maps.places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
+				input,
+				includedRegionCodes: ['us'],
+				sessionToken,
+			});
+			predictions = (suggestions || [])
+				.filter((s) => s.placePrediction)
+				.slice(0, 5);
+		} catch (e) {
+			console.warn('[unearthed] autocomplete fetch failed:', e);
+			predictions = [];
+		}
+	}
+
+	function onAddressInput() {
+		showPredictions = true;
+		clearTimeout(debounceId);
+		debounceId = setTimeout(() => fetchPredictions(address), 180);
+	}
+
+	async function selectPrediction(pred) {
+		showPredictions = false;
+		predictions = [];
+		localError = null;
+		const displayText = pred.text?.toString?.() ?? pred.text?.text ?? '';
+		address = displayText;
+		try {
+			const place = pred.toPlace();
+			await place.fetchFields({ fields: ['location'] });
+			// A fetched Place's session token is consumed on the first
+			// Details call, so start a fresh one for the next typing session.
+			newSession();
+			const loc = place.location;
+			if (!loc) {
+				localError = 'Could not resolve that place. Try another suggestion.';
+				return;
+			}
+			await resolveSubregion(loc.lat(), loc.lng());
+		} catch (e) {
+			console.error('[unearthed] Place fetch failed:', e);
+			localError = 'Could not resolve that place. Try again.';
+		}
+	}
 
 	const states = Object.keys(STATE_TO_SUBREGION).sort();
 	const stateLabels = {
@@ -49,6 +126,13 @@
 	async function handleSubmit(e) {
 		e.preventDefault();
 		if (!address.trim()) return;
+		// If Places gave us at least one prediction, treat submit as
+		// "take the top suggestion" — that's what the dropdown is hinting
+		// and it avoids a second network hop to a different geocoder.
+		if (predictions.length > 0) {
+			await selectPrediction(predictions[0].placePrediction);
+			return;
+		}
 		localError = null;
 		const coords = await geocodeAddress(address.trim());
 		if (!coords) {
@@ -103,22 +187,53 @@
 		</p>
 
 		<div class="input-group glass">
-			<form class="form" onsubmit={handleSubmit}>
-				<input
-					id="address"
-					name="address"
-					type="text"
-					placeholder="Address, city, or zip code"
-					aria-label="Enter address or zip code"
-					bind:value={address}
-					maxlength="200"
-					autocomplete="off"
-					disabled={loading}
-				/>
-				<button class="primary" type="submit" disabled={loading}>
-					{loading ? '…' : 'trace →'}
-				</button>
-			</form>
+			<div class="search-wrap">
+				<form class="form" onsubmit={handleSubmit}>
+					<input
+						id="address"
+						name="address"
+						type="text"
+						placeholder="Address, city, or zip code"
+						aria-label="Enter address or zip code"
+						bind:value={address}
+						oninput={onAddressInput}
+						onfocus={() => (showPredictions = true)}
+						onblur={() => setTimeout(() => (showPredictions = false), 150)}
+						maxlength="200"
+						autocomplete="off"
+						role="combobox"
+						aria-autocomplete="list"
+						aria-expanded={showPredictions && predictions.length > 0}
+						aria-controls="address-predictions"
+						disabled={loading}
+					/>
+					<button class="primary" type="submit" disabled={loading}>
+						{loading ? '…' : 'trace →'}
+					</button>
+				</form>
+				{#if showPredictions && predictions.length > 0}
+					<ul id="address-predictions" class="predictions" role="listbox">
+						{#each predictions as s}
+							{@const pred = s.placePrediction}
+							{@const main = pred.mainText?.toString?.() ?? pred.mainText?.text ?? ''}
+							{@const secondary = pred.secondaryText?.toString?.() ?? pred.secondaryText?.text ?? ''}
+							<li>
+								<button
+									type="button"
+									class="prediction"
+									onmousedown={(e) => e.preventDefault()}
+									onclick={() => selectPrediction(pred)}
+									role="option"
+									aria-selected="false"
+								>
+									<span class="pred-main">{main}</span>
+									{#if secondary}<span class="pred-sub">{secondary}</span>{/if}
+								</button>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			</div>
 
 			<div class="divider"><span>or</span></div>
 
@@ -279,6 +394,65 @@
 	.form {
 		display: flex;
 		gap: 0.5rem;
+	}
+
+	/* Places suggestions dropdown — sits beneath the form, overlays the
+	   divider/geolocate block only while active. Matches the glass input
+	   aesthetic so it reads as part of the same surface. */
+	.search-wrap {
+		position: relative;
+	}
+	.predictions {
+		position: absolute;
+		top: calc(100% + 0.35rem);
+		left: 0;
+		right: 0;
+		margin: 0;
+		padding: 0.3rem;
+		list-style: none;
+		background: rgba(14, 12, 11, 0.96);
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		border-radius: 6px;
+		box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+		backdrop-filter: blur(8px);
+		z-index: 20;
+		max-height: 16rem;
+		overflow-y: auto;
+	}
+	.predictions li { margin: 0; padding: 0; }
+	.prediction {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		width: 100%;
+		padding: 0.55rem 0.75rem;
+		background: transparent;
+		border: none;
+		border-radius: 4px;
+		font-family: var(--serif);
+		color: var(--text);
+		letter-spacing: 0;
+		text-transform: none;
+		text-align: left;
+		cursor: pointer;
+		transition: background 0.15s;
+	}
+	.prediction:hover,
+	.prediction:focus-visible {
+		background: rgba(255, 255, 255, 0.05);
+		color: var(--text);
+		border: none;
+	}
+	.pred-main {
+		font-size: 0.95rem;
+		line-height: 1.3;
+	}
+	.pred-sub {
+		font-size: 0.78rem;
+		color: var(--text-ghost);
+		font-style: italic;
+		line-height: 1.3;
+		margin-top: 0.1rem;
 	}
 
 	input[type="text"] {

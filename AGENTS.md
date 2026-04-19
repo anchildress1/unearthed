@@ -159,7 +159,8 @@ Two endpoints lean on Snowflake's built-in geospatial / Marketplace story:
 
 ### Map (Google Maps JavaScript API)
 
-- Loader lives in `frontend/src/lib/maps.js` — one idempotent script tag shared by `MapSection` (mine→plant→meter) and `H3Density` (hexbin), with a 15s watchdog and poll-for-ready so a cached script can't hang the promise forever.
+- Loader lives in `frontend/src/lib/maps.js` — one idempotent script tag shared by `Hero` (Places suggestions), `MapSection` (mine→plant→meter), and `H3Density` (hexbin). Loaded with `libraries=geometry,places&loading=async`, plus a 15s watchdog and poll-for-ready so a cached script can't hang the promise forever.
+- **Hero address suggestions** use `google.maps.places.AutocompleteSuggestion` with `includedRegionCodes: ['us']` and a session token, rendered in a custom dropdown beneath the existing input — **the input, button, and glass styling are untouched**. Selection calls `place.fetchFields({ fields: ['location'] })` (minimum mask, Autocomplete-Essentials tier). Nominatim (`geocodeAddress`) remains the fallback when Places isn't ready or returns no suggestions.
 - `DARK_STATE_STYLES` + `MAP_COLORS` are the single source of truth for both maps. No cloud-registered `mapId` — that would silently disable the local style array.
 - `MapSection` arc: mine → plant → your meter, one rust color, animated dot rides the geodesic. Labels fan out (above / below / side) to avoid InfoWindow stacking.
 - `H3Density`: resolution-5 hexbins, bigger dot = more mines, rust→ash gradient for active→abandoned. SQL filters null-island and ocean outliers at the query layer.
