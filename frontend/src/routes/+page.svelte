@@ -54,7 +54,12 @@
 	<main class="scroll">
 		<PlantReveal data={mineData} />
 		<MapSection data={mineData} />
-		<H3Density />
+		<H3Density
+			userCoords={mineData.user_coords}
+			mineCoords={mineData.mine_coords}
+			mineName={mineData.mine}
+			subregionId={mineData.subregion_id}
+		/>
 		<CortexChat subregionId={mineData.subregion_id} mineName={mineData.mine} plantName={mineData.plant} />
 		<Ticker data={mineData} />
 	</main>
