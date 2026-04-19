@@ -80,7 +80,7 @@
 	}
 </script>
 
-<section class="hero">
+<section class="hero" aria-label="Find your mine">
 	<div class="hero-inner">
 		<div class="label">
 			<span class="label-line"></span>
@@ -97,8 +97,11 @@
 		<div class="input-group glass">
 			<form class="form" onsubmit={handleSubmit}>
 				<input
+					id="address"
+					name="address"
 					type="text"
 					placeholder="Enter address or zip code"
+					aria-label="Enter address or zip code"
 					bind:value={address}
 					maxlength="200"
 					autocomplete="off"

@@ -1,4 +1,6 @@
 <script>
+	import { onMount } from 'svelte';
+	import { browser } from '$app/environment';
 	import Hero from '$lib/sections/Hero.svelte';
 	import MineReveal from '$lib/sections/MineReveal.svelte';
 	import HumanCost from '$lib/sections/HumanCost.svelte';
@@ -23,18 +25,33 @@
 			loading = false;
 		}
 	}
+
+	// Share URL support: ?m=SRVC
+	onMount(() => {
+		if (!browser) return;
+		const params = new URLSearchParams(window.location.search);
+		const sub = params.get('m');
+		if (sub && /^[A-Za-z0-9]{2,10}$/.test(sub)) {
+			onTrace(sub.toUpperCase());
+		}
+	});
 </script>
+
+<svelte:head>
+	<title>unearthed{mineData ? ` — ${mineData.mine}, ${mineData.mine_state}` : ''}</title>
+	<meta name="description" content="Find the coal mine under contract to your power plant." />
+</svelte:head>
 
 {#if !mineData}
 	<Hero {loading} {error} onTrace={onTrace} />
 {:else}
-	<div class="scroll-experience">
+	<main class="scroll-experience" role="main">
 		<MineReveal data={mineData} />
 		<HumanCost data={mineData} />
 		<MapSection data={mineData} />
 		<YourShare data={mineData} />
 		<Chat subregionId={mineData.subregion_id} mineName={mineData.mine} />
-	</div>
+	</main>
 {/if}
 
 <style>

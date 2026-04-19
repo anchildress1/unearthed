@@ -26,7 +26,7 @@
 		--bg: #080808;
 		--text: #e8e0d4;
 		--text-dim: #9a9490;
-		--text-ghost: #4a4540;
+		--text-ghost: #807b75;
 		--accent: #c2542d;
 		--accent-glow: rgba(194, 84, 45, 0.15);
 		--green: #5a7a5a;

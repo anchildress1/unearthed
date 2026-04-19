@@ -53,9 +53,12 @@
 
 	<form class="form glass" onsubmit={handleSubmit}>
 		<input
+			id="chat-input"
+			name="question"
 			type="text"
 			bind:value={question}
 			placeholder="Ask a question about this mine..."
+			aria-label="Ask a question about this mine"
 			maxlength="500"
 			disabled={asking}
 		/>
@@ -171,7 +174,7 @@
 		font-size: 0.7rem;
 		padding: 0.7rem 1rem;
 		background: var(--accent);
-		color: var(--bg);
+		color: #ffffff;
 		border: none;
 		border-radius: 6px;
 		cursor: pointer;
