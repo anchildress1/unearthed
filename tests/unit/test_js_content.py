@@ -161,8 +161,8 @@ class TestMapJsContent:
     def test_uses_google_marker(self):
         assert "google.maps.Marker" in self.src
 
-    def test_uses_move_camera(self):
-        assert "moveCamera" in self.src
+    def test_uses_pan_to(self):
+        assert "panTo" in self.src
 
     def test_has_flow_line_function(self):
         assert "drawFlowLine" in self.src
