@@ -5,7 +5,6 @@ from pathlib import Path
 import snowflake.connector
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.models import AskRequest, AskResponse, MineForMeRequest, MineForMeResponse
@@ -43,12 +42,12 @@ app.add_middleware(
 )
 
 
-@app.get("/")
-def index():
-    return FileResponse(_PROJECT_ROOT / "static" / "index.html")
+_FRONTEND_DIR = _PROJECT_ROOT / "frontend" / "build"
 
-
-app.mount("/static", StaticFiles(directory=_PROJECT_ROOT / "static"), name="static")
+# Static assets (images, data files) that both old and new frontends need
+_STATIC_DIR = _PROJECT_ROOT / "static"
+if _STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
 _H3_DENSITY_SQL = """
 SELECT
