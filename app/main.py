@@ -213,7 +213,19 @@ DEFAULT_SUGGESTIONS = [
 ]
 
 
-@app.post("/mine-for-me", response_model=MineForMeResponse)
+@app.post(
+    "/mine-for-me",
+    response_model=MineForMeResponse,
+    responses={
+        404: {
+            "description": (
+                "No mine-to-plant shipment is on record for the given subregion. "
+                "Returned when both the Snowflake query and the bundled fallback "
+                "JSON have no row for this eGRID subregion_id."
+            ),
+        },
+    },
+)
 def mine_for_me(req: MineForMeRequest):
     degraded = False
     mine_data = None

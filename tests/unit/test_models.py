@@ -120,7 +120,7 @@ class TestMineForMeResponse:
             prose="No tonnage.",
             subregion_id="SRVC",
         )
-        assert resp.tons == 0.0
+        assert resp.tons == pytest.approx(0.0)
 
     def test_negative_tons_rejected(self, sample_mine_data):
         sample_mine_data["tons"] = -1.0

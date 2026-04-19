@@ -45,9 +45,8 @@ def find_subregion(lat, lon, geojson):
             for polygon in coords:
                 if point_in_polygon_rings(lon, lat, polygon):
                     return feature["properties"]["Subregion"]
-        elif geom_type == "Polygon":
-            if point_in_polygon_rings(lon, lat, coords):
-                return feature["properties"]["Subregion"]
+        elif geom_type == "Polygon" and point_in_polygon_rings(lon, lat, coords):
+            return feature["properties"]["Subregion"]
     return None
 
 
@@ -298,7 +297,7 @@ class TestTickerMath:
         assert tps == pytest.approx(0.03169, rel=1e-3)
 
     def test_zero_tonnage_returns_zero(self):
-        assert 0 / SECONDS_IN_YEAR == 0.0
+        assert 0 / SECONDS_IN_YEAR == pytest.approx(0.0)
 
     def test_large_tonnage(self):
         annual_tons = 50_000_000

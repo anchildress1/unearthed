@@ -4,11 +4,14 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
 WORKDIR /app
 
-# Install dependencies (cached layer)
+# Install dependencies and create the non-root app user in one layer. The
+# user setup is trivially cheap and rarely changes, so collapsing it into
+# the uv sync layer keeps the image smaller without meaningfully hurting
+# the dependency-layer cache: both invalidate together on uv.lock changes,
+# which already forces a re-resolve of the heavy work.
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --no-install-project
-
-RUN addgroup --system app && adduser --system --ingroup app app
+RUN uv sync --frozen --no-dev --no-install-project && \
+    addgroup --system app && adduser --system --ingroup app app
 
 COPY . .
 
