@@ -12,7 +12,7 @@
 		`Which mines supplied ${props.plantName} in 2024? Rank by tonnage.`,
 		`Is ${props.mineName} still active?`,
 		`How many fatalities at ${props.mineName}?`,
-		'Who is the largest coal supplier in this state?',
+		`Who is the largest coal supplier in Wyoming?`,
 	]);
 
 	async function ask(q) {
@@ -24,16 +24,23 @@
 		question = '';
 		try {
 			const result = await fetchAsk(q, props.subregionId);
-			entry.answer = result.answer || result.interpretation || '';
-			entry.sql = result.sql;
-			entry.error = result.error;
-			entry.results = result.results;
-			transcript = [...transcript];
-			console.log('[unearthed] cortex response:', entry.answer?.slice(0, 100));
+			// Merge into a new array so Svelte 5 proxy reactivity fires for every field.
+			const updated = {
+				...entry,
+				answer: result.answer || result.interpretation || '',
+				sql: result.sql,
+				error: result.error,
+				results: result.results,
+				suggestions: !result.sql ? result.suggestions || [] : [],
+			};
+			transcript = [...transcript.slice(0, -1), updated];
+			console.log('[unearthed] cortex response:', updated.answer?.slice(0, 100));
 		} catch (e) {
 			console.error('[unearthed] cortex error:', e);
-			entry.error = 'Could not reach the data assistant.';
-			transcript = [...transcript];
+			transcript = [
+				...transcript.slice(0, -1),
+				{ ...entry, error: 'Could not reach the data assistant.' },
+			];
 		} finally {
 			asking = false;
 		}
@@ -121,6 +128,23 @@
 
 					{#if entry.answer}
 						<p class="answer">{entry.answer}</p>
+					{/if}
+
+					{#if !entry.sql && !entry.error && entry.answer}
+						<p class="hint">
+							Cortex answered from its interpretation layer without running a query.
+							Try rephrasing with a specific mine, plant, operator, or state name — or pick one below.
+						</p>
+					{/if}
+
+					{#if entry.suggestions && entry.suggestions.length > 0}
+						<div class="follow-ups">
+							{#each entry.suggestions as suggestion}
+								<button class="chip" onclick={() => ask(suggestion)} disabled={asking}>
+									{suggestion}
+								</button>
+							{/each}
+						</div>
 					{/if}
 
 					{#if entry.results && entry.results.length === 0}
@@ -357,6 +381,24 @@
 		font-size: 0.7rem;
 		color: var(--text-ghost);
 		font-style: italic;
+	}
+
+	.hint {
+		font-family: var(--serif);
+		font-size: 0.85rem;
+		font-style: italic;
+		color: var(--text-dim);
+		line-height: 1.55;
+		margin: 0.4rem 0 0.6rem;
+		padding-left: 0.75rem;
+		border-left: 2px solid rgba(194, 84, 45, 0.4);
+	}
+
+	.follow-ups {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.4rem;
+		margin: 0.4rem 0 0.2rem;
 	}
 
 	.results { margin: 0.4rem 0 0.2rem; overflow-x: auto; }

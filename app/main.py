@@ -230,6 +230,8 @@ def ask(req: AskRequest):
     error = result.get("error")
     sql = result.get("sql")
     interpretation = result["interpretation"]
+    answer = result["answer"]
+
     if sql:
         try:
             results = execute_analyst_sql(sql)
@@ -239,13 +241,17 @@ def ask(req: AskRequest):
                 "We generated a query but could not execute it. "
                 "Please try rephrasing your question."
             )
-            result["answer"] = "I could not answer that confidently."
+            answer = "I could not answer that confidently."
             interpretation = None
+    else:
+        # Cortex answered conversationally without producing SQL — log the question
+        # so we can tighten the semantic model for patterns it's missing.
+        logger.info("Cortex Analyst returned no SQL for question: %s", question)
 
     suggestions = result.get("suggestions") or DEFAULT_SUGGESTIONS
 
     return AskResponse(
-        answer=result["answer"],
+        answer=answer,
         interpretation=interpretation,
         sql=sql,
         error=error,
