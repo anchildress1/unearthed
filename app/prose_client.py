@@ -18,8 +18,10 @@ _COMPLETE_PROMPT = """\
 {mine_name}, a {mine_type} mine ({mine_operator}) in {mine_county} County, {mine_state}. \
 Safety record: {fatalities} deaths, {injuries} lost-time injuries, {days_lost} days lost.
 
-Write one paragraph, 3-5 sentences: plant → mine → human cost → the reader's demand. \
-Omit any zero stat. No jargon, no hedging, no markdown."""
+Write a single paragraph, 3-5 sentences. This is a eulogy for the land and the \
+workers — not a report. Name the plant, name the mine, say what it cost in human \
+life. If a number is zero, leave it out entirely. Plain language, no hedging, no \
+markdown. End on the reader: their lights stayed on because of this."""
 
 
 def _build_fallback(args: dict) -> str:
@@ -87,7 +89,7 @@ def _generate(mine_data: dict) -> tuple[str, bool]:
     cur2 = conn.cursor()
     try:
         cur2.execute(
-            "SELECT SNOWFLAKE.CORTEX.COMPLETE('openai-gpt-5.2', %s)",
+            "SELECT SNOWFLAKE.CORTEX.COMPLETE('llama3.3-70b', %s)",
             (prompt,),
         )
         result = cur2.fetchone()

@@ -126,7 +126,7 @@ Two Cortex features in use:
 | Cortex Complete | Prose from mine safety data, SQL result summaries | `/mine-for-me` prose generation, `/ask` result narration |
 
 - **Cortex Analyst semantic model:** Checked into repo as YAML. Covers only the 4-5 chip question patterns — not open-ended.
-- **Cortex Complete model:** `openai-gpt-5.2` via `SNOWFLAKE.CORTEX.COMPLETE()`. Used in `prose_client.py` for mine narratives and `snowflake_client.summarize_analyst_results` for SQL result explanations.
+- **Cortex Complete model:** `llama3.3-70b` via `SNOWFLAKE.CORTEX.COMPLETE()`. Used in `prose_client.py` for mine narratives and `snowflake_client.summarize_analyst_results` for SQL result explanations.
 
 ### Security
 

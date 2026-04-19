@@ -301,7 +301,7 @@ def summarize_analyst_results(question: str, results: list[dict]) -> str:
     cur = conn.cursor()
     try:
         cur.execute(
-            "SELECT SNOWFLAKE.CORTEX.COMPLETE('openai-gpt-5.2', %s)",
+            "SELECT SNOWFLAKE.CORTEX.COMPLETE('llama3.3-70b', %s)",
             (prompt,),
         )
         row = cur.fetchone()
