@@ -47,9 +47,8 @@ _GMAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY", "")
 @app.get("/")
 def index():
     html = (_PROJECT_ROOT / "static" / "index.html").read_text()
-    # Inject the Maps API key before the closing </head> so it's available to app.js
-    key_script = f'<script>window.__GMAPS_KEY="{_GMAPS_API_KEY}";</script>'
-    html = html.replace("</head>", f"  {key_script}\n</head>")
+    # Inject the API key into the bootstrap loader
+    html = html.replace('{v: "weekly"}', f'{{key: "{_GMAPS_API_KEY}", v: "weekly"}}')
     return HTMLResponse(html)
 
 

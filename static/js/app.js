@@ -19,12 +19,7 @@ import {
 import { createMap, runRevealSequence } from "./map.js";
 import { startTicker } from "./particles.js";
 
-// --- Google Maps API key + library loading ---
-// Key is injected by the backend as a global before this module runs.
-// eslint-disable-next-line no-undef
-google._gmak = window.__GMAPS_KEY || "";
-await google.maps.importLibrary("maps");
-await google.maps.importLibrary("marker");
+// Google Maps libraries are loaded by map.js via top-level await.
 
 // --- DOM References ---
 const introSection = document.getElementById("intro");

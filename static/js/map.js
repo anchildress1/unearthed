@@ -18,16 +18,21 @@ const FLY_DURATION = 2000;
 const HOLD_DURATION = 2500;
 const FLOW_ANIM_INTERVAL = 40;
 
+// Load Google Maps libraries up front — must complete before createMap is called.
+const { Map: GMap } = await google.maps.importLibrary("maps");
+const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
+
 /**
  * Initialize a Google Map in the given container.
  * @param {HTMLElement} container
  * @returns {google.maps.Map}
  */
 export function createMap(container) {
-  return new google.maps.Map(container, {
+  return new GMap(container, {
     center: { lat: 39.8, lng: -98.5 },
     zoom: 4,
     mapTypeId: "hybrid",
+    mapId: "unearthed",
     disableDefaultUI: true,
     zoomControl: true,
     gestureHandling: "greedy",
@@ -73,8 +78,9 @@ export function runRevealSequence(map, params) {
       // Step 1: Zoom to user address and hold
       addMarker(map, userLatLng, "You", "#c4956a");
       showCaption(captionEl, "Your location");
-      await smoothPanZoom(map, userLatLng, 14, FLY_DURATION);
-      await delay(HOLD_DURATION);
+      map.panTo(userLatLng);
+      map.setZoom(14);
+      await delay(FLY_DURATION + HOLD_DURATION);
 
       // Step 2: Zoom out to show the plant, draw connection line
       addMarker(map, plantLatLng, plantName, "#8aaa8a");
@@ -104,8 +110,9 @@ export function runRevealSequence(map, params) {
 
       // Step 4: Zoom in tight on the mine
       showCaption(captionEl, `${mineName} — source mine`);
-      await smoothPanZoom(map, mineLatLng, 16, FLY_DURATION);
-      await delay(HOLD_DURATION);
+      map.panTo(mineLatLng);
+      map.setZoom(16);
+      await delay(FLY_DURATION + HOLD_DURATION);
 
       // Final: zoom back out to show the full picture
       showCaption(captionEl, "");
@@ -116,24 +123,6 @@ export function runRevealSequence(map, params) {
     }
 
     google.maps.event.addListenerOnce(map, "tilesloaded", startSequence);
-    // If tiles already loaded
-    if (map.getTilt !== undefined) {
-      setTimeout(() => {
-        if (!settled) startSequence();
-      }, 500);
-    }
-  });
-}
-
-/**
- * Smooth pan and zoom to a target.
- */
-function smoothPanZoom(map, target, zoom, duration) {
-  return new Promise((resolve) => {
-    map.panTo(target);
-    map.setZoom(zoom);
-    // Google Maps animates panTo/setZoom internally
-    setTimeout(resolve, duration);
   });
 }
 
@@ -145,14 +134,13 @@ function delay(ms) {
  * Add a labeled marker.
  */
 function addMarker(map, position, label, color) {
-  const marker = new google.maps.marker.AdvancedMarkerElement({
+  const marker = new AdvancedMarkerElement({
     map,
     position,
     title: label,
     content: buildMarkerElement(color),
   });
 
-  // Show label as an info window
   const info = new google.maps.InfoWindow({
     content: `<div style="font-family:system-ui;font-size:13px;font-weight:600;color:#1a1a1a;padding:2px 4px">${label}</div>`,
     disableAutoPan: true,

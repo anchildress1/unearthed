@@ -330,8 +330,8 @@ class TestAppJsContent:
     def test_removes_share_handler_on_re_reveal(self):
         assert "removeEventListener" in self.src
 
-    def test_checks_google_maps_dependency(self):
-        assert "google.maps" in self.src
+    def test_imports_map_module(self):
+        assert "from" in self.src and "map.js" in self.src
 
     def test_clipboard_failure_handled(self):
         assert "Could not copy link" in self.src
