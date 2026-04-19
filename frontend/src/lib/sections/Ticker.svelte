@@ -1,14 +1,14 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
-	let { data } = $props();
+	const props = $props();
 
 	const SECONDS_IN_YEAR = 365.25 * 24 * 60 * 60;
-	const rate = data.tons / SECONDS_IN_YEAR;
 	let tons = $state(0);
 	let raf = null;
 	let t0 = null;
 
 	onMount(() => {
+		const rate = props.data.tons / SECONDS_IN_YEAR;
 		function tick(now) {
 			if (!t0) t0 = now;
 			tons = rate * ((now - t0) / 1000);
@@ -25,8 +25,8 @@
 		<span class="unit">tons extracted while you've been here</span>
 	</div>
 	<p class="closing">
-		That coal left <em>{data.mine_county}</em>.
-		It burned at <em>{data.plant}</em>.
+		That coal left <em>{props.data.mine_county}</em>.
+		It burned at <em>{props.data.plant}</em>.
 		Your lights stayed on.
 	</p>
 	<footer class="footer">

@@ -1,18 +1,18 @@
 <script>
 	import { fetchAsk } from '$lib/api.js';
 
-	let { subregionId, mineName, plantName } = $props();
+	const props = $props();
 	let question = $state('');
 	let transcript = $state([]);
 	let asking = $state(false);
 
-	const chips = [
-		`How much has ${mineName} produced since 2020?`,
-		`Which mines supplied ${plantName} in 2024? Rank by tonnage.`,
-		`Is ${mineName} still active?`,
-		`How many fatalities at ${mineName}?`,
+	const chips = $derived([
+		`How much has ${props.mineName} produced since 2020?`,
+		`Which mines supplied ${props.plantName} in 2024? Rank by tonnage.`,
+		`Is ${props.mineName} still active?`,
+		`How many fatalities at ${props.mineName}?`,
 		'Who is the largest coal supplier in this state?',
-	];
+	]);
 
 	async function ask(q) {
 		if (asking || !q.trim()) return;
@@ -22,7 +22,7 @@
 		transcript = [...transcript, entry];
 		question = '';
 		try {
-			const result = await fetchAsk(q, subregionId);
+			const result = await fetchAsk(q, props.subregionId);
 			entry.answer = result.answer || result.interpretation || '';
 			entry.sql = result.sql;
 			entry.error = result.error;
