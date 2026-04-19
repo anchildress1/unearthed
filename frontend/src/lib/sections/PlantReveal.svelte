@@ -68,11 +68,13 @@
 		return { isSurface: true, acres, fields: acres * FIELDS_PER_ACRE };
 	});
 
-	// MSHA accident record counts, surfaced at the top of section 2 so the
-	// human toll anchors the section before the Cortex prose weaves it into
-	// narrative. Zero-values are omitted per card (an absent line reads
-	// cleaner than a zero line), and the whole block is hidden if every
-	// field is zero — "no record" is not a story we want to tell twice.
+	// MSHA accident record counts, surfaced at the top of section 2 in the
+	// unified cost block's people subsection so the human toll anchors the
+	// section before the Cortex prose weaves it into narrative. Zero-value
+	// rows are omitted individually (an absent line reads cleaner than a
+	// zero one), and the whole people subsection is hidden if every field
+	// is zero — "no record" is not a story we want to tell twice. The full
+	// block hides only when both the people and land subsections are empty.
 	const safetyStats = $derived.by(() => {
 		const fatalities = Number(data.fatalities) || 0;
 		const injuries = Number(data.injuries_lost_time) || 0;
@@ -584,8 +586,8 @@
 		margin-bottom: 0.9rem;
 		letter-spacing: -0.005em;
 	}
-	/* Same rule as .mountain-title: browser-default italic for <em>, no rust
-	   color bleed. Hero styling stays at h2/h3/.sub. */
+	/* <em> stays italic by browser default; no rust color bleed here so
+	   hero styling (h2/h3/.sub) remains the sole owner of that palette. */
 	.emissions-cards {
 		display: grid;
 		grid-template-columns: repeat(3, 1fr);

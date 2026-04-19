@@ -184,12 +184,15 @@
 	/* ---- Three-line anchor-text pattern ----
 	   Every "value + primary label + secondary label" trio reuses the same
 	   typography: big number on its own line, serif explanation underneath,
-	   mono uppercase tag at the bottom. Used by PlantReveal cards, the
-	   acres-and-football-fields mountain block, the emissions panel, and
-	   the H3 density tallies. Do not re-declare these per section — if a
-	   section's trio needs a larger primary (Ticker's closing counter),
-	   define a distinct class rather than overriding these in section
-	   scope, so the canonical pattern stays consistent by default. */
+	   mono uppercase tag at the bottom. Used by PlantReveal's lower stat
+	   cards, the emissions panel, and the H3 density tallies. Note: the
+	   .cost block at the top of section 2 is intentionally NOT in this
+	   list — it uses its own editorial ledger typography (oversized serif
+	   numerals, italic sub-captions) to carry moral weight the card
+	   pattern can't. Do not re-declare these per section — if a section's
+	   trio needs a larger primary (Ticker's closing counter), define a
+	   distinct class rather than overriding these in section scope, so
+	   the canonical pattern stays consistent by default. */
 	.section-rail :global(.anchor-primary) {
 		font-family: var(--serif);
 		font-size: 0.82rem;
