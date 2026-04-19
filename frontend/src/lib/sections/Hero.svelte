@@ -82,9 +82,13 @@
 
 <section class="hero">
 	<div class="hero__content">
+		<div class="hero__label">
+			<span class="hero__line"></span>
+			<span class="hero__tag">01 &nbsp; THE SWITCH</span>
+		</div>
 		<h1 class="hero__title">
-			You came home.<br />
-			You turned on <em>a light.</em>
+			You <span class="accent">came</span> home.<br />
+			You turned <span class="accent">on</span> <em>a light.</em>
 		</h1>
 
 		<p class="hero__sub">tell us where that light is</p>
@@ -153,35 +157,61 @@
 		min-height: 100vh;
 		display: flex;
 		align-items: center;
-		justify-content: center;
-		padding: 2rem;
+		justify-content: flex-start;
+		padding: 2rem 4rem;
 		position: relative;
 	}
 
 	.hero__content {
-		text-align: center;
-		max-width: 700px;
+		text-align: left;
+		max-width: 800px;
 		position: relative;
 		z-index: 1;
 	}
 
+	.hero__label {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		margin-bottom: 1.5rem;
+	}
+
+	.hero__line {
+		display: block;
+		width: 40px;
+		height: 1px;
+		background: var(--text-muted);
+	}
+
+	.hero__tag {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		letter-spacing: 0.2em;
+		text-transform: uppercase;
+		color: var(--text-muted);
+	}
+
 	.hero__title {
 		font-family: var(--font-serif);
-		font-size: clamp(2.5rem, 7vw, 5rem);
+		font-size: clamp(2.8rem, 7vw, 5.5rem);
 		font-weight: 400;
-		line-height: 1.15;
+		line-height: 1.08;
 		color: var(--text);
 		margin-bottom: 3rem;
 	}
 
-	.hero__title em {
+	.hero__title :global(.accent) {
 		color: var(--accent);
+	}
+
+	.hero__title em {
+		color: var(--text);
 		font-style: italic;
 	}
 
 	.hero__sub {
 		font-family: var(--font-mono);
-		font-size: 0.8rem;
+		font-size: 0.75rem;
 		color: var(--text-muted);
 		text-transform: uppercase;
 		letter-spacing: 0.12em;
@@ -192,7 +222,6 @@
 		display: flex;
 		gap: 0.5rem;
 		max-width: 480px;
-		margin: 0 auto;
 	}
 
 	.hero__input {
@@ -229,7 +258,7 @@
 		display: flex;
 		align-items: center;
 		gap: 0.75rem;
-		margin: 1rem auto;
+		margin: 1rem 0;
 		color: var(--text-muted);
 		font-size: 0.8rem;
 		max-width: 480px;
@@ -256,7 +285,7 @@
 	.hero__locate:hover:not(:disabled) { background: var(--accent); color: var(--bg); }
 
 	.hero__state {
-		margin: 1.5rem auto;
+		margin: 1.5rem 0;
 		max-width: 400px;
 	}
 
@@ -286,7 +315,7 @@
 	.hero__error {
 		color: #c45a5a;
 		font-size: 0.9rem;
-		margin: 1rem auto;
+		margin: 1rem 0;
 		max-width: 400px;
 		padding: 0.75rem;
 		background: rgba(196, 90, 90, 0.1);
@@ -322,4 +351,8 @@
 	}
 
 	.hero__credit:hover { opacity: 1; color: var(--text); }
+
+	@media (max-width: 768px) {
+		.hero { padding: 2rem; }
+	}
 </style>
