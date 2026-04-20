@@ -109,11 +109,6 @@ export async function installGoogleMapsStub(page) {
 				return this;
 			}
 		}
-		function fire(obj, type) {
-			const arr = obj.__listeners?.[type]?.slice();
-			if (!arr) return;
-			for (const fn of arr) fn();
-		}
 		const event = {
 			addListener(obj, type, fn) {
 				if (!obj.__listeners) obj.__listeners = {};
@@ -144,7 +139,10 @@ export async function installGoogleMapsStub(page) {
 				this.lastPadding = padding;
 				// Fire idle on a microtask so addListenerOnce(map, 'idle', fn)
 				// runs after the caller returns — mirrors the real SDK.
-				queueMicrotask(() => fire(this, 'idle'));
+				queueMicrotask(() => {
+					const arr = this.__listeners?.idle?.slice();
+					if (arr) for (const fn of arr) fn();
+				});
 			}
 		}
 		class MarkerDouble {
