@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fetchAsk, fetchEmissions, fetchH3Density, fetchMineForMe } from './api.js';
+import { fetchAsk, fetchEmissions, fetchMineForMe } from './api.js';
 
 function okResponse(body) {
 	return { ok: true, status: 200, json: async () => body };

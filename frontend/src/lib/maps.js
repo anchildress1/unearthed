@@ -21,13 +21,18 @@
  * — are only reachable via `importLibrary`, so the Hero autocomplete
  * fails without this bootstrap.
  *
- * Bootstrap snippet is verbatim from the 2024+ Maps JS API docs, wrapped
- * to take `key` and `v` as config. It synchronously defines
- * `google.maps.importLibrary`; callers then each `await importLibrary(X)`
- * for exactly the library they need — Hero needs 'places', MapSection
- * needs 'maps' + 'geometry', H3Density needs 'maps'. The bootstrap
- * batches concurrent requests into a single script tag, so four callers
- * asking for four libraries still trigger one network fetch.
+ * Idiomatic reimplementation of the 2024+ Google Maps dynamic library
+ * import bootstrap (see developers.google.com/maps/documentation/
+ * javascript/load-maps-js-api). The published snippet is minified;
+ * this rewrite preserves the exact contract — exposes
+ * `google.maps.importLibrary(name)`, lazily injects the API script on
+ * first call, and batches concurrent `importLibrary` calls into a
+ * single network fetch — while using let/const, non-async executors,
+ * and idiomatic control flow. Callers each `await importLibrary(X)`
+ * for exactly the library they need (Hero → 'places',
+ * MapSection → 'maps' + 'geometry', H3Density → 'maps'). Once the
+ * script loads, Google replaces `google.maps.importLibrary` with its
+ * real implementation and the shim's recursive call hits that.
  *
  * Do not pre-import libraries here. Each caller is responsible for
  * requesting the scope it uses — that's the whole point of dynamic
@@ -47,44 +52,57 @@ export function loadGoogleMaps() {
 		return Promise.reject(new Error('VITE_GOOGLE_MAPS_KEY not set — map cannot load'));
 	}
 
-	((g) => {
-		var h,
-			a,
-			k,
-			p = 'The Google Maps JavaScript API',
-			c = 'google',
-			l = 'importLibrary',
-			q = '__ib__',
-			m = document,
-			b = window;
-		b = b[c] || (b[c] = {});
-		var d = b.maps || (b.maps = {}),
-			r = new Set(),
-			e = new URLSearchParams(),
-			u = () =>
-				h ||
-				(h = new Promise(async (f, n) => {
-					await (a = m.createElement('script'));
-					e.set('libraries', [...r] + '');
-					for (k in g)
-						e.set(
-							k.replace(/[A-Z]/g, (t) => '_' + t[0].toLowerCase()),
-							g[k],
-						);
-					e.set('callback', c + '.maps.' + q);
-					a.src = `https://maps.${c}apis.com/maps/api/js?` + e;
-					d[q] = f;
-					a.onerror = () => (h = n(Error(p + ' could not load.')));
-					a.nonce = m.querySelector('script[nonce]')?.nonce || '';
-					m.head.append(a);
-				}));
-		d[l]
-			? // eslint-disable-next-line no-console
-				console.warn(p + ' only loads once. Ignoring:', g)
-			: (d[l] = (f, ...n) => r.add(f) && u().then(() => d[l](f, ...n)));
-	})({ key, v: 'weekly' });
-
+	installImportLibraryShim({ key, v: 'weekly' });
 	return Promise.resolve();
+}
+
+/**
+ * Installs the shim that Google's dynamic-bootstrap doc snippet installs.
+ * Split out so the nesting stays shallow and each step reads as prose.
+ */
+function installImportLibraryShim(config) {
+	const ERROR_PREFIX = 'The Google Maps JavaScript API';
+	const google = globalThis.google ?? (globalThis.google = {});
+	const maps = google.maps ?? (google.maps = {});
+
+	if (maps.importLibrary) {
+		// eslint-disable-next-line no-console
+		console.warn(`${ERROR_PREFIX} only loads once. Ignoring:`, config);
+		return;
+	}
+
+	const requestedLibs = new Set();
+	let scriptPromise = null;
+
+	maps.importLibrary = (name, ...rest) => {
+		requestedLibs.add(name);
+		return ensureScriptLoaded(config, requestedLibs, ERROR_PREFIX).then(() =>
+			maps.importLibrary(name, ...rest),
+		);
+	};
+
+	function ensureScriptLoaded(cfg, libs, errorPrefix) {
+		if (scriptPromise) return scriptPromise;
+		scriptPromise = new Promise((resolve, reject) => {
+			const script = document.createElement('script');
+			const params = new URLSearchParams();
+			params.set('libraries', [...libs].join(','));
+			for (const [k, v] of Object.entries(cfg)) {
+				const param = k.replaceAll(/[A-Z]/g, (t) => '_' + t.toLowerCase());
+				params.set(param, v);
+			}
+			params.set('callback', 'google.maps.__ib__');
+			script.src = `https://maps.googleapis.com/maps/api/js?${params}`;
+			maps.__ib__ = resolve;
+			script.onerror = () => {
+				scriptPromise = null;
+				reject(new Error(`${errorPrefix} could not load.`));
+			};
+			script.nonce = document.querySelector('script[nonce]')?.nonce || '';
+			document.head.append(script);
+		});
+		return scriptPromise;
+	}
 }
 
 /**

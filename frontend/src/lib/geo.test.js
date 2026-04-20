@@ -1,10 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-	findSubregion,
-	hasCoalData,
-	loadSubregionGeoJSON,
-	requestLocation,
-} from './geo.js';
+import { findSubregion, hasCoalData, requestLocation } from './geo.js';
 
 // Square covering roughly the continental US longitude band around Kentucky;
 // easy to reason about when verifying point-in-polygon behavior.
