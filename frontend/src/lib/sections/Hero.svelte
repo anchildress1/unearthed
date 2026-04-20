@@ -169,7 +169,12 @@
 		const geojson = await loadSubregionGeoJSON();
 		const subregion = findSubregion(lat, lon, geojson);
 		if (!subregion) {
-			localError = 'That location is outside the US grid coverage area.';
+			// Reached from both geolocate (user is outside the US) and the
+			// address flow (user typed a non-US address). The address input
+			// above is the same recovery path for either — name it so the
+			// outside-US denial path has a visible next step.
+			localError =
+				'That location is outside the US grid coverage area — try a US address above.';
 			return;
 		}
 		if (!hasCoalData(subregion)) {
@@ -190,7 +195,13 @@
 		localError = null;
 		const coords = await requestLocation();
 		if (!coords) {
-			localError = 'Location access denied.';
+			// Denied / unavailable: the address input is the explicit fallback
+			// per AGENTS.md §1 (Places-restricted input covers the geo-denied
+			// and outside-US cases). Name it in the copy AND move focus there
+			// so the recovery path is physically obvious — otherwise the user
+			// sees a dead-end error with the input visually unchanged.
+			localError = 'Location access denied — type an address above and hit trace.';
+			document.getElementById('address')?.focus();
 			return;
 		}
 		await resolveSubregion(coords.lat, coords.lon);
