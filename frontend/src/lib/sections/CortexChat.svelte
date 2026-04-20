@@ -85,7 +85,7 @@
 		</span>
 	</div>
 
-	<h3>Interrogate the <em>records</em>.</h3>
+	<h2>Interrogate the <em>records</em>.</h2>
 
 	<!--
 		`.cortex-shell` caps the interactive UI at a sensible reading width
@@ -109,7 +109,7 @@
 		<span class="p-step"><span class="p-num">03</span> federal data</span>
 	</div>
 
-	<div class="chips" role="list" aria-label="Suggested questions">
+	<div class="chips" role="group" aria-label="Suggested questions">
 		{#each chips as chip}
 			<button class="chip" onclick={() => ask(chip)} disabled={asking}>{chip}</button>
 		{/each}
@@ -240,7 +240,7 @@
 	}
 
 	/* Reading measure for the interactive UI. SectionRail no longer caps
-	   the content column (so the h3 above can breathe edge-to-edge), but
+	   the content column (so the h2 above can breathe edge-to-edge), but
 	   the form + pipeline + chips + results table all want line-lengths
 	   closer to prose than to a dashboard. 1040px matches the canonical
 	   map-frame width elsewhere on the page. */
@@ -298,7 +298,7 @@
 
 	/* The form chrome sits too close to the sub paragraph without an extra
 	   breath of space before it—the rest of the sections end their header
-	   on the h3 or a summary block, so this nudge is specific to CortexChat. */
+	   on the h2 or a summary block, so this nudge is specific to CortexChat. */
 	.sub {
 		margin-bottom: 1.4rem;
 	}

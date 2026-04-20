@@ -103,9 +103,9 @@
 </script>
 
 <SectionRail number="02" label="Your coal" class="reveal" reveal={{ distance: 18 }}>
-	<h3>
+	<h2>
 		Your <em>kilowatt-hour</em><br/>starts here.
-	</h3>
+	</h2>
 
 	{#if safetyStats.any || landDisturbed}
 		<aside class="cost" aria-labelledby="cost-title">
@@ -118,9 +118,9 @@
 					<span class="eyebrow-sep" aria-hidden="true">·</span>
 					<strong>federal public data</strong>
 				</p>
-				<h4 id="cost-title" class="cost-title">
+				<h3 id="cost-title" class="cost-title">
 					What <em>this mine</em> cost.
-				</h4>
+				</h3>
 			</header>
 
 			{#if safetyStats.any}

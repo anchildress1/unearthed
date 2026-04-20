@@ -177,10 +177,10 @@
 
 <SectionRail number="03" label="The route" class="map-section">
 	<div class="section-header">
-		<h3>
+		<h2>
 			Your <em>meter</em> pulls from the stack.<br/>
 			The stack pulls from the <em>mountain</em>.
-		</h3>
+		</h2>
 	</div>
 
 	<div class="map-frame glass">

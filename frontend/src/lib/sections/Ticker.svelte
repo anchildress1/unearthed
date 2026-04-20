@@ -21,10 +21,10 @@
 </script>
 
 <SectionRail number="06" label="While you read" class="ticker-section">
-	<h3>
+	<h2>
 		The page <em>ends</em>.<br/>
 		The <em>seam</em> doesn't.
-	</h3>
+	</h2>
 
 	<div class="counter">
 		<span class="number">{tons.toFixed(2)}</span>

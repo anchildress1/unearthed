@@ -34,6 +34,24 @@ test.describe('editorial chrome', () => {
 		expect(numbers).toEqual(['N° 02', 'N° 03', 'N° 04', 'N° 05', 'N° 06']);
 	});
 
+	test('heading levels stay contiguous (h1 → h2 → h3)', async ({ page }) => {
+		await mockBackend(page);
+		await page.goto('/?m=NWPP');
+		await expect(page.getByText('tons of coal shipped from this mine')).toBeVisible({ timeout: 15_000 });
+
+		// axe-core flags `heading-order` when levels skip (e.g. h1 → h3).
+		// Hero owns the single `<h1>`; every post-hero section headline is
+		// a `<h2>`; PlantReveal's nested "What this mine cost." is the only
+		// `<h3>`. Regression here (e.g. dropping a section back to h3 for
+		// visual-only reasons) silently breaks screen-reader navigation.
+		const levels = await page.evaluate(() =>
+			[...document.querySelectorAll('h1, h2, h3, h4, h5, h6')].map(n => n.tagName.toLowerCase())
+		);
+		expect(levels.filter((l) => l === 'h1')).toHaveLength(1);
+		expect(levels.filter((l) => l === 'h2').length).toBeGreaterThanOrEqual(5);
+		expect(levels).not.toContain('h4');
+	});
+
 	test('H3Density renders a single hex-cluster map frame', async ({ page }) => {
 		await mockBackend(page);
 		await page.goto('/?m=NWPP');

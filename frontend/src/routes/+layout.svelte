@@ -33,15 +33,24 @@
 	for as long as the photo is — which is the entire page, since .bg-fixed
 	is the site-wide background. Moving this out of Hero fixes the "credit
 	scrolls away while the photo it credits is still on screen" bug.
+
+	Wrapped in `<aside aria-label>` so the credit sits inside an explicit
+	complementary landmark — axe-core's `region` rule flags top-level page
+	content that isn't contained by a landmark, and `<main>` / `<footer>`
+	both fit the content they own but not this viewport-fixed link. The
+	wrapper is in flow but its only child is `position: fixed`, so it
+	contributes zero layout.
 -->
-<a
-	class="photo-credit"
-	href="https://www.flickr.com/photos/nationalmemorialforthemountains/255887679/"
-	target="_blank"
-	rel="noopener"
->
-	Photo: Kent Kessinger · iLoveMountains.org<br/>Flight courtesy SouthWings
-</a>
+<aside class="photo-credit-landmark" aria-label="Background photo credit">
+	<a
+		class="photo-credit"
+		href="https://www.flickr.com/photos/nationalmemorialforthemountains/255887679/"
+		target="_blank"
+		rel="noopener"
+	>
+		Photo: Kent Kessinger · iLoveMountains.org<br/>Flight courtesy SouthWings
+	</a>
+</aside>
 {@render children()}
 
 <!--

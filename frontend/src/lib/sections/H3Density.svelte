@@ -322,7 +322,7 @@
 
 <SectionRail number="04" label="The seam" class="h3-section">
 	<div class="section-header" aria-label="Regional coal mining footprint">
-		<h3>
+		<h2>
 			{#if mineState}
 				This is <em>{mineState}'s</em> coal country.<br/>
 				Your mine is <em>one dot</em> in it.
@@ -330,7 +330,7 @@
 				This is the country's <em>coal footprint</em>.<br/>
 				Your mine is <em>one dot</em> in it.
 			{/if}
-		</h3>
+		</h2>
 		<p class="sub">
 			{#if mineState}
 				Every coal mine MSHA has on record in {mineState}, clustered by
