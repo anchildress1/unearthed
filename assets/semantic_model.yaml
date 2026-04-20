@@ -259,6 +259,107 @@ tables:
         expr: EGRID_SUBREGION
         data_type: VARCHAR
 
+  - name: V_MINE_FOR_SUBREGION
+    description: >
+      Pre-aggregated rollup of coal mines that supply power plants in each
+      EPA eGRID subregion. One row per (egrid_subregion, mine_id). Built from
+      EIA_923_FUEL_RECEIPTS → EIA_860_PLANTS → PLANT_SUBREGION_LOOKUP, using
+      the latest published year (2024). Use this table whenever a user asks
+      about mines "for" / "supplying" / "feeding" an eGRID subregion — it is
+      the authoritative answer for that question and avoids a 3-hop join
+      through the RAW layer. `MINE_STATE` is where the mine is physically
+      located; `EGRID_SUBREGION` is where the plant receiving the coal sits.
+      A question like "mines in Nevada for AZNM" means filter both
+      `MINE_STATE = 'NV'` AND `EGRID_SUBREGION = 'AZNM'` — do not ask the
+      user to disambiguate, both filters apply.
+    base_table:
+      database: UNEARTHED_DB
+      schema: MRT
+      table: V_MINE_FOR_SUBREGION
+    primary_key:
+      columns:
+        - egrid_subregion
+        - mine_id
+    dimensions:
+      - name: egrid_subregion
+        synonyms:
+          - subregion
+          - egrid
+          - egrid subregion
+          - grid subregion
+        description: EPA eGRID subregion the plant receiving this mine's coal sits in
+        expr: EGRID_SUBREGION
+        data_type: VARCHAR
+        sample_values:
+          - SRVC
+          - RFCW
+          - MROW
+          - AZNM
+          - CAMX
+          - NWPP
+      - name: mine_id
+        description: MSHA mine identifier, joins to MSHA_MINES
+        expr: MINE_ID
+        data_type: NUMBER
+      - name: mine_name
+        synonyms:
+          - mine
+          - mine name
+        description: Current name of the supplying mine
+        expr: MINE_NAME
+        data_type: VARCHAR
+      - name: mine_state
+        synonyms:
+          - state
+          - mine state
+        description: >
+          Two-letter US state code where the mine is physically located
+          (not the subregion of the plant it ships to).
+        expr: MINE_STATE
+        data_type: VARCHAR
+      - name: mine_county
+        description: County where the mine is located
+        expr: MINE_COUNTY
+        data_type: VARCHAR
+      - name: mine_type
+        description: "Type of mine: Surface, Underground, or Facility."
+        expr: MINE_TYPE
+        data_type: VARCHAR
+      - name: mine_status
+        description: "Current operating status: Active, Abandoned, etc."
+        expr: MINE_STATUS
+        data_type: VARCHAR
+      - name: mine_operator
+        synonyms:
+          - operator
+          - company
+          - mining company
+        description: Current operator of the mine
+        expr: MINE_OPERATOR
+        data_type: VARCHAR
+      - name: mine_rank
+        description: >
+          Rank (1 = top supplier) of this mine within its eGRID subregion by
+          total tons shipped. Use `WHERE mine_rank = 1` to get the single
+          top mine per subregion.
+        expr: MINE_RANK
+        data_type: NUMBER
+    measures:
+      - name: total_tons_to_subregion
+        description: >
+          Tons of coal shipped from this mine to plants in this subregion in
+          the latest published year.
+        expr: SUM(TOTAL_TONS_TO_SUBREGION)
+        data_type: NUMBER
+      - name: plants_served
+        description: Distinct plants in this subregion that received coal from this mine
+        expr: MAX(PLANTS_SERVED)
+        data_type: NUMBER
+      - name: mine_count
+        description: Count of distinct supplying mines (use when grouping by subregion)
+        expr: COUNT(DISTINCT MINE_ID)
+        data_type: NUMBER
+
   - name: MSHA_ACCIDENTS
     description: >
       Accidents, injuries, and fatalities at US mines from MSHA.
@@ -452,6 +553,45 @@ verified_queries:
       )
       AND CAL_YR >= 2020
       AND COAL_METAL_IND = 'C'
+
+  - name: mines_supplying_subregion
+    question: "Which mines supply power plants in the SRVC eGRID subregion?"
+    sql: >
+      SELECT MINE_NAME, MINE_OPERATOR, MINE_STATE, MINE_COUNTY,
+        MINE_STATUS, TOTAL_TONS_TO_SUBREGION, PLANTS_SERVED
+      FROM UNEARTHED_DB.MRT.V_MINE_FOR_SUBREGION
+      WHERE EGRID_SUBREGION = 'SRVC'
+      ORDER BY TOTAL_TONS_TO_SUBREGION DESC
+
+  - name: mines_in_state_supplying_subregion
+    question: "Which mines in West Virginia supply plants in the SRVC eGRID subregion?"
+    sql: >
+      SELECT MINE_NAME, MINE_OPERATOR, MINE_COUNTY, MINE_STATUS,
+        TOTAL_TONS_TO_SUBREGION, PLANTS_SERVED
+      FROM UNEARTHED_DB.MRT.V_MINE_FOR_SUBREGION
+      WHERE EGRID_SUBREGION = 'SRVC'
+        AND MINE_STATE = 'WV'
+      ORDER BY TOTAL_TONS_TO_SUBREGION DESC
+
+  - name: top_mine_per_subregion
+    question: "What is the top coal mine for each eGRID subregion?"
+    sql: >
+      SELECT EGRID_SUBREGION, MINE_NAME, MINE_OPERATOR, MINE_STATE,
+        TOTAL_TONS_TO_SUBREGION
+      FROM UNEARTHED_DB.MRT.V_MINE_FOR_SUBREGION
+      WHERE MINE_RANK = 1
+      ORDER BY TOTAL_TONS_TO_SUBREGION DESC
+
+  - name: mines_by_state_for_subregion
+    question: "Break down the mines supplying AZNM by state."
+    sql: >
+      SELECT MINE_STATE,
+        COUNT(DISTINCT MINE_ID) AS MINES,
+        SUM(TOTAL_TONS_TO_SUBREGION) AS TOTAL_TONS
+      FROM UNEARTHED_DB.MRT.V_MINE_FOR_SUBREGION
+      WHERE EGRID_SUBREGION = 'AZNM'
+      GROUP BY MINE_STATE
+      ORDER BY TOTAL_TONS DESC
 
   - name: mines_supplying_plant
     question: "Which mines supply Cross plant in 2024?"
