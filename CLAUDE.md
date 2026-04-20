@@ -15,7 +15,7 @@ A live data product that shows any US resident which specific coal mine supplies
 - **Frontend:** SvelteKit (Vite) — scroll-driven dark glassmorphism, Google Maps JS API
 - **Backend:** Python 3.12 / FastAPI — endpoints: `/mine-for-me`, `/ask`, `/h3-density`, `/emissions/{plant}`
 - **Deps:** `pyproject.toml` + `uv` (backend), `pnpm` (frontend). `make install` to set up both.
-- **Data:** Snowflake (6 tables, 2 views, 2 roles: APP_ROLE + READONLY_ROLE)
+- **Data:** Snowflake (6 tables, 2 MRT tables, 2 views, 2 roles: UNEARTHED_APP_ROLE + UNEARTHED_READONLY_ROLE)
 - **AI:** Snowflake Cortex Analyst (NL → SQL) + Cortex Complete (prose from fatality data)
 - **Snowflake Native:** H3 geospatial hexbin density, Marketplace enrichment (EPA CAM emissions)
 - **Deploy:** Google Cloud Run, secrets via Secret Manager, Docker multi-stage

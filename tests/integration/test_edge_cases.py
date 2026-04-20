@@ -1,6 +1,6 @@
-"""Integration tests for edge cases: unicode, long inputs, CORS, injection."""
+"""Integration tests for edge cases: unicode, long inputs, CORS, injection, prewarm."""
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from tests.conftest import SAMPLE_MINE_DATA
 
@@ -149,7 +149,7 @@ class TestResponseHeaders:
 
 
 class TestConcurrentFailures:
-    """Both Snowflake and Gemini fail simultaneously."""
+    """Both Snowflake query and Cortex Complete prose fail simultaneously."""
 
     @patch("app.main.generate_prose", return_value=("Fallback.", True))
     @patch("app.main.load_fallback_data", return_value=SAMPLE_MINE_DATA)
@@ -170,6 +170,49 @@ class TestConcurrentFailures:
         assert "ZZZZ" in data["detail"]
 
 
+class TestSummaryFailurePath:
+    """Analyst summary generation failure must not break /ask."""
+
+    @patch("app.main.summarize_analyst_results", side_effect=Exception("Cortex down"))
+    @patch(
+        "app.main.execute_analyst_sql",
+        return_value=[{"MINE": "Bailey", "TONS": 5000000}],
+    )
+    @patch(
+        "app.main.query_cortex_analyst",
+        return_value={
+            "answer": "",
+            "interpretation": "Total tonnage query",
+            "sql": "SELECT 1",
+            "error": None,
+            "suggestions": None,
+        },
+    )
+    def test_summary_failure_returns_empty_answer(
+        self, mock_analyst, mock_exec, mock_summary, client
+    ):
+        """Summary failure falls back silently — answer stays empty, results still present."""
+        resp = client.post("/ask", json={"question": "How much coal?"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["answer"] == ""
+        assert data["results"] is not None
+
+
+class TestSnowflakeUnavailable:
+    """GET endpoints return 503 when Snowflake is unreachable."""
+
+    @patch("app.main._get_connection", side_effect=Exception("Snowflake down"))
+    def test_h3_density_returns_503(self, mock_conn, client):
+        resp = client.get("/h3-density?resolution=4")
+        assert resp.status_code == 503
+
+    @patch("app.main._get_connection", side_effect=Exception("Snowflake down"))
+    def test_emissions_returns_503(self, mock_conn, client):
+        resp = client.get("/emissions/TestPlant")
+        assert resp.status_code == 503
+
+
 class TestResponsePayloadBounds:
     """Verify response payloads stay within reasonable bounds."""
 
@@ -188,3 +231,61 @@ class TestResponsePayloadBounds:
         resp = client.post("/ask", json={"question": "How much coal?"})
         assert resp.status_code == 200
         assert len(resp.content) < 10_000
+
+
+class TestPrewarmGating:
+    """Prewarm is gated behind PREWARM_PROSE env var."""
+
+    @patch("app.main.threading.Thread")
+    def test_prewarm_disabled_by_default(self, mock_thread):
+        """No background thread when PREWARM_PROSE is unset."""
+        import asyncio
+
+        from app.main import _lifespan
+
+        async def _run():
+            async with _lifespan(MagicMock()):
+                ...  # lifespan enters/exits; body intentionally empty
+
+        with patch.dict("os.environ", {}, clear=False):
+            # Ensure PREWARM_PROSE is not set
+            import os
+
+            os.environ.pop("PREWARM_PROSE", None)
+            asyncio.run(_run())
+
+        mock_thread.assert_not_called()
+
+    @patch("app.main.threading.Thread")
+    def test_prewarm_enabled_when_set(self, mock_thread):
+        """Background thread starts when PREWARM_PROSE=true."""
+        import asyncio
+
+        from app.main import _lifespan
+
+        mock_instance = MagicMock()
+        mock_thread.return_value = mock_instance
+
+        async def _run():
+            async with _lifespan(MagicMock()):
+                ...  # lifespan enters/exits; body intentionally empty
+
+        with patch.dict("os.environ", {"PREWARM_PROSE": "true"}):
+            asyncio.run(_run())
+
+        mock_thread.assert_called_once()
+        mock_instance.start.assert_called_once()
+
+    @patch("app.main.generate_prose", return_value=("Cached.", False))
+    @patch("app.main.query_mine_for_subregion", return_value=SAMPLE_MINE_DATA)
+    def test_prewarm_aborts_on_first_failure(self, mock_sf, mock_prose):
+        """Prewarm bails after the first exception to avoid hammering Snowflake."""
+        from app.main import _prewarm_prose_cache
+
+        # Succeed once, then fail
+        mock_sf.side_effect = [SAMPLE_MINE_DATA, Exception("Snowflake down")]
+
+        _prewarm_prose_cache()
+
+        # Should have attempted exactly 2 subregions (1 success + 1 failure)
+        assert mock_sf.call_count == 2

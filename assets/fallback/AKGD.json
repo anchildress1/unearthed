@@ -1,19 +1,23 @@
 {
-  "mine": "Usibelli",
-  "mine_operator": "Usibelli Coal Mine Inc",
-  "mine_county": "Denali",
-  "mine_state": "AK",
-  "mine_type": "Surface",
-  "mine_coords": [
-    63.856944,
-    -148.966111
-  ],
-  "plant": "Healy",
-  "plant_operator": "Golden Valley Elec Assn Inc",
-  "plant_coords": [
-    63.8542,
-    -148.95
-  ],
-  "tons": 385941.0,
-  "tons_year": 2024
+    "mine_id": "5000030",
+    "mine": "Usibelli",
+    "mine_operator": "Usibelli Coal Mine Inc",
+    "mine_county": "Denali",
+    "mine_state": "AK",
+    "mine_type": "Surface",
+    "mine_coords": [
+        63.856944,
+        -148.966111
+    ],
+    "plant": "Healy",
+    "plant_operator": "Golden Valley Elec Assn Inc",
+    "plant_coords": [
+        63.8542,
+        -148.95
+    ],
+    "tons": 385941.0,
+    "tons_year": 2024,
+    "fatalities": 0,
+    "injuries": 0,
+    "days_lost": 0
 }

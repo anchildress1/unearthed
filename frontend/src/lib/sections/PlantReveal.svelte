@@ -207,10 +207,6 @@
 		color: var(--text-dim);
 		margin-bottom: 0.8rem;
 	}
-	.prose strong {
-		color: var(--text);
-		font-weight: 400;
-	}
 	.prose :global(.rust) { color: var(--rust); }
 
 	/* Ledger-look stat grid. The wrapper itself is the hairline: its

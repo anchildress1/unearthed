@@ -122,6 +122,14 @@
 		<div class="entry glass">
 			<p class="q"><span class="q-mark">&gt;</span> {entry.question}</p>
 
+			{#if asking}
+				<div class="typing" aria-label="Querying Snowflake…">
+					<span class="dot"></span>
+					<span class="dot"></span>
+					<span class="dot"></span>
+				</div>
+			{/if}
+
 			{#if entry.error}
 				<p class="error">{entry.error}</p>
 			{/if}
@@ -448,6 +456,25 @@
 		line-height: 1.7;
 		color: var(--text-dim);
 		font-style: italic;
+	}
+
+	.typing {
+		display: flex;
+		gap: 0.35rem;
+		padding: 0.6rem 0;
+	}
+	.dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: var(--text-ghost);
+		animation: pulse 1.4s ease-in-out infinite;
+	}
+	.dot:nth-child(2) { animation-delay: 0.2s; }
+	.dot:nth-child(3) { animation-delay: 0.4s; }
+	@keyframes pulse {
+		0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); }
+		40% { opacity: 1; transform: scale(1); }
 	}
 
 	.answer {
