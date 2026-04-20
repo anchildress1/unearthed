@@ -220,7 +220,7 @@
 		color: var(--text);
 		margin-top: 1.3rem;
 		padding: 0.8rem 1rem;
-		background: oklch(58% 0.14 36 / 0.06);
+		background: oklch(64% 0.145 36 / 0.06);
 		border-left: 2px solid var(--rust);
 		border-radius: 3px;
 	}

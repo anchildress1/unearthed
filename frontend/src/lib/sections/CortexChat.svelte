@@ -257,7 +257,7 @@
 		text-transform: uppercase;
 		letter-spacing: 0.2em;
 		color: var(--rust);
-		border: 1px solid oklch(58% 0.14 36 / 0.3);
+		border: 1px solid oklch(64% 0.145 36 / 0.3);
 		padding: 0.3rem 0.65rem 0.3rem 0.55rem;
 		border-radius: 3px;
 	}
@@ -276,11 +276,11 @@
 	@keyframes cortex-pulse {
 		0%, 100% {
 			background: var(--rust);
-			box-shadow: 0 0 0 0 oklch(58% 0.14 36 / 0);
+			box-shadow: 0 0 0 0 oklch(64% 0.145 36 / 0);
 		}
 		50% {
 			background: var(--rust-bright);
-			box-shadow: 0 0 0 4px oklch(58% 0.14 36 / 0.18);
+			box-shadow: 0 0 0 4px oklch(64% 0.145 36 / 0.18);
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {
@@ -292,7 +292,7 @@
 		font-size: 0.5rem;
 		letter-spacing: 0.18em;
 		padding-left: 0.4rem;
-		border-left: 1px solid oklch(58% 0.14 36 / 0.25);
+		border-left: 1px solid oklch(64% 0.145 36 / 0.25);
 	}
 	.status.active { color: var(--rust-bright); }
 
@@ -430,12 +430,12 @@
 	}
 	.proof-toggle:hover {
 		color: var(--rust);
-		border-color: oklch(58% 0.14 36 / 0.45);
-		background: oklch(58% 0.14 36 / 0.06);
+		border-color: oklch(64% 0.145 36 / 0.45);
+		background: oklch(64% 0.145 36 / 0.06);
 	}
 	.proof-toggle[aria-expanded="true"] {
 		color: var(--rust);
-		border-color: oklch(58% 0.14 36 / 0.35);
+		border-color: oklch(64% 0.145 36 / 0.35);
 	}
 	.proof-toggle .caret {
 		font-size: 0.7rem;
@@ -528,7 +528,7 @@
 		line-height: 1.55;
 		margin: 0.4rem 0 0.6rem;
 		padding-left: 0.75rem;
-		border-left: 2px solid oklch(58% 0.14 36 / 0.45);
+		border-left: 2px solid oklch(64% 0.145 36 / 0.45);
 	}
 
 	.follow-ups {

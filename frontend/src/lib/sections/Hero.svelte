@@ -550,7 +550,7 @@
 		padding: 0.85rem 1.1rem;
 		background: transparent;
 		color: var(--rust);
-		border: 1px solid oklch(58% 0.14 36 / 0.4);
+		border: 1px solid oklch(64% 0.145 36 / 0.4);
 		border-radius: 6px;
 		cursor: pointer;
 		letter-spacing: 0.1em;
@@ -567,7 +567,7 @@
 		cursor: not-allowed;
 	}
 	button.primary {
-		background: oklch(58% 0.14 36 / 0.15);
+		background: oklch(64% 0.145 36 / 0.15);
 	}
 
 	.divider {

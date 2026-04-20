@@ -88,15 +88,19 @@
 		   against the near-black --bg; darker than that looked editorial
 		   but failed accessibility audits outright. */
 		--text-ghost: #a09488;
-		/* Two-tier rust palette. --rust is the dim, iron-oxide primary: it
-		   carries nearly every accent surface (text ems, rules, card values,
-		   the one map route). --rust-bright is held back for charged moments
-		   where the page needs to shout (text selection, forthcoming live
-		   pulses). The OKLCH values are perceptually chosen — same hue, two
-		   luminances — so the bright tier reads as the same color, louder. */
-		--rust: oklch(58% 0.14 36);
-		--rust-bright: oklch(70% 0.17 38);
-		--rust-glow: oklch(58% 0.14 36 / 0.15);
+		/* Two-tier rust palette. --rust is the iron-oxide primary: it carries
+		   nearly every accent surface (text ems, rules, card values, the one
+		   map route). --rust-bright is held back for charged moments where
+		   the page needs to shout (text selection, forthcoming live pulses).
+		   The OKLCH values are perceptually chosen — same hue, two
+		   luminances — so the bright tier reads as the same color, louder.
+		   Lightness sits at 64% so small-text uses (span.rail-num, .primary,
+		   .geo-btn, .e-value, emissions-source strong) clear WCAG AA ≥4.5:1
+		   against --bg and the dark-glass overlays; the prior 58% read as
+		   editorially right but failed the deployed Lighthouse audit. */
+		--rust: oklch(64% 0.145 36);
+		--rust-bright: oklch(76% 0.18 38);
+		--rust-glow: oklch(64% 0.145 36 / 0.15);
 		--green: #5a7a5a;
 		--border-glass: rgba(255, 255, 255, 0.07);
 		/* Hairline divider used for the ledger-look stat grids: sits between
