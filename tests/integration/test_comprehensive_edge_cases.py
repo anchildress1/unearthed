@@ -313,7 +313,14 @@ class TestH3DensitySingleMine:
     def test_single_active_mine(self, mock_conn, mock_summary, client):
         cursor = MagicMock()
         cursor.fetchall.return_value = [
-            {"H3": "852a981ffffffff", "LAT": 37.5, "LNG": -82.6, "TOTAL": 1, "ACTIVE": 1, "ABANDONED": 0}
+            {
+                "H3": "852a981ffffffff",
+                "LAT": 37.5,
+                "LNG": -82.6,
+                "TOTAL": 1,
+                "ACTIVE": 1,
+                "ABANDONED": 0,
+            }
         ]
         cursor.fetchone.return_value = {"TOTAL": 1, "ACTIVE": 1, "ABANDONED": 0}
         mock_conn.return_value.cursor.return_value = cursor
