@@ -122,6 +122,14 @@
 		<div class="entry glass">
 			<p class="q"><span class="q-mark">&gt;</span> {entry.question}</p>
 
+			{#if asking}
+				<div class="typing" aria-label="Querying Snowflake…">
+					<span class="dot"></span>
+					<span class="dot"></span>
+					<span class="dot"></span>
+				</div>
+			{/if}
+
 			{#if entry.error}
 				<p class="error">{entry.error}</p>
 			{/if}
