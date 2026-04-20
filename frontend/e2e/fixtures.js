@@ -57,6 +57,203 @@ export const h3DensityNWPP = {
 };
 
 /**
+ * Install a behavioral double of the `google.maps` namespace into the page
+ * before any app script runs. Unlike the empty `importLibrary → {}` shim
+ * (below in `mockBackend`), this stub exposes real constructor classes for
+ * `Map`, `Marker`, `OverlayView`, `LatLng`, `LatLngBounds`, `InfoWindow`,
+ * plus `event` and `geometry.spherical.interpolate` — enough surface area
+ * for MapSection + H3Density to run end-to-end. Every construction is
+ * recorded on `window.__gmapsCalls` so tests can assert that the right
+ * markers, overlays, and listeners actually got created.
+ *
+ * The stub:
+ *   - Fires `idle` on a microtask after `fitBounds` so attachLabels'
+ *     addListenerOnce('idle') callback runs deterministically.
+ *   - Calls OverlayView.onAdd + draw on a microtask after `setMap(map)`
+ *     so the new projection-probe promise resolves immediately after
+ *     setMap (exercising the draw-callback path the P2 fix introduced).
+ *   - Returns `{ AutocompleteSessionToken, AutocompleteSuggestion }`
+ *     stubs for 'places' so Hero's onMount doesn't throw on load — the
+ *     no-op `fetchAutocompleteSuggestions` keeps the input idle unless a
+ *     test explicitly types into it.
+ *
+ * Call before `mockBackend` (or before `page.goto`) so `addInitScript`
+ * runs first; once `google.maps.importLibrary` is installed, maps.js's
+ * loadGoogleMaps() short-circuits without fetching the real script.
+ */
+export async function installGoogleMapsStub(page) {
+	await page.addInitScript(() => {
+		const calls = {
+			maps: [],
+			markers: [],
+			overlays: [],
+			infoWindows: [],
+			labels: 0,
+		};
+		Object.defineProperty(window, '__gmapsCalls', { value: calls, writable: false });
+
+		class LatLng {
+			constructor(lat, lng) {
+				this._lat = typeof lat === 'object' ? lat.lat : lat;
+				this._lng = typeof lat === 'object' ? lat.lng : lng;
+			}
+			lat() { return this._lat; }
+			lng() { return this._lng; }
+		}
+		class LatLngBounds {
+			constructor() { this.points = []; }
+			extend(p) {
+				const lat = typeof p.lat === 'function' ? p.lat() : p.lat;
+				const lng = typeof p.lng === 'function' ? p.lng() : p.lng;
+				this.points.push({ lat, lng });
+				return this;
+			}
+		}
+		const event = {
+			addListener(obj, type, fn) {
+				obj.__listeners = obj.__listeners || {};
+				(obj.__listeners[type] = obj.__listeners[type] || []).push(fn);
+				return { remove: () => {} };
+			},
+			addListenerOnce(obj, type, fn) {
+				const wrapped = (...args) => {
+					const arr = obj.__listeners?.[type];
+					if (arr) {
+						const i = arr.indexOf(wrapped);
+						if (i >= 0) arr.splice(i, 1);
+					}
+					fn(...args);
+				};
+				return event.addListener(obj, type, wrapped);
+			},
+		};
+		function fire(obj, type) {
+			const arr = obj.__listeners?.[type]?.slice();
+			if (!arr) return;
+			for (const fn of arr) fn();
+		}
+		class MapDouble {
+			constructor(el, opts) {
+				this.el = el;
+				this.opts = opts;
+				calls.maps.push({ el, opts });
+			}
+			fitBounds(bounds, padding) {
+				this.lastBounds = bounds;
+				this.lastPadding = padding;
+				// Fire idle on a microtask so addListenerOnce(map, 'idle', fn)
+				// runs after the caller returns — mirrors the real SDK.
+				queueMicrotask(() => fire(this, 'idle'));
+			}
+		}
+		class MarkerDouble {
+			constructor(opts) {
+				this.opts = opts;
+				this._pos = opts.position;
+				calls.markers.push(opts);
+			}
+			setMap(m) { this.map = m; }
+			getPosition() { return new LatLng(this._pos.lat, this._pos.lng); }
+			addListener() { return { remove: () => {} }; }
+		}
+		class InfoWindowDouble {
+			constructor(opts) { this.opts = opts; calls.infoWindows.push(opts); }
+			setContent(c) { this.content = c; }
+			open() { this.isOpen = true; }
+			close() { this.isOpen = false; }
+		}
+		class OverlayViewDouble {
+			constructor() { this._map = null; calls.overlays.push(this); }
+			setMap(m) {
+				const prev = this._map;
+				this._map = m;
+				if (m && !prev) {
+					queueMicrotask(() => {
+						this.onAdd?.();
+						this.draw?.();
+					});
+				} else if (!m && prev) {
+					queueMicrotask(() => this.onRemove?.());
+				}
+			}
+			getProjection() {
+				if (!this._map) return null;
+				return {
+					// Linear scaling is fine — the only caller (MapSection's
+					// projectAnchors) just needs a stable lat/lng → pixel map
+					// so relative ordering (above/below/side) is deterministic.
+					fromLatLngToDivPixel(latLng) {
+						const lat = typeof latLng.lat === 'function' ? latLng.lat() : latLng.lat;
+						const lng = typeof latLng.lng === 'function' ? latLng.lng() : latLng.lng;
+						return { x: lng * 100, y: -lat * 100 };
+					},
+				};
+			}
+			getPanes() {
+				// Real panes aren't pixel-accurate here; we just need somewhere
+				// for PinCardOverlay.onAdd to appendChild() without throwing.
+				// A dedicated container makes it easy for tests to count cards.
+				let host = document.getElementById('__gmaps_stub_panes');
+				if (!host) {
+					host = document.createElement('div');
+					host.id = '__gmaps_stub_panes';
+					host.style.display = 'none';
+					document.body.appendChild(host);
+				}
+				return { floatPane: host, overlayLayer: host, mapPane: host, markerLayer: host, overlayMouseTarget: host };
+			}
+		}
+		const geometry = {
+			spherical: {
+				interpolate(a, b, t) {
+					const aLat = typeof a.lat === 'function' ? a.lat() : a.lat;
+					const aLng = typeof a.lng === 'function' ? a.lng() : a.lng;
+					const bLat = typeof b.lat === 'function' ? b.lat() : b.lat;
+					const bLng = typeof b.lng === 'function' ? b.lng() : b.lng;
+					return new LatLng(aLat + (bLat - aLat) * t, aLng + (bLng - aLng) * t);
+				},
+			},
+		};
+		const SymbolPath = { CIRCLE: 0, FORWARD_CLOSED_ARROW: 1, BACKWARD_CLOSED_ARROW: 2 };
+
+		// Minimal Places surface so Hero's `placesLib = await
+		// importLibrary('places')` succeeds. fetchAutocompleteSuggestions
+		// returns nothing so the suggestion dropdown stays empty unless a
+		// test wants to stub AutocompleteSuggestion explicitly.
+		const places = {
+			AutocompleteSessionToken: class {},
+			AutocompleteSuggestion: {
+				async fetchAutocompleteSuggestions() { return { suggestions: [] }; },
+			},
+		};
+
+		const mapsLib = {
+			Map: MapDouble,
+			Marker: MarkerDouble,
+			LatLng,
+			LatLngBounds,
+			InfoWindow: InfoWindowDouble,
+			OverlayView: OverlayViewDouble,
+			SymbolPath,
+			event,
+		};
+
+		const g = (window.google = window.google || {});
+		g.maps = {
+			...mapsLib,
+			geometry,
+			places,
+			importLibrary: async (name) => {
+				if (name === 'maps') return mapsLib;
+				if (name === 'geometry') return geometry;
+				if (name === 'places') return places;
+				return {};
+			},
+		};
+	});
+}
+
+/**
  * Install mocks for every backend endpoint the page touches. Call this
  * before `page.goto` in tests that need a trace to succeed.
  */
