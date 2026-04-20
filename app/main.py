@@ -62,6 +62,30 @@ def _prewarm_prose_cache() -> None:
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
+    from app.config import get_settings
+
+    s = get_settings()
+    missing = [
+        name
+        for name, val in [
+            ("SNOWFLAKE_ACCOUNT", s.snowflake_account),
+            ("SNOWFLAKE_USER", s.snowflake_user),
+            ("SNOWFLAKE_PRIVATE_KEY_PATH", s.snowflake_private_key_path),
+        ]
+        if not val
+    ]
+    if missing:
+        logger.error(
+            "Required environment variables not set: %s — Snowflake queries will fail.",
+            ", ".join(missing),
+        )
+    if s.snowflake_private_key_path:
+        key_path = Path(s.snowflake_private_key_path)
+        if not key_path.exists():
+            logger.error("Private key file not found: %s", key_path)
+        elif key_path.stat().st_size == 0:
+            logger.error("Private key file is empty (0 bytes): %s", key_path)
+
     if os.getenv("PREWARM_PROSE", "").lower() in ("1", "true"):
         threading.Thread(target=_prewarm_prose_cache, daemon=True).start()
     yield
@@ -537,3 +561,10 @@ async def api_method_guard(request, call_next):
 _FRONTEND_DIR = _PROJECT_ROOT / "frontend" / "build"
 if _FRONTEND_DIR.exists():
     app.mount("/", StaticFiles(directory=_FRONTEND_DIR, html=True), name="frontend")
+else:
+    logger.warning(
+        "Frontend build directory not found at %s — the SPA will not be served. "
+        "This is expected in local dev (Vite serves the frontend), "
+        "but signals a broken Dockerfile COPY in production.",
+        _FRONTEND_DIR,
+    )
