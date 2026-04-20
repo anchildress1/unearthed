@@ -348,6 +348,14 @@ def _suggestions_for(subregion_id: str | None) -> list[str]:
     },
 )
 def mine_for_me(req: MineForMeRequest):
+    """Return the top mine→plant shipment for an eGRID subregion.
+
+    Falls back to bundled per-subregion JSON when Snowflake is unreachable;
+    returns 404 only when both sources miss. Response schema is stable across
+    the Cortex, fallback, and error paths — ``stats`` counts are always
+    populated (0 means "none on file"), and ``degraded`` flips true when
+    either the data layer or the prose layer had to degrade.
+    """
     subregion = req.subregion_id.upper()
     degraded = False
     mine_data = None
@@ -400,6 +408,19 @@ def mine_for_me(req: MineForMeRequest):
 
 @app.post("/ask", response_model=AskResponse)
 def ask(req: AskRequest):
+    """Pass a natural-language question through Cortex Analyst.
+
+    Three outcome branches:
+    1. SQL generated → execute under the readonly role, optionally summarize
+       the rows via Cortex Complete. Sets ``summary_degraded=True`` if the
+       summary path raises so the frontend can hide the Cortex byline.
+    2. No SQL, Cortex gave a conversational ``answer`` → return as-is.
+    3. Upstream error (``query_cortex_analyst`` raised or returned ``error``)
+       → return suggestions with an ``error`` message; no SQL, no results.
+
+    ``suggestions`` is always populated (contextual if ``subregion_id`` is set,
+    default otherwise) so the UI never dead-ends a user.
+    """
     question = req.question
     if req.subregion_id:
         question = f"{req.question} (for eGRID subregion {req.subregion_id})"
@@ -447,11 +468,15 @@ def ask(req: AskRequest):
         # the signal is reviewable in logs without polluting info output.
         logger.debug("Cortex Analyst returned no SQL for question: %s", question)
 
+    summary_degraded = False
     if results and not result.get("answer"):
         try:
             answer = summarize_analyst_results(req.question, results)
         except Exception:
             logger.warning("Analyst summary generation failed", exc_info=True)
+            # Flag the degradation so the frontend can hide the Cortex byline
+            # and surface the table without attributing silence to the model.
+            summary_degraded = True
 
     suggestions = result.get("suggestions") or _suggestions_for(req.subregion_id)
 
@@ -462,6 +487,7 @@ def ask(req: AskRequest):
         error=error,
         suggestions=suggestions,
         results=results,
+        summary_degraded=summary_degraded,
     )
 
 

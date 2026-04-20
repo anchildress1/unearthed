@@ -207,12 +207,18 @@ class TestSummaryFailurePath:
     def test_summary_failure_returns_empty_answer(
         self, mock_analyst, mock_exec, mock_summary, client
     ):
-        """Summary failure falls back silently — answer stays empty, results still present."""
+        """Summary failure surfaces as summary_degraded, results still present.
+
+        The frontend reads ``summary_degraded`` to hide the "Cortex, reading the
+        record" byline when template silence would otherwise sit under it — so
+        the flag is load-bearing, not cosmetic.
+        """
         resp = client.post("/ask", json={"question": "How much coal?"})
         assert resp.status_code == 200
         data = resp.json()
         assert data["answer"] == ""
         assert data["results"] is not None
+        assert data["summary_degraded"] is True
 
 
 class TestSnowflakeUnavailable:

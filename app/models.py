@@ -87,5 +87,14 @@ class AskResponse(BaseModel):
         default=None,
         description="Rows returned by executing the generated SQL (capped at 500).",
     )
+    summary_degraded: bool = Field(
+        default=False,
+        description=(
+            "True when SQL results are shown without a Cortex-written summary — "
+            "either summarize_analyst_results raised or Cortex returned nothing "
+            "for the row set. Lets the frontend hide the 'Cortex, reading the "
+            "record' byline so template silence is never misattributed."
+        ),
+    )
 
     model_config = {"extra": "forbid"}
