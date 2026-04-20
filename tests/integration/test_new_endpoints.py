@@ -349,15 +349,26 @@ class TestEmissionsCache:
         _emissions_cache.pop("NEWPLANT", None)
 
     @patch("app.main._get_connection")
-    def test_bind_param_uppercased(self, mock_conn, client):
-        """Plant name is uppercased before binding so the SQL needs no UPPER() on the column."""
+    def test_bind_param_prefix_uppercased(self, mock_conn, client):
+        """Plant name is uppercased and used as a LIKE prefix to match EPA FACILITY_NAME."""
         mock_cursor = MagicMock()
         mock_cursor.fetchone.return_value = None
         mock_conn.return_value.cursor.return_value = mock_cursor
 
         client.get("/emissions/Mitchell")
         bind = mock_cursor.execute.call_args[0][1]
-        assert bind["plant_name"] == "MITCHELL"
+        assert bind["plant_prefix"] == "MITCHELL%"
+
+    @patch("app.main._get_connection")
+    def test_parenthetical_suffix_stripped(self, mock_conn, client):
+        """EIA state suffixes like '(TN)' are stripped before matching EPA names."""
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = None
+        mock_conn.return_value.cursor.return_value = mock_cursor
+
+        client.get("/emissions/Cumberland (TN)")
+        bind = mock_cursor.execute.call_args[0][1]
+        assert bind["plant_prefix"] == "CUMBERLAND%"
 
     @patch("app.main._get_connection")
     def test_cache_bounded(self, mock_conn, client):
