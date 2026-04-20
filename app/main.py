@@ -395,7 +395,6 @@ def mine_for_me(req: MineForMeRequest):
         fatalities=stats["fatalities"],
         injuries_lost_time=stats["injuries_lost_time"],
         days_lost=stats["days_lost"],
-        incidents=stats["incidents"],
     )
 
 

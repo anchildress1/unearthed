@@ -165,18 +165,18 @@ def _build_fallback(args: dict) -> str:
 
 
 def _stats_from(mine_data: dict) -> dict:
-    """Extract the four MSHA stat fields surfaced on PlantReveal's cost block.
+    """Extract the three MSHA stat fields surfaced on PlantReveal's cost block.
 
-    The MRT table currently carries fatalities / injuries_lost_time / days_lost
-    pre-aggregated; ``incidents`` is not emitted by the prod query so it falls
-    through as 0. The UI treats 0 as "none on file" rather than "unknown," so a
-    missing field is safe — the response schema stays stable either way.
+    The MRT table carries fatalities / injuries_lost_time / days_lost
+    pre-aggregated. The UI treats 0 as "none on file" rather than "unknown," so
+    a missing field is safe — the response schema stays stable either way. See
+    ``MineForMeResponse.fatalities`` etc. — ``Field(default=0, ge=0)`` is the
+    other half of the stability contract.
     """
     return {
         "fatalities": int(mine_data.get("fatalities") or 0),
         "injuries_lost_time": int(mine_data.get("injuries") or 0),
         "days_lost": int(mine_data.get("days_lost") or 0),
-        "incidents": int(mine_data.get("incidents") or 0),
     }
 
 

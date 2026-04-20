@@ -4,10 +4,10 @@ from unittest.mock import patch
 
 from tests.conftest import SAMPLE_MINE_DATA
 
-# Matches the stats dict shape returned by generate_prose — all four MSHA
-# fields keyed by the frontend's public names. Zeros so these tests don't
-# accidentally depend on specific incident counts while checking caching.
-_STATS = {"fatalities": 0, "injuries_lost_time": 0, "days_lost": 0, "incidents": 0}
+# Matches the stats dict shape returned by generate_prose — three MSHA fields
+# keyed by the frontend's public names. Zeros so these tests don't accidentally
+# depend on specific incident counts while checking caching.
+_STATS = {"fatalities": 0, "injuries_lost_time": 0, "days_lost": 0}
 
 
 class TestSuggestionsFor:

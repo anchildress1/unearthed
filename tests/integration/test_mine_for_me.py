@@ -15,7 +15,6 @@ _STATS = {
     "fatalities": 2,
     "injuries_lost_time": 15,
     "days_lost": 430,
-    "incidents": 60,
 }
 
 
@@ -63,14 +62,13 @@ class TestMineForMeEndpoint:
             "fatalities",
             "injuries_lost_time",
             "days_lost",
-            "incidents",
         ]
         for field in required:
             assert field in data, f"Missing field: {field}"
         assert data["fatalities"] == _STATS["fatalities"]
         assert data["injuries_lost_time"] == _STATS["injuries_lost_time"]
         assert data["days_lost"] == _STATS["days_lost"]
-        assert data["incidents"] == _STATS["incidents"]
+        assert "incidents" not in data
 
     @patch("app.main.generate_prose", return_value=("Grief prose.", False, _STATS))
     @patch("app.main.query_mine_for_subregion", return_value=SAMPLE_MINE_DATA)

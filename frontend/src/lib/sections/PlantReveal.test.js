@@ -32,7 +32,6 @@ const BASE_DATA = {
 	fatalities: 0,
 	injuries_lost_time: 0,
 	days_lost: 0,
-	incidents: 0,
 };
 
 const peopleGroup = (c) => c.querySelector('.ledger[data-kind="people"]');
@@ -47,7 +46,6 @@ describe('PlantReveal cost block — people subsection', () => {
 					fatalities: 2,
 					injuries_lost_time: 15,
 					days_lost: 430,
-					incidents: 60,
 				},
 			},
 		});

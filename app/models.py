@@ -31,12 +31,11 @@ class MineForMeResponse(BaseModel):
     # MSHA accident-record counts for this mine, cumulative across the
     # registry (roughly 1983–present). Surfaced alongside the prose so the
     # frontend can show the raw numbers at the top of section 2 before the
-    # narrative weaves them. All four are always present — 0 means "none on
+    # narrative weaves them. All three are always present — 0 means "none on
     # file," not "unknown."
     fatalities: int = Field(default=0, ge=0)
     injuries_lost_time: int = Field(default=0, ge=0)
     days_lost: int = Field(default=0, ge=0)
-    incidents: int = Field(default=0, ge=0)
 
     model_config = {"extra": "forbid"}
 

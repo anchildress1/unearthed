@@ -21,7 +21,6 @@ _STATS = {
     "fatalities": 0,
     "injuries_lost_time": 0,
     "days_lost": 0,
-    "incidents": 0,
 }
 
 

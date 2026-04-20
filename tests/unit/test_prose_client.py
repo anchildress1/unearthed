@@ -302,7 +302,7 @@ class TestProseCache:
         _prose_cache["SRVC"] = (
             "Cached prose.",
             False,
-            {"fatalities": 0, "injuries_lost_time": 0, "days_lost": 0, "incidents": 0},
+            {"fatalities": 0, "injuries_lost_time": 0, "days_lost": 0},
         )
         try:
             prose, degraded, stats = generate_prose({"subregion_id": "SRVC", "mine_id": "1"})
@@ -312,7 +312,6 @@ class TestProseCache:
                 "fatalities": 0,
                 "injuries_lost_time": 0,
                 "days_lost": 0,
-                "incidents": 0,
             }
         finally:
             _prose_cache.pop("SRVC", None)
