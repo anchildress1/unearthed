@@ -5,15 +5,16 @@
       "startServerCommand": "uv run uvicorn app.main:app --host 0.0.0.0 --port 8000",
       "startServerReadyPattern": "Uvicorn running",
       "settings": {
-        "onlyCategories": ["accessibility", "seo", "best-practices"],
+        "onlyCategories": ["accessibility", "seo", "best-practices", "performance"],
         "skipAudits": ["uses-http2"]
       }
     },
     "assert": {
       "assertions": {
-        "categories:accessibility": ["error", { "minScore": 0.9 }],
-        "categories:seo": ["warn", { "minScore": 0.8 }],
-        "categories:best-practices": ["warn", { "minScore": 0.8 }]
+        "categories:accessibility": ["error", { "minScore": 1.0 }],
+        "categories:seo": ["error", { "minScore": 1.0 }],
+        "categories:best-practices": ["error", { "minScore": 1.0 }],
+        "categories:performance": ["error", { "minScore": 1.0 }]
       }
     },
     "upload": {
