@@ -242,6 +242,7 @@ WHERE FACILITY_NAME = %(plant_name)s
 _CACHE_MAXSIZE = 256
 
 _emissions_cache: OrderedDict[str, dict] = OrderedDict()
+_emissions_lock = threading.Lock()
 
 
 @app.get(
@@ -251,9 +252,10 @@ _emissions_cache: OrderedDict[str, dict] = OrderedDict()
 def plant_emissions(plant_name: str):
     """EPA emissions data for a plant — pre-aggregated from Snowflake Marketplace."""
     cache_key = plant_name.upper()
-    if cache_key in _emissions_cache:
-        _emissions_cache.move_to_end(cache_key)
-        return _emissions_cache[cache_key]
+    with _emissions_lock:
+        if cache_key in _emissions_cache:
+            _emissions_cache.move_to_end(cache_key)
+            return _emissions_cache[cache_key]
 
     from app.config import settings
 
@@ -277,9 +279,10 @@ def plant_emissions(plant_name: str):
         "nox_tons": float(row["NOX_TONS"] or 0),
         "source": "EPA Clean Air Markets via Snowflake Marketplace",
     }
-    _emissions_cache[cache_key] = result
-    if len(_emissions_cache) > _CACHE_MAXSIZE:
-        _emissions_cache.popitem(last=False)
+    with _emissions_lock:
+        _emissions_cache[cache_key] = result
+        if len(_emissions_cache) > _CACHE_MAXSIZE:
+            _emissions_cache.popitem(last=False)
     return result
 
 
@@ -292,13 +295,15 @@ _GENERIC_SUGGESTIONS = [
 ]
 
 _mine_context: OrderedDict[str, dict] = OrderedDict()
+_mine_context_lock = threading.Lock()
 
 
 def _suggestions_for(subregion_id: str | None) -> list[str]:
     """Build contextual suggestions from cached mine data for this subregion."""
     if not subregion_id:
         return _GENERIC_SUGGESTIONS
-    ctx = _mine_context.get(subregion_id.upper())
+    with _mine_context_lock:
+        ctx = _mine_context.get(subregion_id.upper())
     if not ctx:
         return _GENERIC_SUGGESTIONS
     mine = ctx["mine"]
@@ -348,9 +353,10 @@ def mine_for_me(req: MineForMeRequest):
         )
 
     mine_data = {**mine_data, "subregion_id": subregion}
-    _mine_context[subregion] = mine_data
-    if len(_mine_context) > _CACHE_MAXSIZE:
-        _mine_context.popitem(last=False)
+    with _mine_context_lock:
+        _mine_context[subregion] = mine_data
+        if len(_mine_context) > _CACHE_MAXSIZE:
+            _mine_context.popitem(last=False)
     prose, prose_degraded = generate_prose(mine_data)
     degraded = degraded or prose_degraded
 

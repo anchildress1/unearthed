@@ -447,6 +447,30 @@ class TestAuthPolicy:
         with pytest.raises(FileNotFoundError):
             _get_connection()
 
+    @patch("app.snowflake_client.snowflake.connector.connect")
+    @patch("app.snowflake_client.settings")
+    def test_session_setup_failure_closes_connection(self, mock_settings, mock_connect):
+        """If ALTER SESSION fails, the connection must be closed to avoid leaks."""
+        mock_settings.snowflake_account = "test"
+        mock_settings.snowflake_user = "user"
+        mock_settings.snowflake_role = "ROLE"
+        mock_settings.snowflake_warehouse = "WH"
+        mock_settings.snowflake_database = "DB"
+        mock_settings.snowflake_private_key_path = ""
+        mock_settings.snowflake_password = "secret"  # NOSONAR — test mock value
+        mock_settings.allow_password_auth = True
+
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_cursor.execute.side_effect = RuntimeError("ALTER SESSION failed")
+        mock_conn.cursor.return_value = mock_cursor
+        mock_connect.return_value = mock_conn
+
+        with pytest.raises(RuntimeError, match="ALTER SESSION failed"):
+            _get_connection()
+
+        mock_conn.close.assert_called_once()
+
 
 ANALYST_INTERP = "This is our interpretation of your question: Total coal tonnage for SRVC."
 

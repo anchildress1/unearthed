@@ -94,11 +94,17 @@ def _create_connection(role: str) -> snowflake.connector.SnowflakeConnection:
         )
 
     conn = snowflake.connector.connect(**connect_args)
-    cur = conn.cursor()
     try:
-        cur.execute("ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = 10, ROWS_PER_RESULTSET = 500")
-    finally:
-        cur.close()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = 10, ROWS_PER_RESULTSET = 500"
+            )
+        finally:
+            cur.close()
+    except Exception:
+        conn.close()
+        raise
     return conn
 
 
