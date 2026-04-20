@@ -52,8 +52,12 @@
 			}
 			// tick() waits for Svelte to commit the {#if mineData} block so the
 			// results container is in the DOM and `resultsEl` is bound before
-			// we try to scroll to it.
-			if (browser) {
+			// we try to scroll to it. Scroll only on fresh user traces — the
+			// share-URL mount replay (pushUrl=false) must leave the viewport
+			// alone so the browser's native scroll restoration can return the
+			// reader to where they were before refresh. Overriding it would
+			// snap them back to `main.scroll` top on every reload.
+			if (browser && pushUrl) {
 				await tick();
 				resultsEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 			}
