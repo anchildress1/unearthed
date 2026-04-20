@@ -16,7 +16,6 @@ from app.snowflake_client import (
     summarize_analyst_results,
 )
 
-
 # ── _stats_from edge cases ───────────────────────────────────────────────────
 
 
@@ -452,9 +451,7 @@ class TestExecuteAnalystSqlEdges:
         cursor.fetchmany.return_value = [{"X": 1}]
         mock_conn.return_value.cursor.return_value = cursor
 
-        result = execute_analyst_sql(
-            "SELECT * FROM (SELECT 1 AS X) sub WHERE X > 0"
-        )
+        result = execute_analyst_sql("SELECT * FROM (SELECT 1 AS X) sub WHERE X > 0")
         assert result == [{"X": 1}]
 
     @patch("app.snowflake_client._get_connection")
