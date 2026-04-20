@@ -1,4 +1,4 @@
-.PHONY: install install-dev dev server test test-ci test-cov test-frontend test-e2e lhci lint clean docker-build docker-run fallbacks
+.PHONY: install install-dev dev server test test-ci test-cov test-frontend test-e2e lhci lint clean docker-build docker-run deploy fallbacks
 
 # Install runtime dependencies
 install:
@@ -71,6 +71,10 @@ docker-build:
 # Run Docker container locally
 docker-run:
 	docker run --rm -p 8080:8080 --env-file .env unearthed
+
+# Deploy to Cloud Run (builds, pushes, maps domain, configures secrets)
+deploy:
+	./deploy.sh
 
 # Remove build artifacts
 clean:
