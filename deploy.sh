@@ -133,20 +133,6 @@ CORS_ORIGINS=https://${DOMAIN},\
 PREWARM_PROSE=true" \
   --quiet
 
-# ─── Domain mapping ─────────────────────────────────────────────────────────────
-echo "» Domain mapping: ${DOMAIN}"
-if ! gcloud run domain-mappings describe \
-  --domain="${DOMAIN}" --region="${REGION}" &>/dev/null 2>&1; then
-  gcloud run domain-mappings create \
-    --service="${SERVICE_NAME}" \
-    --domain="${DOMAIN}" \
-    --region="${REGION}" \
-    --quiet
-  echo "  Mapped (TLS certificate may take a few minutes to provision)"
-else
-  echo "  Already mapped"
-fi
-
 # ─── Smoke test ──────────────────────────────────────────────────────────────────
 SERVICE_URL=$(gcloud run services describe "${SERVICE_NAME}" \
   --region="${REGION}" \
