@@ -34,7 +34,7 @@ Subregion IDs validated with `^[A-Za-z0-9]{2,10}$`. Unknown subregions return **
 - Google Maps JS API for satellite map with animated flow lines.
 - Chat UI for Cortex Analyst: Svelte component with chips and transcript.
 - Geolocation: Browser API with permission prompt. Point-in-polygon against bundled eGRID GeoJSON runs client-side.
-- State-picker dropdown as fallback when geolocation is denied or user is outside US.
+- Geolocation denial or outside-US location: inline error copy on the Hero. Google Places autocomplete (restricted to US + territories) covers the state-only case — typing a state name or two-letter abbreviation surfaces valid predictions, so a separate picker isn't needed.
 - Dev: `make dev` (frontend :5173) + `make server` (backend :8001). Vite proxies API calls.
 
 ### Backend
@@ -225,7 +225,7 @@ E2E specs live in `frontend/e2e/`. Shared backend fixtures are in `e2e/fixtures.
 - **Cortex Analyst misfires:** Display the generated SQL plus "I could not answer that confidently." Honesty > hallucinated numbers.
 - **Out-of-scope questions:** Semantic model guardrails reject. UI offers chip suggestions instead.
 - **Snowflake failure:** Cached static JSON fallback per-subregion.
-- **Location outside US:** Graceful message + state picker. Never a dead end.
+- **Location outside US:** Graceful message on the Hero + the Places-restricted input (US territories included) so the reader can type any state and reach coverage. Never a dead end.
 - **No coal in user's subregion:** Show the mine supplying the nearest coal-burning plant in their eGRID subregion, or fall back to national median contract.
 
 ## 6. Code Quality & Maintenance

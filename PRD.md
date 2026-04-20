@@ -58,7 +58,7 @@ Public federal data (MSHA Mines, MSHA Quarterly Production, EIA-923 Fuel Receipt
 
 ### Edge cases
 
-- **Location outside the US.** Show a graceful "US grid data only — try the state picker to see what a US resident sees" fallback.
+- **Location outside the US.** Show a graceful "US grid data only" message on the Hero; the Places-restricted address input (US + territories) lets the reader type any state to reach coverage.
 - **Location in a state with no active coal mines supplying local plants** (e.g., California, Hawaii). Show the mine supplying the nearest coal-burning plant that feeds any part of their eGRID subregion, or fall back to the national median contract.
 - **Snowflake query timeout.** Cache the top mine per subregion as a static JSON fallback keyed by subregion ID.
 - **Cortex Analyst misfires on a user question.** Display the generated SQL plus a "I could not answer that confidently" message. Honesty beats a hallucinated number.
@@ -82,12 +82,12 @@ Public federal data (MSHA Mines, MSHA Quarterly Production, EIA-923 Fuel Receipt
 **P0-2. Geolocation → eGRID subregion lookup.**
 - Browser geolocation API with permission prompt.
 - Local point-in-polygon against bundled eGRID subregion GeoJSON (~1 MB asset).
-- Manual state-picker fallback when permission is denied or geolocation fails.
+- Google Places address autocomplete (restricted to US + territories) as the denial / outside-US fallback — typing any state name resolves to a point inside that state, which the eGRID polygon check then maps to a subregion.
 
 **Acceptance criteria:**
 - Given I grant location permission in Charleston WV, when the page loads, then the detected subregion is `SRVC` within 2 seconds.
-- Given I deny permission, when I select "West Virginia" from the fallback dropdown, then subregion is inferred as `SRVC`.
-- Given I am outside the US, when the page loads, then I see a graceful fallback message and can still use the state picker.
+- Given I deny permission, when I type "West Virginia" into the Hero input and trace, then subregion is inferred as `SRVC`.
+- Given I am outside the US, when the page loads, then I see a graceful fallback message and the Places input still accepts US addresses.
 
 **P0-3. Cloud Run API endpoint.**
 - `POST /mine-for-me` with body `{subregion_id}`.
@@ -98,7 +98,7 @@ Public federal data (MSHA Mines, MSHA Quarterly Production, EIA-923 Fuel Receipt
 - Given a valid subregion ID, when I POST to the endpoint, then I get back a JSON payload with all required fields within 5 seconds.
 - Given Snowflake is down, when I POST, then the endpoint falls back to a cached static JSON and returns a result with a `degraded: true` flag.
 
-**P0-4. Map reveal sequence with MapLibre GL.**
+**P0-4. Map reveal sequence (Google Maps JS API).**
 - Map loads zoomed out, then animates: user location → power plant → source mine.
 - Arc line drawn between the three points.
 - Pins with labels for each stop.
@@ -208,7 +208,7 @@ Public federal data (MSHA Mines, MSHA Quarterly Production, EIA-923 Fuel Receipt
 |---|---|---|
 | Friday prep (Claude-assisted) | ~4 hrs | Build `mines.json`, filter MSHA data, download EIA-923, download EIA-860, bundle eGRID GeoJSON, validate SQL against local duckdb, **draft semantic model YAML + 4-5 supported question patterns for Cortex Analyst** |
 | Sat PM: Snowflake + API | ~5 hrs | Load 4 tables via Snowsight, create 2 views, upload semantic model, test Cortex Analyst in Snowsight chat, validate query, FastAPI scaffold, `/mine-for-me` + `/ask` endpoints |
-| Sat night: Map + geolocation | ~3 hrs | MapLibre satellite basemap, zoom sequence with animated flow lines, geolocation flow, state-picker fallback |
+| Sat night: Map + geolocation | ~3 hrs | Google Maps JS API (dark state-styled roadmap), SVG flow overlay, geolocation flow, Places-restricted address input as the denial fallback |
 | Sun AM: Chat UI + polish | ~4 hrs | Tonnage ticker, Cortex Analyst chip UI + text input, chat transcript rendering |
 | Sun PM: Deploy + writeup | ~3 hrs | Cloud Run deploy, dev.to post, two gifs (reveal + chat), submission |
 
@@ -216,14 +216,14 @@ Public federal data (MSHA Mines, MSHA Quarterly Production, EIA-923 Fuel Receipt
 
 **Biggest risks:**
 1. **Cortex Analyst semantic model churn.** Writing a YAML that actually routes the 4-5 chip questions to correct SQL can eat more than 2 hours if it fights you. Mitigation: start with a minimal YAML covering only the chip questions, not open-ended NL.
-2. MapLibre zoom choreography taking longer than expected. Mitigation: if zoom sequence is janky by Sunday noon, cut to an instant cross-fade between 3 map views.
+2. Map zoom choreography taking longer than expected. Mitigation: if the SVG flow overlay is janky by Sunday noon, cut to an instant cross-fade between 3 map views.
 3. **Snowflake → FastAPI auth.** Key-pair auth is less cranky than user/password for prod. Mitigation: use Snowflake's `snowflake-connector-python` with key-pair auth from Sat AM onward. Store private key as Cloud Run secret.
 
 ---
 
 ## Tech Stack (locked)
 
-- **Frontend:** Vanilla JS. MapLibre GL JS for the map (ESRI satellite basemap, animated flow lines). Chat UI for Cortex Analyst: plain HTML form + chip buttons + transcript div.
+- **Frontend:** SvelteKit (Vite) with static adapter. Google Maps JS API for the reveal map (dark state-styled roadmap + SVG flow overlay) and the H3 hex density map. Svelte component chat for Cortex Analyst: form + chip buttons + transcript.
 - **Backend:** Python 3.12 + FastAPI. Two endpoints: `/mine-for-me` (reveal payload) and `/ask` (Cortex Analyst pass-through).
 - **Data platform:** Snowflake ($400 / 30-day free trial). 5 base tables + 2 views. XS warehouse.
 - **AI:** Snowflake Cortex Analyst with hand-written semantic model YAML for NL Q&A.
