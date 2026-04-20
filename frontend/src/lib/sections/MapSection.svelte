@@ -1,6 +1,7 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
 	import SectionRail from '$lib/components/SectionRail.svelte';
+	import { loadSubregionGeoJSON } from '$lib/geo.js';
 	import {
 		loadGoogleMaps,
 		createDarkMap,
@@ -14,6 +15,7 @@
 	let mapEl;
 	let mapError = $state(null);
 	let flowOverlay = null;
+	let subregionPolygons = [];
 	// onMount has an `await` before overlay attachment, so the component can
 	// unmount (HMR, fast re-trace) before the overlay is assigned. `cancelled`
 	// gates every post-await side-effect so we don't strand animation loops
@@ -28,9 +30,16 @@
 			// `geometry` gives `spherical.interpolate` for the flow path.
 			// Once imported, the classes are also attached to `google.maps.*`
 			// so the existing `new google.maps.Marker(...)` call keeps working.
-			await Promise.all([
+			// GeoJSON fetch runs alongside so the eGRID overlay is ready by
+			// the time the map renders — a missing asset degrades to no
+			// subregion outline rather than blocking the whole section.
+			const [,, geojson] = await Promise.all([
 				google.maps.importLibrary('maps'),
 				google.maps.importLibrary('geometry'),
+				loadSubregionGeoJSON().catch((err) => {
+					console.warn('[unearthed] eGRID overlay unavailable:', err.message);
+					return null;
+				}),
 			]);
 			if (cancelled) return;
 
@@ -41,6 +50,13 @@
 				: null;
 
 			const map = createDarkMap(mapEl);
+
+			// Lay the eGRID subregion boundaries down first so hex dots,
+			// flow lines, and pin cards render on top. The user's subregion
+			// gets a brighter rust treatment; all others fade to near-
+			// invisible outlines for geographic context.
+			if (geojson) renderSubregions(map, geojson, data.subregion_id);
+
 			const bounds = new google.maps.LatLngBounds();
 			bounds.extend(mine);
 			bounds.extend(plant);
@@ -102,7 +118,39 @@
 	onDestroy(() => {
 		cancelled = true;
 		if (flowOverlay) flowOverlay.setMap(null);
+		for (const p of subregionPolygons) p.setMap(null);
+		subregionPolygons = [];
 	});
+
+	function renderSubregions(map, geojson, subregionId) {
+		for (const feature of geojson.features) {
+			const sub = feature.properties?.Subregion || '';
+			const type = feature.geometry.type;
+			const coords = feature.geometry.coordinates;
+			const polygons = type === 'MultiPolygon' ? coords : [coords];
+			const paths = [];
+			for (const polygon of polygons) {
+				for (const ring of polygon) {
+					if (!ring.length) continue;
+					paths.push(ring.map(([lng, lat]) => ({ lat, lng })));
+				}
+			}
+			if (!paths.length) continue;
+			const isUserRegion = sub === subregionId;
+			const poly = new google.maps.Polygon({
+				map,
+				paths,
+				fillColor: isUserRegion ? MAP_COLORS.rust : MAP_COLORS.white,
+				fillOpacity: isUserRegion ? 0.08 : 0.015,
+				strokeColor: isUserRegion ? MAP_COLORS.rust : MAP_COLORS.white,
+				strokeOpacity: isUserRegion ? 0.55 : 0.12,
+				strokeWeight: isUserRegion ? 1 : 0.6,
+				clickable: false,
+				zIndex: 1,
+			});
+			subregionPolygons.push(poly);
+		}
+	}
 
 	// Tag subtitles. All three tag kinds share chrome and typography; the
 	// subtitle is the place where each kind speaks in its own register
@@ -270,6 +318,9 @@
 			<span class="legend-item"><span class="dot you"></span> you</span>
 		{/if}
 		<span class="legend-item"><span class="line-sample rust"></span> the coal, from mine to your meter</span>
+		{#if data.subregion_id}
+			<span class="legend-item"><span class="swatch region"></span> your grid subregion ({data.subregion_id})</span>
+		{/if}
 	</div>
 </SectionRail>
 
@@ -331,6 +382,18 @@
 	.dot.mine { background: var(--rust); }
 	.dot.plant { background: var(--green); }
 	.dot.you { background: #e8dfcc; }
+
+	.swatch {
+		display: inline-block;
+		width: 10px;
+		height: 10px;
+		border-radius: 50%;
+	}
+	.swatch.region {
+		background: oklch(58% 0.14 36 / 0.22);
+		border: 1px solid oklch(58% 0.14 36 / 0.55);
+		border-radius: 2px;
+	}
 
 	.line-sample {
 		width: 20px;
