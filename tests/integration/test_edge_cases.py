@@ -1,6 +1,6 @@
-"""Integration tests for edge cases: unicode, long inputs, CORS, injection."""
+"""Integration tests for edge cases: unicode, long inputs, CORS, injection, prewarm."""
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from tests.conftest import SAMPLE_MINE_DATA
 
@@ -231,3 +231,61 @@ class TestResponsePayloadBounds:
         resp = client.post("/ask", json={"question": "How much coal?"})
         assert resp.status_code == 200
         assert len(resp.content) < 10_000
+
+
+class TestPrewarmGating:
+    """Prewarm is gated behind PREWARM_PROSE env var."""
+
+    @patch("app.main.threading.Thread")
+    def test_prewarm_disabled_by_default(self, mock_thread):
+        """No background thread when PREWARM_PROSE is unset."""
+        import asyncio
+
+        from app.main import _lifespan
+
+        async def _run():
+            async with _lifespan(MagicMock()):
+                pass
+
+        with patch.dict("os.environ", {}, clear=False):
+            # Ensure PREWARM_PROSE is not set
+            import os
+
+            os.environ.pop("PREWARM_PROSE", None)
+            asyncio.run(_run())
+
+        mock_thread.assert_not_called()
+
+    @patch("app.main.threading.Thread")
+    def test_prewarm_enabled_when_set(self, mock_thread):
+        """Background thread starts when PREWARM_PROSE=true."""
+        import asyncio
+
+        from app.main import _lifespan
+
+        mock_instance = MagicMock()
+        mock_thread.return_value = mock_instance
+
+        async def _run():
+            async with _lifespan(MagicMock()):
+                pass
+
+        with patch.dict("os.environ", {"PREWARM_PROSE": "true"}):
+            asyncio.run(_run())
+
+        mock_thread.assert_called_once()
+        mock_instance.start.assert_called_once()
+
+    @patch("app.main.generate_prose", return_value=("Cached.", False))
+    @patch("app.main.query_mine_for_subregion", return_value=SAMPLE_MINE_DATA)
+    def test_prewarm_aborts_on_first_failure(self, mock_sf, mock_prose):
+        """Prewarm bails after the first exception to avoid hammering Snowflake."""
+        from app.main import _prewarm_prose_cache
+
+        # Succeed once, then fail
+        mock_sf.side_effect = [SAMPLE_MINE_DATA, Exception("Snowflake down")]
+
+        _prewarm_prose_cache()
+
+        # Should have attempted exactly 2 subregions (1 success + 1 failure)
+        assert mock_sf.call_count == 2

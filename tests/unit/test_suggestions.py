@@ -101,6 +101,22 @@ class TestMineContextPopulation:
         assert "SRVC" in _mine_context
         _mine_context.clear()
 
+    @patch("app.main.generate_prose", return_value=("Prose.", False))
+    @patch("app.main.query_mine_for_subregion", return_value=SAMPLE_MINE_DATA)
+    def test_context_cache_bounded(self, mock_sf, mock_prose, client):
+        """Cache evicts the oldest entry when it exceeds _CACHE_MAXSIZE."""
+        from app.main import _CACHE_MAXSIZE, _mine_context
+
+        _mine_context.clear()
+        try:
+            for i in range(_CACHE_MAXSIZE + 1):
+                client.post("/mine-for-me", json={"subregion_id": f"Z{i:04d}"})
+            assert len(_mine_context) == _CACHE_MAXSIZE
+            assert "Z0000" not in _mine_context
+            assert f"Z{_CACHE_MAXSIZE:04d}" in _mine_context
+        finally:
+            _mine_context.clear()
+
 
 class TestAskUsesContextualSuggestions:
     """Tests that /ask returns contextual suggestions when mine context exists."""
