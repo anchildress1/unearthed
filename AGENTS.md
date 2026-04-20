@@ -203,8 +203,8 @@ Three tiers, all runnable from `frontend/` with `pnpm`:
 
 | Tier | Command | Stack | Scope |
 |---|---|---|---|
-| Unit / component | `pnpm test` | Vitest + jsdom + @testing-library/svelte | Pure JS modules (`geo.js`, `api.js`, `reveal.js`) and component chrome (`SectionRail.svelte`). Coverage via `pnpm test:coverage`. |
-| E2E | `pnpm test:e2e` | Playwright (Chromium) against the built `vite preview` bundle | Share-URL replay (`/?m=NWPP`), pushState refresh preservation, editorial rail rendering on every section, lowercase token normalization. Backend is mocked at the `page.route` layer — no FastAPI or Snowflake required. |
+| Unit / component | `pnpm test` | Vitest + jsdom + @testing-library/svelte | Pure JS modules (`geo.js` + edge, `api.js` + edge, `reveal.js`) and component chrome (`SectionRail`, `PlantReveal` + emissions, `CortexChat`, `Ticker`). Coverage via `pnpm test:coverage`. |
+| E2E | `pnpm test:e2e` | Playwright (Chromium) against the built `vite preview` bundle | Share-URL replay (`/?m=NWPP`), pushState refresh preservation, editorial rail rendering on every section, lowercase token normalization, degraded / error-state rendering, and Google Maps runtime (MapSection + H3Density marker/OverlayView lifecycle) via the behavioral `google.maps` stub in `fixtures.js`. Backend is mocked at the `page.route` layer — no FastAPI or Snowflake required. |
 | Lighthouse | `pnpm lhci` | @lhci/cli against `vite preview` | Audits `/`. Thresholds are load-bearing and enforced by `lighthouserc.cjs`. |
 
 **Lighthouse thresholds (non-negotiable):**
@@ -219,7 +219,7 @@ Missed thresholds fail CI. Fix the root cause — do not relax the gate. A fresh
 - `errors-in-console` — any 404 (favicon, missing asset) or unhandled console error drops Best Practices. A real `static/favicon.ico` is in-tree; do not delete it.
 - `color-contrast` — dim copy against the near-black background. `--text-ghost` and the `.data-credit` footer color are tuned to ≥4.5:1; darken them and the a11y score falls back to 0.95. Keep the rationale comments in `+layout.svelte`.
 
-E2E specs live in `frontend/e2e/`. Shared backend fixtures are in `e2e/fixtures.js` (`mockBackend(page)` installs routes for `/mine-for-me`, `/emissions/*`, `/h3-density`, `/ask`, plus a swallow-route for `maps.googleapis.com` so the Places bootstrap doesn't stall tests). Register test-specific routes **after** `mockBackend` — Playwright matches most-recent-first.
+E2E specs live in `frontend/e2e/`. Shared fixtures are in `e2e/fixtures.js`: `mockBackend(page)` installs routes for `/mine-for-me`, `/emissions/*`, `/h3-density`, `/ask`, plus a swallow-route for `maps.googleapis.com` so the Places bootstrap doesn't stall tests. `installGoogleMapsStub(page)` is the behavioral `google.maps` double used by `maps-render.spec.js` — it records every `new Map`, `new Marker`, and `OverlayView.setMap` call on `globalThis.__gmapsCalls` so tests can assert on marker construction and the projection/draw lifecycle without pixel-perfect rendering. Register test-specific routes **after** `mockBackend` — Playwright matches most-recent-first.
 
 ## 5. Error Handling Philosophy
 

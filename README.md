@@ -206,9 +206,9 @@ The test matrix:
 | `tests/unit/` | pytest | Pure functions — SQL validation, prose fallback, stats extraction, suggestions, model validation |
 | `tests/integration/` | pytest + FastAPI TestClient | Endpoints with mocked Snowflake — happy path, edge cases, CORS, 405s, degraded paths |
 | `tests/performance/` | pytest | Request-budget guards (response size, lookup time) |
-| `frontend/src/**/*.test.js` | vitest + jsdom | Components in isolation — PlantReveal, api client, geo helpers |
-| `frontend/e2e/` | Playwright | Share-URL replay, pushState history, editorial rail integrity |
-| `frontend/.lighthouserc.json` | `@lhci/cli` | a11y=1.0, SEO=1.0, best-practices≥0.98, perf≥0.90 |
+| `frontend/src/**/*.test.js` | vitest + jsdom | Components + helpers in isolation — PlantReveal (+ emissions), CortexChat, Ticker, SectionRail, api client (+ edge), geo helpers (+ edge), reveal state machine |
+| `frontend/e2e/` | Playwright | Share-URL replay, pushState history, editorial rail integrity, error-state rendering, Google Maps runtime (MapSection + H3Density) against a behavioral `google.maps` stub |
+| `frontend/lighthouserc.cjs` | `@lhci/cli` | a11y=1.0, SEO=1.0, best-practices≥0.98, perf≥0.90 |
 
 ---
 
