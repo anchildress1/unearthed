@@ -93,8 +93,31 @@ function installImportLibraryShim(config) {
 			}
 			params.set('callback', 'google.maps.__ib__');
 			script.src = `https://maps.googleapis.com/maps/api/js?${params}`;
-			maps.__ib__ = resolve;
+
+			// Watchdog: neither Google's callback nor `script.onerror` fires
+			// when the network hangs mid-request (corporate filters, flaky
+			// Wi-Fi, an outage that drops the TCP stream after the response
+			// headers). Without this, every `importLibrary` caller awaits
+			// forever and the Hero/map sections never surface a recoverable
+			// error state. 10s is long enough for a slow connection to finish
+			// on the first paint and short enough that the UI doesn't feel
+			// dead before it reports the failure.
+			const BOOTSTRAP_TIMEOUT_MS = 10_000;
+			const timeoutId = setTimeout(() => {
+				scriptPromise = null;
+				reject(
+					new Error(
+						`${errorPrefix} did not load within ${BOOTSTRAP_TIMEOUT_MS}ms.`,
+					),
+				);
+			}, BOOTSTRAP_TIMEOUT_MS);
+
+			maps.__ib__ = (value) => {
+				clearTimeout(timeoutId);
+				resolve(value);
+			};
 			script.onerror = () => {
+				clearTimeout(timeoutId);
 				scriptPromise = null;
 				reject(new Error(`${errorPrefix} could not load.`));
 			};
