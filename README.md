@@ -1,3 +1,5 @@
+![unearthed — coal, traced home](https://repository-images.githubusercontent.com/1213154728/6ae1ef8d-dd2d-4a2b-b708-3353b783fbfa)
+
 # unearthed
 
 Show any US resident which specific coal mine supplies their local power plant.
