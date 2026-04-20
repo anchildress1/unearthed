@@ -54,45 +54,43 @@
 			const waypoints = user ? [mine, plant, user] : [mine, plant];
 			flowOverlay = createFlowOverlay(map, waypoints);
 
-			// Fan the three cards out by relative geography so two close-together
-			// markers don't stack their labels. Northmost floats above, southmost
-			// drops below, anyone in between slides to the side the other two
-			// aren't using. Cards render as HTML overlays (OverlayView), so
-			// "above/below/left/right" are real CSS transforms, not nudges.
-			const placement = computeLabelPlacement({ mine, plant, user });
-
-			createLabeledMarker(
-				map,
-				anchorMarker(map, mine, MAP_COLORS.rust, `Coal mine: ${data.mine}`),
+			// Create the anchor pins immediately so they come in with the
+			// flow reveal. Labels wait for pixel-space placement below.
+			const anchors = [
 				{
-					type: 'MINE',
-					name: data.mine,
-					subtitle: mineSubtitle(data),
-					placement: placement.mine,
+					key: 'mine',
+					latLng: mine,
+					marker: anchorMarker(map, mine, MAP_COLORS.rust, `Coal mine: ${data.mine}`),
+					opts: { type: 'MINE', name: data.mine, subtitle: mineSubtitle(data) },
 				},
-			);
-			createLabeledMarker(
-				map,
-				anchorMarker(map, plant, MAP_COLORS.moss, `Power plant: ${data.plant}`),
 				{
-					type: 'PLANT',
-					name: data.plant,
-					subtitle: plantSubtitle(data),
-					placement: placement.plant,
+					key: 'plant',
+					latLng: plant,
+					marker: anchorMarker(map, plant, MAP_COLORS.moss, `Power plant: ${data.plant}`),
+					opts: { type: 'PLANT', name: data.plant, subtitle: plantSubtitle(data) },
 				},
-			);
+			];
 			if (user) {
-				createLabeledMarker(
-					map,
-					anchorMarker(map, user, MAP_COLORS.you, 'Your meter'),
-					{
-						type: 'METER',
-						name: 'your meter',
-						subtitle: meterSubtitle(data),
-						placement: placement.user,
-					},
-				);
+				anchors.push({
+					key: 'user',
+					latLng: user,
+					marker: anchorMarker(map, user, MAP_COLORS.you, 'Your meter'),
+					opts: { type: 'METER', name: 'your meter', subtitle: meterSubtitle(data) },
+				});
 			}
+
+			// Wait for fitBounds to settle before placing label cards.
+			// Placement has to reason in pixel space — latitude ordering
+			// alone stacks cards when mine, plant, and meter all project to
+			// nearly the same screen position (common when they share one
+			// eGRID subregion). Once idle, pixel Y becomes "what the reader
+			// actually sees" and we can scale the card offset with cluster
+			// density so cards stay legibly separate even at coincident
+			// pins.
+			google.maps.event.addListenerOnce(map, 'idle', () => {
+				if (cancelled) return;
+				attachLabels(map, anchors);
+			});
 		} catch (e) {
 			console.error('[unearthed] map error:', e);
 			mapError = 'Map could not load.';
@@ -148,35 +146,87 @@
 		});
 	}
 
-	// Fan the three labels so they don't stack when markers are close.
-	// Latitude ordering drives the primary assignment: northmost floats
-	// above, southmost drops below. Any middle point slides to whichever
-	// side it sits on relative to the other two's longitude midpoint. The
-	// returned values are keys of PIN_TRANSFORMS in maps.js.
-	function computeLabelPlacement({ mine, plant, user }) {
-		const points = [
-			{ key: 'mine', lat: mine.lat, lng: mine.lng },
-			{ key: 'plant', lat: plant.lat, lng: plant.lng },
-		];
-		if (user) points.push({ key: 'user', lat: user.lat, lng: user.lng });
+	// Place label cards after the map has fit bounds. Works in pixel space:
+	//   - Topmost pin on screen gets the `above` card, bottommost the
+	//     `below` card, and any middle pin fans to whichever side it sits
+	//     on relative to the pixel-X midpoint of the other two. Pixel Y
+	//     (not latitude) decides ordering so a map zoomed into a tight
+	//     cluster fans by what the reader actually sees.
+	//   - The card offset scales with cluster density. A 14px gap is fine
+	//     at 200+ px separation, but below ~140 px the above/below/side
+	//     cards start intersecting — scale the offset up so each card
+	//     clears its neighbors down to coincident markers.
+	function attachLabels(map, anchors) {
+		const pts = projectAnchors(map, anchors);
+		if (!pts) return;
 
-		const byLat = [...points].sort((a, b) => b.lat - a.lat);
-		const slot = { [byLat[0].key]: 'above', [byLat[byLat.length - 1].key]: 'below' };
-		if (byLat.length === 3) slot[byLat[1].key] = 'side';
-
-		function sidePlacementFor(key) {
-			const me = points.find((p) => p.key === key);
-			const others = points.filter((p) => p.key !== key);
-			const avgLng = others.reduce((s, p) => s + p.lng, 0) / others.length;
-			return me.lng >= avgLng ? 'right' : 'left';
+		const byY = [...pts].sort((a, b) => a.px.y - b.px.y);
+		const slot = {};
+		slot[byY[0].key] = 'above';
+		slot[byY[byY.length - 1].key] = 'below';
+		if (byY.length === 3) {
+			const middle = byY[1];
+			const others = pts.filter((p) => p.key !== middle.key);
+			const avgX = others.reduce((s, p) => s + p.px.x, 0) / others.length;
+			slot[middle.key] = middle.px.x >= avgX ? 'right' : 'left';
 		}
 
-		const out = {};
-		for (const p of points) {
-			if (slot[p.key] === 'side') out[p.key] = sidePlacementFor(p.key);
-			else out[p.key] = slot[p.key];
+		const offsetPx = clusterOffsetPx(pts);
+
+		for (const p of pts) {
+			createLabeledMarker(map, p.marker, {
+				...p.opts,
+				placement: slot[p.key],
+				offsetPx,
+			});
 		}
-		return out;
+	}
+
+	// lat/lng → pixel requires an OverlayView whose draw() has fired at
+	// least once (that's when getProjection() returns a real projection).
+	// We're already inside the map's `idle` callback so the viewport is
+	// final; a bare subclass of OverlayView added + removed in one tick is
+	// enough to borrow the projection without leaving DOM behind. Returns
+	// null if the projection isn't available (defensive; shouldn't happen
+	// post-idle, but skipping labels is better than throwing).
+	function projectAnchors(map, anchors) {
+		const probe = new google.maps.OverlayView();
+		probe.onAdd = () => {};
+		probe.draw = () => {};
+		probe.onRemove = () => {};
+		probe.setMap(map);
+		const proj = probe.getProjection();
+		if (!proj) {
+			probe.setMap(null);
+			return null;
+		}
+		const pts = anchors.map((a) => {
+			const px = proj.fromLatLngToDivPixel(
+				new google.maps.LatLng(a.latLng.lat, a.latLng.lng),
+			);
+			return { ...a, px: { x: px.x, y: px.y } };
+		});
+		probe.setMap(null);
+		return pts;
+	}
+
+	// Shared offset for every card on this map. Using one value (not
+	// per-card) keeps the fan symmetric — otherwise close pairs get
+	// mixed gap sizes and the cluster reads lopsided. The tightest
+	// pairwise distance sets the scale.
+	function clusterOffsetPx(pts) {
+		let minDist = Infinity;
+		for (let i = 0; i < pts.length; i++) {
+			for (let j = i + 1; j < pts.length; j++) {
+				const d = Math.hypot(pts[i].px.x - pts[j].px.x, pts[i].px.y - pts[j].px.y);
+				if (d < minDist) minDist = d;
+			}
+		}
+		const CLUSTER_PX = 140;
+		const BASE_PX = 14;
+		const MAX_PX = 80;
+		if (!Number.isFinite(minDist) || minDist >= CLUSTER_PX) return BASE_PX;
+		return Math.min(MAX_PX, Math.round(BASE_PX + (CLUSTER_PX - minDist) * 0.5));
 	}
 </script>
 

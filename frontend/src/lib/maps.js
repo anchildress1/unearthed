@@ -219,17 +219,33 @@ export function createDarkMap(el, extra = {}) {
  * side of the marker the card floats on. Used for fan-out when two markers
  * are close enough that their default (above) cards would stack.
  *
+ * `offsetPx` (optional, default 14): pixel gap between marker and card edge.
+ * Boost this when markers cluster tightly — above+below cards separated by
+ * only 14px each intersect once the cluster shrinks below ~140px in pixel
+ * space. MapSection scales it with cluster density; callers with a single
+ * label (H3Density's mine anchor) can leave it at the default.
+ *
  * `subtitle` (optional): a third mono line under the name, used to surface
  * identifiers/geography ("MSHA 46-09627 · Raleigh Co., WV"). All three tag
  * kinds (MINE / PLANT / METER) share chrome and typography; only the glyph
  * shape changes so the reader can tell them apart at a glance.
  */
-const PIN_TRANSFORMS = {
-	above: 'translate(-50%, calc(-100% - 14px))',
-	below: 'translate(-50%, 14px)',
-	left: 'translate(calc(-100% - 14px), -50%)',
-	right: 'translate(14px, -50%)',
-};
+// Card transform relative to the marker's pixel position. `offsetPx` is the
+// gap between marker and card edge; callers boost it when markers cluster
+// so close that a default 14px gap lets neighboring cards intersect.
+function pinTransform(placement, offsetPx) {
+	switch (placement) {
+		case 'below':
+			return `translate(-50%, ${offsetPx}px)`;
+		case 'left':
+			return `translate(calc(-100% - ${offsetPx}px), -50%)`;
+		case 'right':
+			return `translate(${offsetPx}px, -50%)`;
+		case 'above':
+		default:
+			return `translate(-50%, calc(-100% - ${offsetPx}px))`;
+	}
+}
 
 // Semantic glyph per tag type. MINE → rotated square reads as diamond,
 // PLANT → flat square reads as industrial, METER/YOU → circle reads as
@@ -262,12 +278,12 @@ function buildGlyph(shape) {
 export function createLabeledMarker(
 	map,
 	marker,
-	{ type, name, subtitle = '', placement = 'above' },
+	{ type, name, subtitle = '', placement = 'above', offsetPx = 14 },
 ) {
 	const card = document.createElement('div');
 	card.style.cssText = [
 		'position:absolute',
-		`transform:${PIN_TRANSFORMS[placement] || PIN_TRANSFORMS.above}`,
+		`transform:${pinTransform(placement, offsetPx)}`,
 		'padding:6px 10px',
 		'background:rgba(20,18,16,0.92)',
 		'border:1px solid rgba(255,255,255,0.08)',
