@@ -63,7 +63,7 @@
 
 			createLabeledMarker(
 				map,
-				anchorMarker(map, mine, MAP_COLORS.rust),
+				anchorMarker(map, mine, MAP_COLORS.rust, `Coal mine: ${data.mine}`),
 				{
 					type: 'MINE',
 					name: data.mine,
@@ -73,7 +73,7 @@
 			);
 			createLabeledMarker(
 				map,
-				anchorMarker(map, plant, MAP_COLORS.moss),
+				anchorMarker(map, plant, MAP_COLORS.moss, `Power plant: ${data.plant}`),
 				{
 					type: 'PLANT',
 					name: data.plant,
@@ -84,7 +84,7 @@
 			if (user) {
 				createLabeledMarker(
 					map,
-					anchorMarker(map, user, MAP_COLORS.you),
+					anchorMarker(map, user, MAP_COLORS.you, 'Your meter'),
 					{
 						type: 'METER',
 						name: 'your meter',
@@ -135,10 +135,15 @@
 		return d.subregion_id ? `EPA subregion ${d.subregion_id}` : '';
 	}
 
-	function anchorMarker(map, pos, color) {
+	// `title` is required (not optional) so every anchor marker carries an
+	// accessible name. Google Maps renders classic Markers with an internal
+	// `role="button"`, and axe-core's `aria-command-name` rule fails any
+	// anonymous one — so the caller must name the pin for screen readers.
+	function anchorMarker(map, pos, color, title) {
 		return new google.maps.Marker({
 			map,
 			position: pos,
+			title,
 			icon: circleIcon({ color }),
 		});
 	}

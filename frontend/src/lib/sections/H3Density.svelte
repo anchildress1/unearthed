@@ -175,6 +175,12 @@
 			const marker = new google.maps.Marker({
 				map,
 				position: { lat, lng },
+				// Google Maps renders classic Markers with an internal
+				// `role="button"`; without a title, axe-core flags each one
+				// under `aria-command-name`. The title promotes to an
+				// accessible name (and a native tooltip on hover, which is
+				// also a UX win — the cluster stops being anonymous dots).
+				title: `${total} coal mines in this area · ${active} active, ${abandoned} closed`,
 				icon: {
 					path: google.maps.SymbolPath.CIRCLE,
 					scale: radius(total),
@@ -224,7 +230,7 @@
 			anchorMarkers.push(new google.maps.Marker({
 				map,
 				position: { lat: userCoords[0], lng: userCoords[1] },
-				title: 'you',
+				title: 'Your location',
 				icon: circleIcon({ color: MAP_COLORS.you, scale: 5 }),
 				zIndex: 20,
 			}));
