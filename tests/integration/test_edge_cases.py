@@ -235,9 +235,7 @@ class TestSummaryFailurePath:
             "suggestions": None,
         },
     )
-    def test_empty_summary_marks_degraded(
-        self, mock_analyst, mock_exec, mock_summary, client
-    ):
+    def test_empty_summary_marks_degraded(self, mock_analyst, mock_exec, mock_summary, client):
         """Cortex Complete returning '' is the same user outcome as an
         exception — rows shown, no prose — so ``summary_degraded`` must
         flip to True. Otherwise the frontend would keep the "Cortex,
