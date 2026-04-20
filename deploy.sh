@@ -36,6 +36,14 @@ fi
   echo "ERROR: VITE_GOOGLE_MAPS_KEY not set and frontend/.env not found" >&2; exit 1;
 }
 
+# Read VITE_GOOGLE_MAPS_KEY from frontend/.env when not already exported
+if [[ -z "${VITE_GOOGLE_MAPS_KEY:-}" ]] && [[ -f frontend/.env ]]; then
+  VITE_GOOGLE_MAPS_KEY=$(grep 'VITE_GOOGLE_MAPS_KEY=' frontend/.env | cut -d= -f2)
+fi
+[[ -n "${VITE_GOOGLE_MAPS_KEY:-}" ]] || {
+  echo "ERROR: VITE_GOOGLE_MAPS_KEY not set and frontend/.env not found"; exit 1;
+}
+
 PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null)}"
 [[ -n "$PROJECT_ID" ]] || { echo "ERROR: No GCP project. Run: gcloud config set project <ID>" >&2; exit 1; }
 
