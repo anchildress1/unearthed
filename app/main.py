@@ -138,7 +138,13 @@ WHERE COAL_METAL_IND = 'C'
 _STATE_CODE_PATTERN = re.compile(r"^[A-Za-z]{2}$")
 
 
-@app.get("/h3-density", responses={400: {"description": "Invalid resolution (must be 2-7)"}})
+@app.get(
+    "/h3-density",
+    responses={
+        400: {"description": "Invalid resolution (must be 2-7)"},
+        503: {"description": "Snowflake unavailable"},
+    },
+)
 def h3_density(resolution: int = 4, state: str | None = None):
     """H3 hexbin mine density — active vs abandoned extraction footprint.
 
@@ -234,7 +240,10 @@ WHERE UPPER(FACILITY_NAME) = UPPER(%(plant_name)s)
 _emissions_cache: dict[str, dict] = {}
 
 
-@app.get("/emissions/{plant_name}")
+@app.get(
+    "/emissions/{plant_name}",
+    responses={503: {"description": "Snowflake unavailable"}},
+)
 def plant_emissions(plant_name: str):
     """EPA emissions data for a plant — pre-aggregated from Snowflake Marketplace."""
     cache_key = plant_name.upper()
