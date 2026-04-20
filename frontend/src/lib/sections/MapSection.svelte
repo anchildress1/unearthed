@@ -89,7 +89,9 @@
 			// pins.
 			google.maps.event.addListenerOnce(map, 'idle', () => {
 				if (cancelled) return;
-				attachLabels(map, anchors);
+				attachLabels(map, anchors).catch((err) => {
+					console.error('[unearthed] label placement failed:', err);
+				});
 			});
 		} catch (e) {
 			console.error('[unearthed] map error:', e);
@@ -156,9 +158,9 @@
 	//     at 200+ px separation, but below ~140 px the above/below/side
 	//     cards start intersecting — scale the offset up so each card
 	//     clears its neighbors down to coincident markers.
-	function attachLabels(map, anchors) {
-		const pts = projectAnchors(map, anchors);
-		if (!pts) return;
+	async function attachLabels(map, anchors) {
+		const pts = await projectAnchors(map, anchors);
+		if (!pts || cancelled) return;
 
 		const byY = [...pts].sort((a, b) => a.px.y - b.px.y);
 		const slot = {};
@@ -183,31 +185,47 @@
 	}
 
 	// lat/lng → pixel requires an OverlayView whose draw() has fired at
-	// least once (that's when getProjection() returns a real projection).
-	// We're already inside the map's `idle` callback so the viewport is
-	// final; a bare subclass of OverlayView added + removed in one tick is
-	// enough to borrow the projection without leaving DOM behind. Returns
-	// null if the projection isn't available (defensive; shouldn't happen
-	// post-idle, but skipping labels is better than throwing).
+	// least once — that's when getProjection() returns a real projection.
+	// `setMap(map)` only schedules onAdd/draw into Google's next render
+	// cycle, so reading getProjection() synchronously after setMap returns
+	// null on the first tick even when the map has already idled. Resolve
+	// from inside draw() so we wait for the projection instead of dropping
+	// every label. A 2s safety timeout rejects the promise if draw never
+	// fires (e.g., container hidden/detached) so the idle handler's catch
+	// surfaces a console error instead of leaving the map labelless.
 	function projectAnchors(map, anchors) {
-		const probe = new google.maps.OverlayView();
-		probe.onAdd = () => {};
-		probe.draw = () => {};
-		probe.onRemove = () => {};
-		probe.setMap(map);
-		const proj = probe.getProjection();
-		if (!proj) {
-			probe.setMap(null);
-			return null;
-		}
-		const pts = anchors.map((a) => {
-			const px = proj.fromLatLngToDivPixel(
-				new google.maps.LatLng(a.latLng.lat, a.latLng.lng),
+		return new Promise((resolve, reject) => {
+			const probe = new google.maps.OverlayView();
+			let resolved = false;
+			const finish = (result, error) => {
+				if (resolved) return;
+				resolved = true;
+				clearTimeout(timeoutId);
+				// Detach on a microtask so we don't setMap(null) from inside
+				// the probe's own draw callback.
+				queueMicrotask(() => probe.setMap(null));
+				if (error) reject(error);
+				else resolve(result);
+			};
+			probe.onAdd = () => {};
+			probe.draw = () => {
+				const proj = probe.getProjection();
+				if (!proj) return;
+				const pts = anchors.map((a) => {
+					const px = proj.fromLatLngToDivPixel(
+						new google.maps.LatLng(a.latLng.lat, a.latLng.lng),
+					);
+					return { ...a, px: { x: px.x, y: px.y } };
+				});
+				finish(pts);
+			};
+			probe.onRemove = () => {};
+			const timeoutId = setTimeout(
+				() => finish(null, new Error('projection probe draw() never fired')),
+				2000,
 			);
-			return { ...a, px: { x: px.x, y: px.y } };
+			probe.setMap(map);
 		});
-		probe.setMap(null);
-		return pts;
 	}
 
 	// Shared offset for every card on this map. Using one value (not
