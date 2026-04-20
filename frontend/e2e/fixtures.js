@@ -3,7 +3,7 @@
 // frontend's downstream logic (paragraph dedup, formatters, anchors) has
 // enough data to exercise.
 
-// Fields mirror MineForMeResponse in app/models.py — including the four
+// Fields mirror MineForMeResponse in app/models.py — including the three
 // MSHA safety stats surfaced in PlantReveal's cost block. Keep this in
 // sync when the backend payload changes; an out-of-date fixture masks
 // regressions in subtitle rendering (mine_id → MSHA card) and the
@@ -25,7 +25,6 @@ export const mineForMeJimBridger = {
 	fatalities: 0,
 	injuries_lost_time: 0,
 	days_lost: 0,
-	incidents: 0,
 	prose: 'Black Thunder, a surface mine in Campbell County Wyoming, is the largest coal mine in the United States by annual tonnage.\n\nIt ships coal via BNSF to the Jim Bridger plant outside Rock Springs, where it is burned to meet electricity demand across the Pacific Northwest grid.\n\nBlack Thunder, a surface mine in Campbell County Wyoming, is the largest coal mine in the United States by annual tonnage.',
 };
 
