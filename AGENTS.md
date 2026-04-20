@@ -159,8 +159,9 @@ Two endpoints lean on Snowflake's built-in geospatial / Marketplace story:
 - **RAW tables are pre-cleaned** — embedded CSV quotes stripped, key columns cast to native types (MINE_ID → NUMBER, LATITUDE/LONGITUDE → DOUBLE, QUANTITY → NUMBER). Use column values directly — no `REPLACE()`, `TRY_TO_NUMBER()`, or `TRY_TO_DOUBLE()` needed.
 - **Emissions are pre-aggregated** — `MRT.EMISSIONS_BY_PLANT` (240 rows) replaces the 2.2B-row EPA_CAM_TIMESERIES join. Query the MRT table, not the Marketplace tables directly.
 - **Mine-plant lookup is materialized** — `MRT.MINE_PLANT_FOR_SUBREGION` (19 rows) pre-computes the top mine + plant per eGRID subregion. `/mine-for-me` reads this single table instead of joining 4 RAW tables through views.
-- **Session-level guards** — every connection sets `STATEMENT_TIMEOUT_IN_SECONDS = 10` and `ROWS_PER_RESULTSET = 500` via `ALTER SESSION` at creation time. These cap runaway Analyst SQL and protect credit burn.
-- In-memory caches exist for H3 density, emissions, mine context, and Cortex prose. Prose cache is pre-warmed at startup for all 19 fallback subregions. All caches reset on process restart.
+- **Session-level guards** — every connection sets `STATEMENT_TIMEOUT_IN_SECONDS = 10` and `ROWS_PER_RESULTSET = 500` via `ALTER SESSION` at creation time. These cap runaway Analyst SQL and protect credit burn. `execute_analyst_sql` also enforces a hard 500-row cap via `fetchmany(500)`.
+- **Bounded in-memory caches** — `_emissions_cache` and `_mine_context` are LRU `OrderedDict`s capped at 256 entries. Prose and H3 summary caches are bounded by their fixed key spaces (19 subregions, ~50 states). All caches reset on process restart.
+- **Prose prewarm** — gated behind `PREWARM_PROSE=true` env var (default off). When enabled, a background thread pre-warms prose for all 19 fallback subregions at startup. Disabled by default to avoid multiplying Cortex costs on autoscaled Cloud Run instances.
 
 ## 4. Frontend Rules
 

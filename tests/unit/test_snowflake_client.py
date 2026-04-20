@@ -803,7 +803,7 @@ class TestQueryCortexAnalyst:
 class TestExecuteAnalystSql:
     def _mock_connection(self, rows):
         mock_cursor = MagicMock()
-        mock_cursor.fetchall.return_value = rows
+        mock_cursor.fetchmany.return_value = rows
         mock_conn = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
         return mock_conn
@@ -903,14 +903,14 @@ class TestExecuteAnalystSql:
         assert "SELECT 1" in str(cursor.execute.call_args)
 
     @patch("app.snowflake_client._get_connection")
-    def test_fetchall_used(self, mock_get_conn):
-        """fetchall used — row limit enforced at session level via ROWS_PER_RESULTSET."""
+    def test_fetchmany_caps_at_500(self, mock_get_conn):
+        """fetchmany(500) enforces the documented 500-row cap at the application layer."""
         mock_conn = self._mock_connection([{"X": 1}])
         mock_get_conn.return_value = mock_conn
         execute_analyst_sql("SELECT 1")
 
         cursor = mock_conn.cursor.return_value
-        cursor.fetchall.assert_called_once()
+        cursor.fetchmany.assert_called_once_with(500)
 
     @patch("app.snowflake_client._get_connection")
     def test_cursor_closed_in_execute(self, mock_get_conn):

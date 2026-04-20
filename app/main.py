@@ -2,6 +2,7 @@ import logging
 import os
 import re
 import threading
+from collections import OrderedDict
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -58,7 +59,8 @@ def _prewarm_prose_cache() -> None:
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
-    threading.Thread(target=_prewarm_prose_cache, daemon=True).start()
+    if os.getenv("PREWARM_PROSE", "").lower() in ("1", "true"):
+        threading.Thread(target=_prewarm_prose_cache, daemon=True).start()
     yield
 
 
@@ -234,10 +236,12 @@ def h3_density(resolution: int = 4, state: str | None = None):
 _EMISSIONS_SQL = """
 SELECT CO2_TONS, SO2_TONS, NOX_TONS
 FROM UNEARTHED_DB.MRT.EMISSIONS_BY_PLANT
-WHERE UPPER(FACILITY_NAME) = UPPER(%(plant_name)s)
+WHERE FACILITY_NAME = %(plant_name)s
 """
 
-_emissions_cache: dict[str, dict] = {}
+_CACHE_MAXSIZE = 256
+
+_emissions_cache: OrderedDict[str, dict] = OrderedDict()
 
 
 @app.get(
@@ -248,6 +252,7 @@ def plant_emissions(plant_name: str):
     """EPA emissions data for a plant — pre-aggregated from Snowflake Marketplace."""
     cache_key = plant_name.upper()
     if cache_key in _emissions_cache:
+        _emissions_cache.move_to_end(cache_key)
         return _emissions_cache[cache_key]
 
     from app.config import settings
@@ -256,7 +261,7 @@ def plant_emissions(plant_name: str):
         conn = _get_connection(role=settings.snowflake_readonly_role)
         cur = conn.cursor(snowflake.connector.DictCursor)
         try:
-            cur.execute(_EMISSIONS_SQL, {"plant_name": plant_name})
+            cur.execute(_EMISSIONS_SQL, {"plant_name": cache_key})
             row = cur.fetchone()
         finally:
             cur.close()
@@ -273,6 +278,8 @@ def plant_emissions(plant_name: str):
         "source": "EPA Clean Air Markets via Snowflake Marketplace",
     }
     _emissions_cache[cache_key] = result
+    if len(_emissions_cache) > _CACHE_MAXSIZE:
+        _emissions_cache.popitem(last=False)
     return result
 
 
@@ -284,7 +291,7 @@ _GENERIC_SUGGESTIONS = [
     "Who is the largest coal supplier in Wyoming?",
 ]
 
-_mine_context: dict[str, dict] = {}
+_mine_context: OrderedDict[str, dict] = OrderedDict()
 
 
 def _suggestions_for(subregion_id: str | None) -> list[str]:
@@ -342,6 +349,8 @@ def mine_for_me(req: MineForMeRequest):
 
     mine_data = {**mine_data, "subregion_id": subregion}
     _mine_context[subregion] = mine_data
+    if len(_mine_context) > _CACHE_MAXSIZE:
+        _mine_context.popitem(last=False)
     prose, prose_degraded = generate_prose(mine_data)
     degraded = degraded or prose_degraded
 

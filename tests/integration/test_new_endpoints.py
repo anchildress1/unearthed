@@ -347,3 +347,33 @@ class TestEmissionsCache:
         assert "NEWPLANT" in _emissions_cache
         assert _emissions_cache["NEWPLANT"]["co2_tons"] == pytest.approx(42.0)
         _emissions_cache.pop("NEWPLANT", None)
+
+    @patch("app.main._get_connection")
+    def test_bind_param_uppercased(self, mock_conn, client):
+        """Plant name is uppercased before binding so the SQL needs no UPPER() on the column."""
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = None
+        mock_conn.return_value.cursor.return_value = mock_cursor
+
+        client.get("/emissions/Mitchell")
+        bind = mock_cursor.execute.call_args[0][1]
+        assert bind["plant_name"] == "MITCHELL"
+
+    @patch("app.main._get_connection")
+    def test_cache_bounded(self, mock_conn, client):
+        """Cache evicts the oldest entry when it exceeds _CACHE_MAXSIZE."""
+        from app.main import _CACHE_MAXSIZE, _emissions_cache
+
+        _emissions_cache.clear()
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = {"CO2_TONS": 1.0, "SO2_TONS": 0, "NOX_TONS": 0}
+        mock_conn.return_value.cursor.return_value = mock_cursor
+
+        try:
+            for i in range(_CACHE_MAXSIZE + 1):
+                client.get(f"/emissions/PLANT{i}")
+            assert len(_emissions_cache) == _CACHE_MAXSIZE
+            assert "PLANT0" not in _emissions_cache
+            assert f"PLANT{_CACHE_MAXSIZE}" in _emissions_cache
+        finally:
+            _emissions_cache.clear()

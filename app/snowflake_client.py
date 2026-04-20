@@ -349,7 +349,7 @@ def execute_analyst_sql(sql: str) -> list[dict]:
     cur = conn.cursor(snowflake.connector.DictCursor)
     try:
         cur.execute(clean_sql)
-        return [dict(row) for row in cur.fetchall()]
+        return [dict(row) for row in cur.fetchmany(500)]
     finally:
         cur.close()
 
