@@ -511,12 +511,21 @@ def ask(req: AskRequest):
     summary_degraded = False
     if results and not result.get("answer"):
         try:
-            answer = summarize_analyst_results(req.question, results)
+            summary = summarize_analyst_results(req.question, results)
         except Exception:
             logger.warning("Analyst summary generation failed", exc_info=True)
             # Flag the degradation so the frontend can hide the Cortex byline
             # and surface the table without attributing silence to the model.
             summary_degraded = True
+        else:
+            # Cortex Complete can also "succeed" with an empty string — same
+            # user-visible outcome (rows shown, no prose) and same contract
+            # need (hide the byline), so treat it as degraded too.
+            if summary:
+                answer = summary
+            else:
+                logger.warning("Analyst summary returned empty text")
+                summary_degraded = True
 
     suggestions = result.get("suggestions") or _suggestions_for(req.subregion_id)
 

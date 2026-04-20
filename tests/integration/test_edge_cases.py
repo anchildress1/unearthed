@@ -220,6 +220,36 @@ class TestSummaryFailurePath:
         assert data["results"] is not None
         assert data["summary_degraded"] is True
 
+    @patch("app.main.summarize_analyst_results", return_value="")
+    @patch(
+        "app.main.execute_analyst_sql",
+        return_value=[{"MINE": "Bailey", "TONS": 5000000}],
+    )
+    @patch(
+        "app.main.query_cortex_analyst",
+        return_value={
+            "answer": "",
+            "interpretation": "Total tonnage query",
+            "sql": "SELECT 1",
+            "error": None,
+            "suggestions": None,
+        },
+    )
+    def test_empty_summary_marks_degraded(
+        self, mock_analyst, mock_exec, mock_summary, client
+    ):
+        """Cortex Complete returning '' is the same user outcome as an
+        exception — rows shown, no prose — so ``summary_degraded`` must
+        flip to True. Otherwise the frontend would keep the "Cortex,
+        reading the record" byline over a blank paragraph.
+        """
+        resp = client.post("/ask", json={"question": "How much coal?"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["answer"] == ""
+        assert data["results"] is not None
+        assert data["summary_degraded"] is True
+
 
 class TestSnowflakeUnavailable:
     """GET endpoints return 503 when Snowflake is unreachable."""
