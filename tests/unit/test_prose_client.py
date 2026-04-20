@@ -183,7 +183,9 @@ class TestGenerateProse:
         )
         mock_get_conn.return_value = mock_conn
 
-        prose, degraded, _stats = generate_prose(_make_mine_data(fatalities=0, injuries=0, days_lost=0))
+        prose, degraded, _stats = generate_prose(
+            _make_mine_data(fatalities=0, injuries=0, days_lost=0),
+        )
 
         assert prose == "Prose about the mine and plant."
         assert degraded is False
@@ -231,7 +233,9 @@ class TestGenerateProse:
         mock_conn, _ = self._mock_connection(complete_result=("",))
         mock_get_conn.return_value = mock_conn
 
-        prose, degraded, _stats = generate_prose(_make_mine_data(fatalities=0, injuries=0, days_lost=0))
+        prose, degraded, _stats = generate_prose(
+            _make_mine_data(fatalities=0, injuries=0, days_lost=0),
+        )
 
         assert "Test Plant" in prose
         assert "Test Mine" in prose
