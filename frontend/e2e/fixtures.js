@@ -90,7 +90,7 @@ export async function installGoogleMapsStub(page) {
 			infoWindows: [],
 			labels: 0,
 		};
-		Object.defineProperty(window, '__gmapsCalls', { value: calls, writable: false });
+		Object.defineProperty(globalThis, '__gmapsCalls', { value: calls, writable: false });
 
 		class LatLng {
 			constructor(lat, lng) {
@@ -109,10 +109,16 @@ export async function installGoogleMapsStub(page) {
 				return this;
 			}
 		}
+		function fire(obj, type) {
+			const arr = obj.__listeners?.[type]?.slice();
+			if (!arr) return;
+			for (const fn of arr) fn();
+		}
 		const event = {
 			addListener(obj, type, fn) {
-				obj.__listeners = obj.__listeners || {};
-				(obj.__listeners[type] = obj.__listeners[type] || []).push(fn);
+				if (!obj.__listeners) obj.__listeners = {};
+				if (!obj.__listeners[type]) obj.__listeners[type] = [];
+				obj.__listeners[type].push(fn);
 				return { remove: () => {} };
 			},
 			addListenerOnce(obj, type, fn) {
@@ -127,11 +133,6 @@ export async function installGoogleMapsStub(page) {
 				return event.addListener(obj, type, wrapped);
 			},
 		};
-		function fire(obj, type) {
-			const arr = obj.__listeners?.[type]?.slice();
-			if (!arr) return;
-			for (const fn of arr) fn();
-		}
 		class MapDouble {
 			constructor(el, opts) {
 				this.el = el;
@@ -163,7 +164,8 @@ export async function installGoogleMapsStub(page) {
 			close() { this.isOpen = false; }
 		}
 		class OverlayViewDouble {
-			constructor() { this._map = null; calls.overlays.push(this); }
+			_map = null;
+			constructor() { calls.overlays.push(this); }
 			setMap(m) {
 				const prev = this._map;
 				this._map = m;
@@ -221,7 +223,7 @@ export async function installGoogleMapsStub(page) {
 		// returns nothing so the suggestion dropdown stays empty unless a
 		// test wants to stub AutocompleteSuggestion explicitly.
 		const places = {
-			AutocompleteSessionToken: class {},
+			AutocompleteSessionToken: class AutocompleteSessionToken { token = null; },
 			AutocompleteSuggestion: {
 				async fetchAutocompleteSuggestions() { return { suggestions: [] }; },
 			},
@@ -238,7 +240,8 @@ export async function installGoogleMapsStub(page) {
 			event,
 		};
 
-		const g = (window.google = window.google || {});
+		if (!globalThis.google) globalThis.google = {};
+		const g = globalThis.google;
 		g.maps = {
 			...mapsLib,
 			geometry,

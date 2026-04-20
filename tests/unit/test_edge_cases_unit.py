@@ -111,7 +111,7 @@ class TestGenerateProseEdges:
         cursor.fetchone.return_value = ("   ",)
         mock_conn.return_value.cursor.return_value = cursor
 
-        prose, degraded, stats = generate_prose(
+        prose, degraded, _ = generate_prose(
             {
                 "mine": "Test",
                 "mine_operator": "Op",
@@ -243,7 +243,7 @@ class TestH3SummaryEdges:
         cursor.fetchone.return_value = ("Unusual data.",)
         mock_conn.return_value.cursor.return_value = cursor
 
-        text, degraded = generate_h3_summary(state="WV", total=5, active=10, abandoned=0)
+        _, degraded = generate_h3_summary(state="WV", total=5, active=10, abandoned=0)
         # Shouldn't crash — active_pct calculates to 200% but that's fine
         assert degraded is False
 

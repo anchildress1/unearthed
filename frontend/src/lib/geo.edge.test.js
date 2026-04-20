@@ -26,7 +26,7 @@ describe('findSubregion — boundary coordinates', () => {
 	it('handles NaN latitude gracefully', () => {
 		const gj = { features: [square] };
 		// NaN coordinates should not crash — they just won't match any polygon
-		expect(findSubregion(NaN, -85, gj)).toBeNull();
+		expect(findSubregion(Number.NaN, -85, gj)).toBeNull();
 	});
 
 	it('handles Infinity longitude gracefully', () => {

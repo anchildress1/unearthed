@@ -121,7 +121,7 @@ describe('PlantReveal — formatTons edge cases', () => {
 			nox_tons: null,
 		});
 
-		const { container } = render(PlantReveal, { props: { data: BASE_DATA } });
+		render(PlantReveal, { props: { data: BASE_DATA } });
 
 		await vi.waitFor(() => {
 			// With all null → no emissions block rendered (co2_tons null check)

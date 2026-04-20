@@ -22,7 +22,7 @@ test.describe('map runtime', () => {
 
 		// MapSection calls `new google.maps.Map` once; H3Density calls it
 		// once. Both sections should have booted their maps.
-		const mapsCount = await page.evaluate(() => window.__gmapsCalls.maps.length);
+		const mapsCount = await page.evaluate(() => globalThis.__gmapsCalls.maps.length);
 		expect(mapsCount).toBeGreaterThanOrEqual(2);
 
 		// Share URL trace has no user_coords in the payload, so MapSection
@@ -30,7 +30,7 @@ test.describe('map runtime', () => {
 		// anchor Marker (mine) plus one Marker per hex cell. The fixture
 		// payload has 2 hex cells, so 2 + 1 + 2 = 5 minimum. Assert on the
 		// floor so adding hex cells to fixtures doesn't flake the test.
-		const markers = await page.evaluate(() => window.__gmapsCalls.markers);
+		const markers = await page.evaluate(() => globalThis.__gmapsCalls.markers);
 		expect(markers.length).toBeGreaterThanOrEqual(5);
 
 		// Every Marker must carry a `title` — axe-core's aria-command-name
@@ -63,7 +63,7 @@ test.describe('map runtime', () => {
 		// label card add more. At least 3 (flow + 2 labels) should exist
 		// after MapSection settles, plus H3Density's mine-anchor label.
 		await page.waitForFunction(
-			() => window.__gmapsCalls.overlays.length >= 4,
+			() => globalThis.__gmapsCalls.overlays.length >= 4,
 			undefined,
 			{ timeout: 10_000 },
 		);
