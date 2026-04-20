@@ -1,4 +1,4 @@
-"""Integration tests for /health, /h3-density, and /emissions endpoints."""
+"""Integration tests for /health, /h3-density, /emissions, and security headers."""
 
 from unittest.mock import MagicMock, patch
 
@@ -14,6 +14,31 @@ class TestHealth:
     def test_health_post_method_not_allowed(self, client):
         resp = client.post("/health")
         assert resp.status_code == 405
+
+
+class TestSecurityHeaders:
+    """Every response must carry the hardened headers added by the
+    ``security_headers`` middleware in ``app/main.py``.
+    """
+
+    def test_csp_frame_ancestors(self, client):
+        resp = client.get("/health")
+        csp = resp.headers.get("Content-Security-Policy")
+        assert csp == "frame-ancestors 'self' https://dev.to"
+
+    def test_x_content_type_options(self, client):
+        resp = client.get("/health")
+        assert resp.headers.get("X-Content-Type-Options") == "nosniff"
+
+    def test_referrer_policy(self, client):
+        resp = client.get("/health")
+        assert resp.headers.get("Referrer-Policy") == "strict-origin-when-cross-origin"
+
+    def test_headers_present_on_non_health_route(self, client):
+        """Headers apply globally, not just to /health."""
+        resp = client.get("/h3-density?resolution=1")  # 400 — still gets headers
+        assert resp.headers.get("X-Content-Type-Options") == "nosniff"
+        assert "frame-ancestors" in resp.headers.get("Content-Security-Policy", "")
 
 
 def _h3_cursor(cells=None, totals=None):

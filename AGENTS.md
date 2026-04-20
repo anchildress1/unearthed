@@ -45,6 +45,7 @@ Subregion IDs validated with `^[A-Za-z0-9]{2,10}$`. Unknown subregions return **
 - Cortex Analyst: REST API via `/ask` endpoint. Generated SQL is validated (SELECT-only, no multi-statement, no DML/DDL keywords) and executed under the read-only role with a 500-row cap and 10-second statement timeout.
 - Default suggestions (from 5 verified queries) are always returned in `/ask` responses.
 - Docs/OpenAPI disabled by default (set `ENABLE_DOCS=true` for local dev). CORS origins configurable via `CORS_ORIGINS` env var.
+- **Security headers middleware** sets `Content-Security-Policy: frame-ancestors 'self' https://dev.to` (allows DEV embed), `X-Content-Type-Options: nosniff`, and `Referrer-Policy: strict-origin-when-cross-origin` on every response. Tests live in `tests/integration/test_new_endpoints.py::TestSecurityHeaders`.
 
 ### Degraded Mode
 
