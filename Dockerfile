@@ -6,6 +6,7 @@ RUN corepack enable && corepack prepare pnpm@9 --activate
 WORKDIR /build
 
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
+COPY frontend/svelte.config.js frontend/vite.config.js ./
 RUN pnpm install --frozen-lockfile
 
 # Client-side key injected via --build-arg from cloudbuild.yaml.
