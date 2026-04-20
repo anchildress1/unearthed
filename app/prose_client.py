@@ -167,11 +167,20 @@ def _build_fallback(args: dict) -> str:
 def _stats_from(mine_data: dict) -> dict:
     """Extract the three MSHA stat fields surfaced on PlantReveal's cost block.
 
-    The MRT table carries fatalities / injuries_lost_time / days_lost
-    pre-aggregated. The UI treats 0 as "none on file" rather than "unknown," so
-    a missing field is safe — the response schema stays stable either way. See
-    ``MineForMeResponse.fatalities`` etc. — ``Field(default=0, ge=0)`` is the
-    other half of the stability contract.
+    Input/output key asymmetry: the Snowflake adapter (``snowflake_client.
+    query_mine_for_subregion``) emits ``injuries`` — shorter, matches the
+    internal prose template's ``args['injuries']`` read — but the public
+    response schema (``MineForMeResponse.injuries_lost_time``) uses the full
+    MSHA column name. This function is the one hop that translates
+    ``injuries`` → ``injuries_lost_time``; every other field passes through
+    with the same key. Keep the mapping here rather than renaming either
+    side: the template reads ``injuries`` in several places and the response
+    schema is a public contract.
+
+    The UI treats 0 as "none on file" rather than "unknown," so a missing
+    field is safe — the response schema stays stable either way. See
+    ``MineForMeResponse.fatalities`` etc. — ``Field(default=0, ge=0)`` is
+    the other half of the stability contract.
     """
     return {
         "fatalities": int(mine_data.get("fatalities") or 0),
