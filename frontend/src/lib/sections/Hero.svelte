@@ -18,6 +18,11 @@
 	let placesReady = $state(false);
 	let predictions = $state([]);
 	let showPredictions = $state(false);
+	// Counts consecutive autocomplete failures so a transient hiccup doesn't
+	// flash a warning under the input, but a sustained outage (quota exceeded,
+	// network dead) does surface instead of staying silent. Resets on success.
+	let predictionsFailures = $state(0);
+	const PREDICTIONS_ERR_THRESHOLD = 2;
 	// Modern (2026) pattern: load the Places classes via importLibrary so we
 	// never reach into `google.maps.places.*` as a global. Cached after first
 	// import.
@@ -79,9 +84,11 @@
 				kept.length, 'predictions kept',
 			);
 			predictions = kept;
+			predictionsFailures = 0;
 		} catch (e) {
 			console.warn('[unearthed] autocomplete fetch failed:', e);
 			predictions = [];
+			predictionsFailures += 1;
 		}
 	}
 
@@ -270,6 +277,8 @@
 				<p class="loading">Following the wire back…</p>
 			{:else if localError || error}
 				<p class="err">{localError || error}</p>
+			{:else if predictionsFailures >= PREDICTIONS_ERR_THRESHOLD}
+				<p class="err">Address suggestions are temporarily unavailable — type the full address and hit trace.</p>
 			{:else}
 				<p class="hint">Your address is never stored.</p>
 			{/if}
