@@ -223,6 +223,6 @@ The test matrix:
 
 ## License
 
-MIT — see [`LICENSE`](./LICENSE).
+Polyform Shield 1.0.0 — see [`LICENSE`](./LICENSE).
 
 Built with care and with the help of Claude (Anthropic) for the DEV Weekend Challenge 2026 — Earth Day Edition.
