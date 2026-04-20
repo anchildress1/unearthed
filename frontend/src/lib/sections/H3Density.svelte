@@ -422,11 +422,19 @@
 </SectionRail>
 
 <style>
+	/* Matted frame — visual parity with MapSection (N° 03). The `.glass`
+	   utility supplies the 1px border, radius, and backdrop blur; the
+	   padding insets the map tiles so the frame reads as chrome around the
+	   map. `max-width` caps the section at editorial width so the N° 03
+	   route map and the N° 04 density map share the same outer silhouette
+	   — scrolling between them shouldn't feel like the chrome shifted. */
 	.map-wrap {
 		position: relative;
 		width: 100%;
+		max-width: min(1080px, 100%);
 		overflow: hidden;
-		padding: 0;
+		padding: clamp(0.6rem, 1.2vw, 1rem);
+		margin: 1rem 0 0;
 	}
 
 	.map-container {
