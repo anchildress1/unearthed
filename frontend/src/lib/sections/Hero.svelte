@@ -229,6 +229,18 @@
 
 		<div class="input-group glass">
 			<div class="search-wrap">
+				<!--
+					Plain text input + button list below — intentionally NOT a
+					WAI-ARIA combobox/listbox. The full combobox pattern requires
+					arrow-key navigation, active-descendant tracking, stable
+					option ids, and live aria-selected updates; shipping the
+					roles without the keyboard contract fails axe's combobox
+					rule and misleads screen readers. Tab order already carries
+					the user from input → trace button → each prediction
+					button, and Enter activates whichever button has focus, so
+					the simpler semantics give keyboard users a working path
+					with no ARIA debt.
+				-->
 				<form class="form" onsubmit={handleSubmit}>
 					<input
 						id="address"
@@ -242,10 +254,6 @@
 						onblur={() => setTimeout(() => (showPredictions = false), 150)}
 						maxlength="200"
 						autocomplete="off"
-						role="combobox"
-						aria-autocomplete="list"
-						aria-expanded={showPredictions && predictions.length > 0}
-						aria-controls="address-predictions"
 						disabled={loading}
 					/>
 					<button class="primary" type="submit" disabled={loading}>
@@ -253,7 +261,7 @@
 					</button>
 				</form>
 				{#if showPredictions && predictions.length > 0}
-					<ul id="address-predictions" class="predictions" role="listbox">
+					<ul class="predictions" aria-label="Address suggestions">
 						{#each predictions as s}
 							{@const pred = s.placePrediction}
 							{@const main = pred.mainText?.toString?.() ?? pred.mainText?.text ?? ''}
@@ -264,8 +272,6 @@
 									class="prediction"
 									onmousedown={(e) => e.preventDefault()}
 									onclick={() => selectPrediction(pred)}
-									role="option"
-									aria-selected="false"
 								>
 									<span class="pred-main">{main}</span>
 									{#if secondary}<span class="pred-sub">{secondary}</span>{/if}
