@@ -9,27 +9,30 @@ DOMAIN="unearthed.anchildress1.dev"
 SECRET_NAME="unearthed-snowflake-key"
 SA_NAME="unearthed-run"
 
+# Banner rule — used for boxed headers and the closing summary.
+readonly RULE="═══════════════════════════════════════════════════════════"
+
 # ─── Preflight ──────────────────────────────────────────────────────────────────
-command -v gcloud &>/dev/null || { echo "ERROR: gcloud CLI not found"; exit 1; }
+command -v gcloud &>/dev/null || { echo "ERROR: gcloud CLI not found" >&2; exit 1; }
 
 # Read VITE_GOOGLE_MAPS_KEY from frontend/.env when not already exported
 if [[ -z "${VITE_GOOGLE_MAPS_KEY:-}" ]] && [[ -f frontend/.env ]]; then
   VITE_GOOGLE_MAPS_KEY=$(grep 'VITE_GOOGLE_MAPS_KEY=' frontend/.env | cut -d= -f2)
 fi
 [[ -n "${VITE_GOOGLE_MAPS_KEY:-}" ]] || {
-  echo "ERROR: VITE_GOOGLE_MAPS_KEY not set and frontend/.env not found"; exit 1;
+  echo "ERROR: VITE_GOOGLE_MAPS_KEY not set and frontend/.env not found" >&2; exit 1;
 }
 
 PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null)}"
-[[ -n "$PROJECT_ID" ]] || { echo "ERROR: No GCP project. Run: gcloud config set project <ID>"; exit 1; }
+[[ -n "$PROJECT_ID" ]] || { echo "ERROR: No GCP project. Run: gcloud config set project <ID>" >&2; exit 1; }
 
 KEY_FILE="${KEY_FILE:-snowflake_prod_key.p8}"
-[[ -f "$KEY_FILE" ]] || { echo "ERROR: Key file not found: ${KEY_FILE}"; exit 1; }
+[[ -f "$KEY_FILE" ]] || { echo "ERROR: Key file not found: ${KEY_FILE}" >&2; exit 1; }
 
-echo "═══════════════════════════════════════════════════════════"
+echo "${RULE}"
 echo "  ${SERVICE_NAME} → ${PROJECT_ID} / ${REGION}"
 echo "  Domain: ${DOMAIN}"
-echo "═══════════════════════════════════════════════════════════"
+echo "${RULE}"
 
 # ─── Enable required APIs ───────────────────────────────────────────────────────
 echo "» Enabling GCP APIs..."
@@ -156,7 +159,7 @@ for i in $(seq 1 $RETRIES); do
     echo "  PASS — service is healthy"
     break
   fi
-  if [ "$i" -eq "$RETRIES" ]; then
+  if [[ "$i" -eq "$RETRIES" ]]; then
     echo "  WARN — health check did not pass after ${RETRIES} attempts"
     echo "  The container may still be starting. Check logs:"
     echo "    gcloud run services logs read ${SERVICE_NAME} --region=${REGION} --limit=20"
@@ -167,7 +170,7 @@ for i in $(seq 1 $RETRIES); do
 done
 
 echo ""
-echo "═══════════════════════════════════════════════════════════"
+echo "${RULE}"
 echo "  Cloud Run : ${SERVICE_URL}"
 echo "  Domain    : https://${DOMAIN}"
-echo "═══════════════════════════════════════════════════════════"
+echo "${RULE}"
