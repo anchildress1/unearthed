@@ -64,9 +64,9 @@ fmt:
 fallbacks:
 	uv run python -m scripts.generate_fallbacks
 
-# Build Docker image
+# Build Docker image (reads VITE_GOOGLE_MAPS_KEY from frontend/.env)
 docker-build:
-	docker build -t unearthed .
+	docker build --build-arg VITE_GOOGLE_MAPS_KEY=$$(grep VITE_GOOGLE_MAPS_KEY frontend/.env | cut -d= -f2) -t unearthed .
 
 # Run Docker container locally
 docker-run:
