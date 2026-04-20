@@ -76,6 +76,13 @@ app = FastAPI(
     openapi_url="/openapi.json" if _enable_docs else None,
 )
 
+
+@app.get("/health")
+def health():
+    """Liveness probe for Cloud Run and smoke tests."""
+    return {"status": "ok"}
+
+
 _cors_origins = os.getenv("CORS_ORIGINS", "").split(",") if os.getenv("CORS_ORIGINS") else ["*"]
 
 app.add_middleware(

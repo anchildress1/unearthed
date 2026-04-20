@@ -1,8 +1,19 @@
-"""Integration tests for /h3-density and /emissions endpoints."""
+"""Integration tests for /health, /h3-density, and /emissions endpoints."""
 
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+
+class TestHealth:
+    def test_health_returns_ok(self, client):
+        resp = client.get("/health")
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "ok"}
+
+    def test_health_post_method_not_allowed(self, client):
+        resp = client.post("/health")
+        assert resp.status_code == 405
 
 
 def _h3_cursor(cells=None, totals=None):
