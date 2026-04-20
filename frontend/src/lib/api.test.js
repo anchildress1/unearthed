@@ -6,7 +6,15 @@ function okResponse(body) {
 }
 
 function errResponse(status, body = {}) {
-	return { ok: false, status, json: async () => body };
+	// parseErrorBody reads the response body as text first so non-JSON
+	// bodies (e.g. a Cloud Run HTML 502 page) surface in the console before
+	// being dropped — mirror that contract in the mock.
+	return {
+		ok: false,
+		status,
+		text: async () => JSON.stringify(body),
+		json: async () => body,
+	};
 }
 
 describe('fetchMineForMe', () => {
@@ -33,10 +41,14 @@ describe('fetchMineForMe', () => {
 		await expect(fetchMineForMe('AKGD')).rejects.toThrow('no plants in subregion');
 	});
 
-	it('falls back to status code when server JSON is unparseable', async () => {
+	it('falls back to status code when server body is unparseable', async () => {
 		fetch.mockResolvedValueOnce({
 			ok: false,
 			status: 502,
+			// Non-JSON body (e.g. Cloud Run's HTML 502 page) — parseErrorBody
+			// should still surface the status code rather than throwing on
+			// the parse failure itself.
+			text: async () => '<html><body>Bad Gateway</body></html>',
 			json: async () => { throw new Error('bad json'); },
 		});
 		await expect(fetchMineForMe('NWPP')).rejects.toThrow('Failed to load mine data (502)');
