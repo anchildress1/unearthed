@@ -36,14 +36,24 @@ export const emissionsJimBridger = {
 	year: 2023,
 };
 
+// Mirrors the /h3-density response shape from app/main.py:269-276.
+// Cells come out of Snowflake with `h3` / `lat` / `lng` / `total` /
+// `active` / `abandoned`, and the envelope also carries `totals` and
+// `summary_degraded`. An out-of-date fixture lets density-plotting logic
+// (H3Density.svelte's filteredCells, totalRange, renderHexes) render on
+// the wrong keys and pass the suite without exercising the real render
+// path — earlier revisions of this fixture used `count` / `centroid` and
+// silently masked schema drift.
 export const h3DensityNWPP = {
 	resolution: 4,
 	state: 'WY',
 	cells: [
-		{ h3: '841e26dffffffff', count: 12, centroid: [43.7, -105.2] },
-		{ h3: '841e267ffffffff', count: 8, centroid: [43.8, -105.4] },
+		{ h3: '841e26dffffffff', lat: 43.7, lng: -105.2, total: 12, active: 3, abandoned: 9 },
+		{ h3: '841e267ffffffff', lat: 43.8, lng: -105.4, total: 8, active: 2, abandoned: 6 },
 	],
+	totals: { total: 20, active: 5, abandoned: 15 },
 	summary: 'Coal production in the NWPP subregion clusters tightly in the Powder River Basin of northeast Wyoming.',
+	summary_degraded: false,
 };
 
 /**
