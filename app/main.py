@@ -1,6 +1,10 @@
 import logging
 import os
 import re
+import threading
+from collections import OrderedDict
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import snowflake.connector
@@ -19,6 +23,7 @@ from app.snowflake_client import (
     load_fallback_data,
     query_cortex_analyst,
     query_mine_for_subregion,
+    summarize_analyst_results,
 )
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -28,9 +33,44 @@ logger = logging.getLogger(__name__)
 
 _enable_docs = os.getenv("ENABLE_DOCS", "").lower() in ("1", "true")
 
+
+def _prewarm_prose_cache() -> None:
+    """Pre-warm the prose cache for all fallback subregions in a background thread.
+
+    Each subregion fires a Snowflake query + Cortex Complete call, so the first
+    visitor to any subregion gets a cached response instead of a 4-27s wait.
+    Bails out entirely after the first failure — if Snowflake is unreachable
+    there is no point hammering it 19 times.
+    """
+    from app.snowflake_client import _VALID_FALLBACK_IDS
+
+    for subregion_id in _VALID_FALLBACK_IDS:
+        try:
+            mine_data = query_mine_for_subregion(subregion_id)
+            if mine_data:
+                mine_data = {**mine_data, "subregion_id": subregion_id}
+                generate_prose(mine_data)
+                logger.info("Pre-warmed prose cache for %s", subregion_id)
+        except Exception:
+            logger.warning(
+                "Pre-warm failed on %s — aborting remaining subregions",
+                subregion_id,
+                exc_info=True,
+            )
+            return
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
+    if os.getenv("PREWARM_PROSE", "").lower() in ("1", "true"):
+        threading.Thread(target=_prewarm_prose_cache, daemon=True).start()
+    yield
+
+
 app = FastAPI(
     title="unearthed",
     version="0.1.0",
+    lifespan=_lifespan,
     docs_url="/docs" if _enable_docs else None,
     redoc_url="/redoc" if _enable_docs else None,
     openapi_url="/openapi.json" if _enable_docs else None,
@@ -51,24 +91,18 @@ _STATIC_DIR = _PROJECT_ROOT / "static"
 if _STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
+
 _H3_DENSITY_SQL = """
-WITH clean AS (
-    SELECT
-        TRY_TO_DOUBLE(REPLACE(LATITUDE, '"', '')) AS lat_num,
-        TRY_TO_DOUBLE(REPLACE(LONGITUDE, '"', '')) AS lng_num,
-        TRIM(REPLACE(CURRENT_MINE_STATUS, '"', '')) AS status_txt,
-        TRIM(REPLACE(STATE, '"', '')) AS state_txt,
-        REPLACE(COAL_METAL_IND, '"', '') AS coal_txt
-    FROM UNEARTHED_DB.RAW.MSHA_MINES
-)
 SELECT
-    H3_LATLNG_TO_CELL_STRING(lat_num, lng_num, {resolution}) AS h3,
-    AVG(lat_num) AS lat,
-    AVG(lng_num) AS lng,
+    H3_LATLNG_TO_CELL_STRING(LATITUDE, LONGITUDE, %(resolution)s) AS h3,
+    AVG(LATITUDE) AS lat,
+    AVG(LONGITUDE) AS lng,
     COUNT(*) AS total,
-    SUM(CASE WHEN status_txt = 'Active' THEN 1 ELSE 0 END) AS active,
-    SUM(CASE WHEN status_txt != 'Active' THEN 1 ELSE 0 END) AS abandoned
-FROM clean
+    SUM(CASE WHEN TRIM(CURRENT_MINE_STATUS) = 'Active'
+        THEN 1 ELSE 0 END) AS active,
+    SUM(CASE WHEN TRIM(CURRENT_MINE_STATUS) != 'Active'
+        THEN 1 ELSE 0 END) AS abandoned
+FROM UNEARTHED_DB.RAW.MSHA_MINES
 -- Bounding box: continental US + mainland Alaska. Rejects (0,0) null-island
 -- entries and stray ocean coordinates MSHA's registry occasionally ships when
 -- a mine's address was never geocoded cleanly — without this, resolution-5
@@ -77,11 +111,11 @@ FROM clean
 -- this box on purpose: MSHA has no recorded coal mines there, and widening the
 -- filter to wrap the dateline would re-admit the very ocean outliers we're
 -- trying to drop.
-WHERE coal_txt = 'C'
-    AND lat_num IS NOT NULL
-    AND lng_num IS NOT NULL
-    AND lat_num BETWEEN 24 AND 72
-    AND lng_num BETWEEN -180 AND -65
+WHERE COAL_METAL_IND = 'C'
+    AND LATITUDE IS NOT NULL
+    AND LONGITUDE IS NOT NULL
+    AND LATITUDE BETWEEN 24 AND 72
+    AND LONGITUDE BETWEEN -180 AND -65
     {state_clause}
 GROUP BY h3
 HAVING total >= {min_mines}
@@ -97,26 +131,25 @@ ORDER BY total DESC
 # filter with the density query is fine because that IS a scoping choice the
 # reader asked for; the bounding-box and clustering filters are not.
 _H3_REGISTRY_TOTALS_SQL = """
-WITH clean AS (
-    SELECT
-        TRIM(REPLACE(CURRENT_MINE_STATUS, '"', '')) AS status_txt,
-        TRIM(REPLACE(STATE, '"', '')) AS state_txt,
-        REPLACE(COAL_METAL_IND, '"', '') AS coal_txt
-    FROM UNEARTHED_DB.RAW.MSHA_MINES
-)
 SELECT
     COUNT(*) AS total,
-    SUM(CASE WHEN status_txt = 'Active' THEN 1 ELSE 0 END) AS active,
-    SUM(CASE WHEN status_txt != 'Active' THEN 1 ELSE 0 END) AS abandoned
-FROM clean
-WHERE coal_txt = 'C'
+    SUM(CASE WHEN TRIM(CURRENT_MINE_STATUS) = 'Active' THEN 1 ELSE 0 END) AS active,
+    SUM(CASE WHEN TRIM(CURRENT_MINE_STATUS) != 'Active' THEN 1 ELSE 0 END) AS abandoned
+FROM UNEARTHED_DB.RAW.MSHA_MINES
+WHERE COAL_METAL_IND = 'C'
     {state_clause}
 """
 
 _STATE_CODE_PATTERN = re.compile(r"^[A-Za-z]{2}$")
 
 
-@app.get("/h3-density", responses={400: {"description": "Invalid resolution (must be 2-7)"}})
+@app.get(
+    "/h3-density",
+    responses={
+        400: {"description": "Invalid resolution (must be 2-7)"},
+        503: {"description": "Snowflake unavailable"},
+    },
+)
 def h3_density(resolution: int = 4, state: str | None = None):
     """H3 hexbin mine density — active vs abandoned extraction footprint.
 
@@ -126,35 +159,39 @@ def h3_density(resolution: int = 4, state: str | None = None):
     """
     if resolution < 2 or resolution > 7:
         raise HTTPException(status_code=400, detail="Resolution must be 2-7")
+
     from app.config import settings
 
     state_clause = ""
-    bind: dict[str, object] = {}
+    bind: dict[str, object] = {"resolution": int(resolution)}
     min_mines = 5
     if state:
         if not _STATE_CODE_PATTERN.match(state):
             raise HTTPException(status_code=400, detail="State must be a 2-letter code")
-        state_clause = "AND state_txt = %(state)s"
+        state_clause = "AND STATE = %(state)s"
         bind["state"] = state.upper()
         min_mines = 1
 
     sql = _H3_DENSITY_SQL.format(
-        resolution=int(resolution),
         state_clause=state_clause,
         min_mines=min_mines,
     )
 
     totals_sql = _H3_REGISTRY_TOTALS_SQL.format(state_clause=state_clause)
 
-    conn = _get_connection(role=settings.snowflake_readonly_role)
-    cur = conn.cursor(snowflake.connector.DictCursor)
     try:
-        cur.execute(sql, bind)
-        rows = [dict(r) for r in cur.fetchall()]
-        cur.execute(totals_sql, bind)
-        totals_row = cur.fetchone() or {}
-    finally:
-        cur.close()
+        conn = _get_connection(role=settings.snowflake_readonly_role)
+        cur = conn.cursor(snowflake.connector.DictCursor)
+        try:
+            cur.execute(sql, bind)
+            rows = [dict(r) for r in cur.fetchall()]
+            cur.execute(totals_sql, bind)
+            totals_row = cur.fetchone() or {}
+        finally:
+            cur.close()
+    except Exception:
+        logger.warning("H3 density query failed for resolution %s", resolution, exc_info=True)
+        raise HTTPException(status_code=503, detail="Snowflake unavailable")
 
     # Registry totals come from the unfiltered coal-mine registry (optionally
     # scoped to the requested state). Hex cells may drop rows — null coords,
@@ -200,57 +237,101 @@ def h3_density(resolution: int = 4, state: str | None = None):
 
 
 _EMISSIONS_SQL = """
-SELECT
-    SUM(CASE WHEN t.VARIABLE_NAME = 'Carbon Dioxide Mass, Short Tons (Quarterly)'
-        THEN t.VALUE ELSE 0 END) AS co2_tons,
-    SUM(CASE WHEN t.VARIABLE_NAME = 'Sulfur Dioxide Mass, Short Tons (Quarterly)'
-        THEN t.VALUE ELSE 0 END) AS so2_tons,
-    SUM(CASE WHEN t.VARIABLE_NAME = 'Nitrogen Oxide Mass, Short Tons (Quarterly)'
-        THEN t.VALUE ELSE 0 END) AS nox_tons
-FROM SNOWFLAKE_PUBLIC_DATA_FREE.PUBLIC_DATA_FREE.EPA_CAM_PLANT_UNIT_INDEX p
-JOIN SNOWFLAKE_PUBLIC_DATA_FREE.PUBLIC_DATA_FREE.EPA_CAM_TIMESERIES t
-    ON p.PLANT_UNIT_ID = t.PLANT_UNIT_ID
-WHERE p.FACILITY_NAME ILIKE %(plant_name)s
-    AND p.PRIMARY_FUEL_INFO = 'Coal'
-    AND t.VARIABLE_NAME IN (
-        'Carbon Dioxide Mass, Short Tons (Quarterly)',
-        'Sulfur Dioxide Mass, Short Tons (Quarterly)',
-        'Nitrogen Oxide Mass, Short Tons (Quarterly)'
-    )
-    AND t.DATE >= '2020-01-01'
+SELECT CO2_TONS, SO2_TONS, NOX_TONS
+FROM UNEARTHED_DB.MRT.EMISSIONS_BY_PLANT
+WHERE FACILITY_NAME LIKE %(plant_prefix)s
+LIMIT 1
 """
 
 
-@app.get("/emissions/{plant_name}")
+def _strip_paren_suffix(name: str) -> str:
+    """Strip trailing parenthetical state suffix — 'Cumberland (TN)' → 'Cumberland'.
+
+    EIA plant names carry these; EPA's FACILITY_NAME never does.
+    """
+    idx = name.rfind("(")
+    if idx > 0 and name.rstrip().endswith(")"):
+        return name[:idx].rstrip()
+    return name
+
+
+_CACHE_MAXSIZE = 256
+
+_emissions_cache: OrderedDict[str, dict] = OrderedDict()
+_emissions_lock = threading.Lock()
+
+
+@app.get(
+    "/emissions/{plant_name}",
+    responses={503: {"description": "Snowflake unavailable"}},
+)
 def plant_emissions(plant_name: str):
-    """EPA emissions data for a plant — from Snowflake Marketplace (free)."""
+    """EPA emissions data for a plant — pre-aggregated from Snowflake Marketplace."""
+    cache_key = _strip_paren_suffix(plant_name).upper()
+    with _emissions_lock:
+        if cache_key in _emissions_cache:
+            _emissions_cache.move_to_end(cache_key)
+            return _emissions_cache[cache_key]
+
     from app.config import settings
 
-    conn = _get_connection(role=settings.snowflake_readonly_role)
-    cur = conn.cursor(snowflake.connector.DictCursor)
     try:
-        cur.execute(_EMISSIONS_SQL, {"plant_name": plant_name + "%"})
-        row = cur.fetchone()
-    finally:
-        cur.close()
+        conn = _get_connection(role=settings.snowflake_readonly_role)
+        cur = conn.cursor(snowflake.connector.DictCursor)
+        try:
+            cur.execute(_EMISSIONS_SQL, {"plant_prefix": cache_key + "%"})
+            row = cur.fetchone()
+        finally:
+            cur.close()
+    except Exception:
+        logger.warning("Emissions query failed", exc_info=True)
+        raise HTTPException(status_code=503, detail="Snowflake unavailable")
     if not row or row.get("CO2_TONS") is None:
         return {"plant": plant_name, "co2_tons": None, "so2_tons": None, "nox_tons": None}
-    return {
+    result = {
         "plant": plant_name,
         "co2_tons": float(row["CO2_TONS"] or 0),
         "so2_tons": float(row["SO2_TONS"] or 0),
         "nox_tons": float(row["NOX_TONS"] or 0),
         "source": "EPA Clean Air Markets via Snowflake Marketplace",
     }
+    with _emissions_lock:
+        _emissions_cache[cache_key] = result
+        if len(_emissions_cache) > _CACHE_MAXSIZE:
+            _emissions_cache.popitem(last=False)
+    return result
 
 
-DEFAULT_SUGGESTIONS = [
+_GENERIC_SUGGESTIONS = [
     "How much has Bailey Mine produced since 2020?",
     "What other plants buy from Consol Pennsylvania Coal Company?",
     "Is Bailey Mine still active?",
     "What is the total coal tonnage for SRVC?",
     "Who is the largest coal supplier in Wyoming?",
 ]
+
+_mine_context: OrderedDict[str, dict] = OrderedDict()
+_mine_context_lock = threading.Lock()
+
+
+def _suggestions_for(subregion_id: str | None) -> list[str]:
+    """Build contextual suggestions from cached mine data for this subregion."""
+    if not subregion_id:
+        return _GENERIC_SUGGESTIONS
+    with _mine_context_lock:
+        ctx = _mine_context.get(subregion_id.upper())
+    if not ctx:
+        return _GENERIC_SUGGESTIONS
+    mine = ctx["mine"]
+    plant = ctx["plant"]
+    state = ctx["mine_state"]
+    return [
+        f"How much has {mine} produced since 2020?",
+        f"Which mines supplied {plant} in 2024?",
+        f"Is {mine} still active?",
+        f"What is the total coal tonnage for {subregion_id.upper()}?",
+        f"Who is the largest coal supplier in {state}?",
+    ]
 
 
 @app.post(
@@ -267,28 +348,33 @@ DEFAULT_SUGGESTIONS = [
     },
 )
 def mine_for_me(req: MineForMeRequest):
+    subregion = req.subregion_id.upper()
     degraded = False
     mine_data = None
 
     try:
-        mine_data = query_mine_for_subregion(req.subregion_id)
+        mine_data = query_mine_for_subregion(subregion)
     except Exception:
-        logger.exception("Snowflake query failed, trying fallback")
+        logger.warning("Snowflake query failed, trying fallback", exc_info=True)
         degraded = True
 
     if not mine_data:
-        mine_data = load_fallback_data(req.subregion_id)
+        mine_data = load_fallback_data(subregion)
         degraded = True
 
     if not mine_data:
         raise HTTPException(
             status_code=404,
-            detail=f"No coal data available for subregion '{req.subregion_id}'.",
+            detail=f"No coal data available for subregion '{subregion}'.",
         )
 
-    mine_data = {**mine_data, "subregion_id": req.subregion_id}
-    prose, gemini_degraded, stats = generate_prose(mine_data)
-    degraded = degraded or gemini_degraded
+    mine_data = {**mine_data, "subregion_id": subregion}
+    with _mine_context_lock:
+        _mine_context[subregion] = mine_data
+        if len(_mine_context) > _CACHE_MAXSIZE:
+            _mine_context.popitem(last=False)
+    prose, prose_degraded, stats = generate_prose(mine_data)
+    degraded = degraded or prose_degraded
 
     return MineForMeResponse(
         mine=mine_data["mine"],
@@ -304,7 +390,7 @@ def mine_for_me(req: MineForMeRequest):
         tons=mine_data["tons"],
         tons_year=mine_data["tons_year"],
         prose=prose,
-        subregion_id=req.subregion_id,
+        subregion_id=subregion,
         degraded=degraded,
         fatalities=stats["fatalities"],
         injuries_lost_time=stats["injuries_lost_time"],
@@ -327,7 +413,7 @@ def ask(req: AskRequest):
             answer="",
             error="The data assistant is temporarily unavailable. "
             "Try one of the suggested questions.",
-            suggestions=DEFAULT_SUGGESTIONS,
+            suggestions=_suggestions_for(req.subregion_id),
         )
 
     results = None
@@ -362,7 +448,13 @@ def ask(req: AskRequest):
         # the signal is reviewable in logs without polluting info output.
         logger.debug("Cortex Analyst returned no SQL for question: %s", question)
 
-    suggestions = result.get("suggestions") or DEFAULT_SUGGESTIONS
+    if results and not result.get("answer"):
+        try:
+            answer = summarize_analyst_results(req.question, results)
+        except Exception:
+            logger.warning("Analyst summary generation failed", exc_info=True)
+
+    suggestions = result.get("suggestions") or _suggestions_for(req.subregion_id)
 
     return AskResponse(
         answer=answer,

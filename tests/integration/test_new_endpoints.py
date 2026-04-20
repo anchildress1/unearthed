@@ -92,16 +92,16 @@ class TestH3Density:
         totals_sql, totals_bind = mock_cursor.execute.call_args_list[1][0]
         # Require the exact filter, not just "STATE appears somewhere" —
         # otherwise a stray column named STATE_TXT_OPERATOR would pass.
-        assert "state_txt = %(state)s" in density_sql
+        assert "STATE = %(state)s" in density_sql
         assert "HAVING total >= 1" in density_sql
-        assert density_bind == {"state": "WV"}
+        assert density_bind == {"resolution": 5, "state": "WV"}
         # The registry-totals query must scope to the same state but must
         # NOT re-apply the bounding box / HAVING filters — those drop rows
         # the headline count should still include.
-        assert "state_txt = %(state)s" in totals_sql
-        assert "lat_num BETWEEN" not in totals_sql
+        assert "STATE = %(state)s" in totals_sql
+        assert "LATITUDE BETWEEN" not in totals_sql
         assert "HAVING" not in totals_sql
-        assert totals_bind == {"state": "WV"}
+        assert totals_bind == {"resolution": 5, "state": "WV"}
 
     def test_h3_invalid_state_returns_400(self, client):
         resp = client.get("/h3-density?state=Kentucky")
@@ -239,9 +239,9 @@ class TestH3Density:
         assert resp.status_code == 200
         density_sql, _ = mock_cursor.execute.call_args_list[0][0]
         totals_sql, _ = mock_cursor.execute.call_args_list[1][0]
-        assert "lat_num BETWEEN 24 AND 72" in density_sql
-        assert "lng_num BETWEEN -180 AND -65" in density_sql
-        assert "lat_num BETWEEN" not in totals_sql
+        assert "LATITUDE BETWEEN 24 AND 72" in density_sql
+        assert "LONGITUDE BETWEEN -180 AND -65" in density_sql
+        assert "LATITUDE BETWEEN" not in totals_sql
 
     @patch("app.main.generate_h3_summary")
     @patch("app.main._get_connection")
@@ -299,3 +299,92 @@ class TestEmissions:
             mock_conn.return_value.cursor.return_value = mock_cursor
             resp = client.get("/emissions/Test")
         assert resp.status_code == 200
+
+
+class TestEmissionsCache:
+    def test_cache_hit_skips_db(self, client):
+        from app.main import _emissions_cache
+
+        _emissions_cache["CROSS"] = {
+            "plant": "Cross",
+            "co2_tons": 999.0,
+            "so2_tons": 1.0,
+            "nox_tons": 2.0,
+        }
+        try:
+            resp = client.get("/emissions/Cross")
+            assert resp.status_code == 200
+            assert resp.json()["co2_tons"] == pytest.approx(999.0)
+        finally:
+            _emissions_cache.pop("CROSS", None)
+
+    def test_cache_key_case_insensitive(self, client):
+        from app.main import _emissions_cache
+
+        _emissions_cache["MITCHELL"] = {
+            "plant": "Mitchell",
+            "co2_tons": 500.0,
+            "so2_tons": 10.0,
+            "nox_tons": 5.0,
+        }
+        try:
+            resp = client.get("/emissions/mitchell")
+            assert resp.status_code == 200
+            assert resp.json()["co2_tons"] == pytest.approx(500.0)
+        finally:
+            _emissions_cache.pop("MITCHELL", None)
+
+    @patch("app.main._get_connection")
+    def test_cache_populated_on_miss(self, mock_conn, client):
+        from app.main import _emissions_cache
+
+        _emissions_cache.pop("NEWPLANT", None)
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = {"CO2_TONS": 42.0, "SO2_TONS": 1.0, "NOX_TONS": 1.0}
+        mock_conn.return_value.cursor.return_value = mock_cursor
+
+        client.get("/emissions/NewPlant")
+        assert "NEWPLANT" in _emissions_cache
+        assert _emissions_cache["NEWPLANT"]["co2_tons"] == pytest.approx(42.0)
+        _emissions_cache.pop("NEWPLANT", None)
+
+    @patch("app.main._get_connection")
+    def test_bind_param_prefix_uppercased(self, mock_conn, client):
+        """Plant name is uppercased and used as a LIKE prefix to match EPA FACILITY_NAME."""
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = None
+        mock_conn.return_value.cursor.return_value = mock_cursor
+
+        client.get("/emissions/Mitchell")
+        bind = mock_cursor.execute.call_args[0][1]
+        assert bind["plant_prefix"] == "MITCHELL%"
+
+    @patch("app.main._get_connection")
+    def test_parenthetical_suffix_stripped(self, mock_conn, client):
+        """EIA state suffixes like '(TN)' are stripped before matching EPA names."""
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = None
+        mock_conn.return_value.cursor.return_value = mock_cursor
+
+        client.get("/emissions/Cumberland (TN)")
+        bind = mock_cursor.execute.call_args[0][1]
+        assert bind["plant_prefix"] == "CUMBERLAND%"
+
+    @patch("app.main._get_connection")
+    def test_cache_bounded(self, mock_conn, client):
+        """Cache evicts the oldest entry when it exceeds _CACHE_MAXSIZE."""
+        from app.main import _CACHE_MAXSIZE, _emissions_cache
+
+        _emissions_cache.clear()
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = {"CO2_TONS": 1.0, "SO2_TONS": 0, "NOX_TONS": 0}
+        mock_conn.return_value.cursor.return_value = mock_cursor
+
+        try:
+            for i in range(_CACHE_MAXSIZE + 1):
+                client.get(f"/emissions/PLANT{i}")
+            assert len(_emissions_cache) == _CACHE_MAXSIZE
+            assert "PLANT0" not in _emissions_cache
+            assert f"PLANT{_CACHE_MAXSIZE}" in _emissions_cache
+        finally:
+            _emissions_cache.clear()

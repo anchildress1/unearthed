@@ -1,6 +1,7 @@
 """Generate mine prose using Snowflake Cortex Complete.
 
-Direct SQL pulls fatality/injury stats from MSHA_ACCIDENTS by MINE_ID.
+Safety stats (fatalities, injuries, days lost) arrive pre-aggregated
+in the mine_data dict from the MINE_PLANT_FOR_SUBREGION MRT table.
 Cortex Complete turns those numbers into prose.
 """
 
@@ -10,65 +11,17 @@ from app.snowflake_client import _get_connection
 
 logger = logging.getLogger(__name__)
 
-_prose_cache: dict[str, tuple[str, bool]] = {}
+_prose_cache: dict[str, tuple[str, bool, dict]] = {}
 
-_STATS_SQL = """
-SELECT
-    COUNT(*) AS total_incidents,
-    SUM(CASE WHEN TRIM(REPLACE(DEGREE_INJURY, '"', '')) = 'FATALITY'
-        THEN 1 ELSE 0 END) AS fatalities,
-    SUM(CASE WHEN TRIM(REPLACE(DEGREE_INJURY, '"', '')) LIKE '%%DAYS%%'
-        THEN 1 ELSE 0 END) AS injuries_lost_time,
-    SUM(TRY_TO_NUMBER(REPLACE(DAYS_LOST, '"', ''))) AS total_days_lost
-FROM UNEARTHED_DB.RAW.MSHA_ACCIDENTS
-WHERE TRY_TO_NUMBER(REPLACE(MINE_ID, '"', '')) = %(mine_id)s
-    AND REPLACE(COAL_METAL_IND, '"', '') = 'C'
-"""
+_COMPLETE_PROMPT = """\
+{plant_name} ({plant_operator}) received {tons} tons of coal in {tons_year} from \
+{mine_name}, a {mine_type} mine ({mine_operator}) in {mine_county} County, {mine_state}. \
+Safety record: {fatalities} deaths, {injuries} lost-time injuries, {days_lost} days lost.
 
-_COMPLETE_PROMPT = """Write a short data memorial—three paragraphs, 1-2 sentences
-each, blank line between—for a US resident who just learned where their electricity
-actually comes from.
-
-FACTS (do not quote verbatim; weave them into prose)
-Plant: {plant_name}, operated by {plant_operator}.
-Source mine: {mine_name}, a {mine_type} mine operated by {mine_operator} in
-{mine_county} County, {mine_state}.
-Shipment: in {tons_year}, the plant received {tons:,} tons of coal from this mine.
-This tonnage is the most recent full year of public data, not a live feed.
-Federal mine safety record (MSHA, cumulative from roughly 1983 to present, not a
-single year):
-  incidents: {incidents}
-  workers injured badly enough to miss shifts: {injuries}
-  workdays lost to injury: {days_lost}
-  workers killed: {fatalities}
-
-VOICE
-Bare facts, flat sentences. No hedging, no argument, no apology, no hope.
-Verbs attach to the actor—the plant burns, the mine shipped, workers died.
-Never blame the coal: coal doesn't act, burners do. Use past tense for the
-shipment ("shipped", "burned", "received"); present tense for the grid
-relationship. Do not use the words "still", "continues to", or "keeps"—they
-imply the reader expected the activity to have stopped.
-
-Between the deaths and the reader's electricity, no bridging phrase. Reject
-"part of what", "helped power", "contributed to", "was the cost of", "helped
-produce". Two flat facts, one period between them. The reader supplies the
-connection.
-
-If a number is zero, omit it entirely. No acronyms, no markdown, no headers,
-no bullets, no paragraph labels. Em-dashes are tight ("word—word"), never
-"word — word".
-
-GOAL
-Build from facts to emotion. Open with the grid relationship—plant, operator,
-the reader's electricity—in plain present tense. Move to the shipment: the
-mine, the tonnage, where it came from, in past tense anchored to the year.
-Close on the human cost—the injuries, then the fatalities as a short bare
-sentence of their own, then one flat fact about the reader's grid next to it.
-The arc is concrete → scale → gut punch. Never lead with the deaths; let the
-earlier facts do the work of setting them up so the final sentence lands.
-Write prose that lets the numbers land; do not restate them as bullets.
-"""
+Write a single paragraph, 3-5 sentences. This is a eulogy for the land and the \
+workers — not a report. Name the plant, name the mine, say what it cost in human \
+life. If a number is zero, leave it out entirely. Plain language, no hedging, no \
+markdown. End on the reader: their lights stayed on because of this."""
 
 _FALLBACK_NO_DATA = "This mine ships coal to your power grid. The earth does not grow back."
 
@@ -167,7 +120,7 @@ def generate_h3_summary(
         cur = conn.cursor()
         try:
             cur.execute(
-                "SELECT SNOWFLAKE.CORTEX.COMPLETE('openai-gpt-5.2', %s)",
+                "SELECT SNOWFLAKE.CORTEX.COMPLETE('llama3.3-70b', %s)",
                 (prompt,),
             )
             row = cur.fetchone()
@@ -191,142 +144,106 @@ def generate_h3_summary(
     return fallback, True
 
 
-def _build_fallback(*, fatalities: int, injuries: int, days_lost: int) -> str:
-    """Construct a deterministic fallback sentence—injuries first, fatalities second.
-
-    Only emits clauses for non-zero numbers so we never read "0 workers died."
-    All counts are cumulative across MSHA's full accident record (roughly 1983 to
-    present), so the sentence spells that out rather than leaving a bare number
-    that readers might mistake for a recent window. The closing line—
-    "That is where your electricity was made."—is deliberately a flat fact set
-    next to the death count with a period between them: the Cortex prompt
-    enforces the same structure so the fallback and the generated prose land
-    the same way.
-    """
-    parts: list[str] = []
-    if injuries or days_lost or fatalities:
-        parts.append("Across MSHA's full accident record for this mine:")
-    if injuries:
-        parts.append(f"{injuries:,} workers here were hurt badly enough to miss shifts.")
-    if days_lost:
-        parts.append(f"{days_lost:,} days of work lost to injury.")
-    if fatalities:
-        parts.append(f"{fatalities:,} were killed at this mine.")
-    parts.append("That is where your electricity was made.")
+def _build_fallback(args: dict) -> str:
+    """Build fallback prose, omitting any zero safety stats."""
+    parts = [
+        f"{args['plant_name']} burns coal from {args['mine_name']}"
+        f" in {args['mine_county']} County, {args['mine_state']}.",
+        f"In {args['tons_year']}, {args['tons']} tons moved"
+        f" from this {args['mine_type']} mine to that plant.",
+    ]
+    if args["fatalities"]:
+        parts.append(f"{args['fatalities']} workers have died here.")
+    if args["injuries"]:
+        injury_text = f"{args['injuries']} more were injured badly enough to miss work."
+        days = int(str(args.get("days_lost", 0)).replace(",", "") or 0)
+        if days:
+            injury_text = injury_text[:-1] + f" — {args['days_lost']} days lost in total."
+        parts.append(injury_text)
+    parts.append("The coal kept moving to your grid.")
     return " ".join(parts)
 
 
+def _stats_from(mine_data: dict) -> dict:
+    """Extract the four MSHA stat fields surfaced on PlantReveal's cost block.
+
+    The MRT table currently carries fatalities / injuries_lost_time / days_lost
+    pre-aggregated; ``incidents`` is not emitted by the prod query so it falls
+    through as 0. The UI treats 0 as "none on file" rather than "unknown," so a
+    missing field is safe — the response schema stays stable either way.
+    """
+    return {
+        "fatalities": int(mine_data.get("fatalities") or 0),
+        "injuries_lost_time": int(mine_data.get("injuries") or 0),
+        "days_lost": int(mine_data.get("days_lost") or 0),
+        "incidents": int(mine_data.get("incidents") or 0),
+    }
+
+
 def generate_prose(mine_data: dict) -> tuple[str, bool, dict]:
-    """Generate memorial prose for a mine and return its raw safety stats alongside.
+    """Generate memorial prose plus the safety stats the UI surfaces.
 
     Returns ``(prose, degraded, stats)``. ``stats`` is always a dict — never
-    None — so the API response schema is stable regardless of the prose path.
-    Keys: ``fatalities``, ``injuries_lost_time``, ``days_lost``, ``incidents``.
-    When the underlying SQL pull fails or returns nothing, every stat is 0;
-    the section header treats that as "no safety record on file" rather than
-    "zero incidents." Prose is cached per-subregion only when Cortex succeeds
-    — a cached fallback would pin the template under a "Cortex" byline long
-    after the model recovers.
+    None — so the response schema stays stable across the Cortex, fallback,
+    and error paths. Only Cortex-sourced prose is cached; a cached fallback
+    would pin template copy under a "Cortex" byline after the model recovers.
     """
     subregion_id = mine_data.get("subregion_id", "")
 
-    cached = _prose_cache.get(subregion_id) if subregion_id else None
-    if cached is not None:
-        return cached
+    if subregion_id and subregion_id in _prose_cache:
+        return _prose_cache[subregion_id]
 
-    empty_stats = {
-        "fatalities": 0,
-        "injuries_lost_time": 0,
-        "days_lost": 0,
-        "incidents": 0,
-    }
+    stats = _stats_from(mine_data)
     try:
-        prose, degraded, stats = _generate(mine_data)
+        prose, degraded = _generate(mine_data)
         if subregion_id and not degraded:
             _prose_cache[subregion_id] = (prose, degraded, stats)
         return prose, degraded, stats
     except Exception:
         logger.exception("Prose generation failed")
-        return _FALLBACK_NO_DATA, True, empty_stats
-
-
-def _generate(mine_data: dict) -> tuple[str, bool, dict]:
-    """Returns (prose, degraded, stats). degraded=True if Complete failed.
-
-    ``stats`` mirrors the four fields pulled from MSHA_ACCIDENTS (incidents,
-    fatalities, lost-time injuries, days lost) so callers can surface the raw
-    numbers alongside the prose without re-querying. Numbers are cumulative
-    across MSHA's accident record (roughly 1983–present), not per-year.
-    """
-    conn = _get_connection()
-
-    cur = conn.cursor()
-    try:
-        cur.execute(_STATS_SQL, {"mine_id": int(mine_data["mine_id"])})
-        row = cur.fetchone()
-    finally:
-        cur.close()
-
-    empty_stats = {
-        "fatalities": 0,
-        "injuries_lost_time": 0,
-        "days_lost": 0,
-        "incidents": 0,
-    }
-    if not row:
-        return _FALLBACK_NO_DATA, True, empty_stats
-
-    fatalities = int(row[1] or 0)
-    injuries = int(row[2] or 0)
-    days_lost = int(row[3] or 0)
-    incidents = int(row[0] or 0)
-    stats = {
-        "fatalities": fatalities,
-        "injuries_lost_time": injuries,
-        "days_lost": days_lost,
-        "incidents": incidents,
-    }
-
-    if fatalities == 0 and injuries == 0:
         return _FALLBACK_NO_DATA, True, stats
 
-    prompt = _COMPLETE_PROMPT.format(
-        plant_name=mine_data.get("plant", ""),
-        plant_operator=mine_data.get("plant_operator", ""),
-        mine_name=mine_data["mine"],
-        mine_operator=mine_data.get("mine_operator", ""),
-        mine_county=mine_data["mine_county"],
-        mine_state=mine_data["mine_state"],
-        mine_type=mine_data.get("mine_type", ""),
-        tons=int(mine_data.get("tons", 0) or 0),
-        tons_year=mine_data.get("tons_year", ""),
-        fatalities=fatalities,
-        injuries=injuries,
-        days_lost=f"{days_lost:,}",
-        incidents=incidents,
-    )
+
+def _generate(mine_data: dict) -> tuple[str, bool]:
+    """Returns (prose, degraded). degraded=True if Complete failed."""
+    conn = _get_connection()
+
+    fatalities = int(mine_data.get("fatalities") or 0)
+    injuries = int(mine_data.get("injuries") or 0)
+    days_lost = int(mine_data.get("days_lost") or 0)
+
+    format_args = {
+        "mine_name": mine_data.get("mine", ""),
+        "mine_operator": mine_data.get("mine_operator", ""),
+        "mine_county": mine_data.get("mine_county", ""),
+        "mine_state": mine_data.get("mine_state", ""),
+        "mine_type": mine_data.get("mine_type", ""),
+        "plant_name": mine_data.get("plant", ""),
+        "plant_operator": mine_data.get("plant_operator", ""),
+        "tons": f"{int(mine_data.get('tons', 0)):,}",
+        "tons_year": mine_data.get("tons_year", ""),
+        "fatalities": fatalities,
+        "injuries": injuries,
+        "days_lost": f"{days_lost:,}",
+    }
+    prompt = _COMPLETE_PROMPT.format(**format_args)
 
     cur2 = conn.cursor()
     try:
         cur2.execute(
-            "SELECT SNOWFLAKE.CORTEX.COMPLETE('openai-gpt-5.2', %s)",
+            "SELECT SNOWFLAKE.CORTEX.COMPLETE('llama3.3-70b', %s)",
             (prompt,),
         )
         result = cur2.fetchone()
         if result and result[0]:
             prose = result[0].strip().strip('"')
             if prose:
-                return prose, False, stats
+                return prose, False
     finally:
         cur2.close()
 
-    # Complete returned empty—use template with real numbers (degraded)
-    return (
-        _build_fallback(
-            fatalities=fatalities,
-            injuries=injuries,
-            days_lost=days_lost,
-        ),
-        True,
-        stats,
+    logger.warning(
+        "Cortex Complete returned empty for %s — using template fallback",
+        mine_data.get("mine", "unknown"),
     )
+    return _build_fallback(format_args), True

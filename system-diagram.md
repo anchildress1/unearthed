@@ -22,26 +22,24 @@ flowchart TB
     end
 
     subgraph SNOW["SNOWFLAKE"]
-        DB[(UNEARTHED_DB<br/>6 tables + 2 views)]
-        ACCIDENTS[(MSHA_ACCIDENTS<br/>fatalities + injuries)]
+        DB[(UNEARTHED_DB<br/>6 tables, 2 MRT tables, 2 views)]
         CORTEX[Cortex Analyst<br/>semantic model YAML]
-        COMPLETE[Cortex Complete<br/>openai-gpt-5.2<br/>mine prose + H3 summary<br/>honest degraded flag]
+        COMPLETE[Cortex Complete<br/>llama3.3-70b prose]
         H3[H3 Geospatial<br/>hexbin density]
         RO_EXEC[SQL Execution<br/>READONLY_ROLE]
     end
 
-    subgraph MKT["SNOWFLAKE MARKETPLACE (free)"]
-        EPA[EPA Clean Air Markets<br/>CO2/SO2/NOx per plant]
+    subgraph MKT["SNOWFLAKE MARKETPLACE (free, source for MRT)"]
+        EPA[EPA Clean Air Markets<br/>CO2/SO2/NOx source data]
     end
 
     SCROLL -->|POST subregion_id| MINE_EP
     CHAT -->|POST question| ASK_EP
     H3UI -->|GET| H3_EP
     SCROLL -->|GET /emissions/:plant| EMIT_EP
-    MINE_EP -->|query| DB
-    MINE_EP -->|fatality stats| ACCIDENTS
+    MINE_EP -->|query MRT| DB
     MINE_EP -->|Snowflake down| FALLBACK
-    ACCIDENTS -->|numbers| COMPLETE
+    DB -->|mine + stats| COMPLETE
     COMPLETE -->|prose| MINE_EP
     MINE_EP -->|JSON| SCROLL
     ASK_EP -->|REST API| CORTEX
@@ -50,10 +48,9 @@ flowchart TB
     ASK_EP -->|answer + SQL| CHAT
     H3_EP -->|H3_LATLNG_TO_CELL| H3
     H3_EP -->|totals → summary| COMPLETE
-    EMIT_EP -->|JOIN| EPA
+    EMIT_EP -->|SELECT| DB
 
     style DB fill:#29b5e8,color:#fff
-    style ACCIDENTS fill:#29b5e8,color:#fff
     style CORTEX fill:#29b5e8,color:#fff
     style COMPLETE fill:#29b5e8,color:#fff
     style H3 fill:#29b5e8,color:#fff
@@ -74,8 +71,8 @@ flowchart LR
     MSHA3[MSHA Accidents<br/>fatalities + injuries] --> LOAD
     EIA1[EIA-923 Fuel Receipts] --> LOAD
     EIA2[EIA-860 Plants] --> LOAD
-    LOAD[Load via Snowsight<br/>filter to coal] --> DB[(Snowflake<br/>6 tables + 2 views)]
-    MKT[EPA CAM<br/>Snowflake Marketplace] -.->|free, no load| DB
+    LOAD[Load via Snowsight<br/>filter to coal] --> DB[(Snowflake<br/>6 RAW tables, 2 views)]
+    MKT[EPA CAM<br/>Snowflake Marketplace] -.->|CTAS → MRT.EMISSIONS_BY_PLANT| DB
     style DB fill:#29b5e8,color:#fff
     style MKT fill:#29b5e8,color:#fff
 ```

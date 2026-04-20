@@ -13,15 +13,18 @@ from app.snowflake_client import (
     load_fallback_data,
     query_cortex_analyst,
     query_mine_for_subregion,
+    summarize_analyst_results,
 )
 
 
 @pytest.fixture(autouse=True)
 def _clear_pool():
-    """Reset the connection pool between tests."""
-    snowflake_client._pool.clear()
+    """Reset the thread-local connection pool and key cache between tests."""
+    snowflake_client._get_pool().clear()
+    snowflake_client._get_private_key_der.cache_clear()
     yield
-    snowflake_client._pool.clear()
+    snowflake_client._get_pool().clear()
+    snowflake_client._get_private_key_der.cache_clear()
 
 
 MOCK_ROW = {
@@ -39,6 +42,9 @@ MOCK_ROW = {
     "PLANT_LONGITUDE": "-80.113235",
     "TOTAL_TONS": "3811733.0",
     "DATA_YEAR": 2024,
+    "FATALITIES": 7,
+    "INJURIES_LOST_TIME": 42,
+    "TOTAL_DAYS_LOST": 1850,
 }
 
 
@@ -66,6 +72,9 @@ class TestQueryMineForSubregion:
         assert result["plant_coords"] == [33.371506, -80.113235]
         assert result["tons"] == pytest.approx(3811733.0)
         assert result["tons_year"] == 2024
+        assert result["fatalities"] == 7
+        assert result["injuries"] == 42
+        assert result["days_lost"] == 1850
 
     @patch("app.snowflake_client._get_connection")
     def test_no_rows_returns_none(self, mock_get_conn):
@@ -105,11 +114,11 @@ class TestQueryMineForSubregion:
         assert len(result["mine_coords"]) == 2
         assert len(result["plant_coords"]) == 2
 
-    # --- NULL / no-plant-found paths (LEFT JOIN on top_plant) ---
+    # --- NULL field paths ---
 
     @patch("app.snowflake_client._get_connection")
     def test_null_plant_latitude_returns_none(self, mock_get_conn):
-        """LEFT JOIN yields NULL plant coords when no plant matches; must signal degraded."""
+        """NULL plant coords must signal degraded mode (return None)."""
         row = {**MOCK_ROW, "PLANT_LATITUDE": None, "PLANT_LONGITUDE": None}
         mock_get_conn.return_value = self._mock_connection([row])
         assert query_mine_for_subregion("SRVC") is None
@@ -147,21 +156,74 @@ class TestQueryMineForSubregion:
         mock_get_conn.return_value = self._mock_connection([row])
         assert query_mine_for_subregion("SRVC") is None
 
-    # --- cursor cleanup ---
+    # --- safety stats ---
 
     @patch("app.snowflake_client._get_connection")
-    def test_cursor_closed_on_execute_error(self, mock_get_conn):
+    def test_null_stats_default_to_zero(self, mock_get_conn):
+        """NULL safety stats from MRT must default to 0, not crash."""
+        row = {**MOCK_ROW, "FATALITIES": None, "INJURIES_LOST_TIME": None, "TOTAL_DAYS_LOST": None}
+        mock_get_conn.return_value = self._mock_connection([row])
+        result = query_mine_for_subregion("SRVC")
+        assert result["fatalities"] == 0
+        assert result["injuries"] == 0
+        assert result["days_lost"] == 0
+
+    @patch("app.snowflake_client._get_connection")
+    def test_missing_stats_keys_default_to_zero(self, mock_get_conn):
+        """If stats columns are not yet in the MRT row, default to 0."""
+        row = {
+            k: v
+            for k, v in MOCK_ROW.items()
+            if k not in ("FATALITIES", "INJURIES_LOST_TIME", "TOTAL_DAYS_LOST")
+        }
+        mock_get_conn.return_value = self._mock_connection([row])
+        result = query_mine_for_subregion("SRVC")
+        assert result["fatalities"] == 0
+        assert result["injuries"] == 0
+        assert result["days_lost"] == 0
+
+    # --- cursor cleanup ---
+
+    @patch("app.snowflake_client._reconnect")
+    @patch("app.snowflake_client._get_connection")
+    def test_cursor_closed_on_execute_error(self, mock_get_conn, mock_reconnect):
         """cur.close() must be called even when execute raises (inner finally)."""
         mock_cursor = MagicMock()
         mock_cursor.execute.side_effect = Exception("SQL error")
         mock_conn = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
         mock_get_conn.return_value = mock_conn
+        # Reconnect also fails with the same broken cursor
+        mock_reconnect.return_value = mock_conn
 
         with pytest.raises(Exception, match="SQL error"):
             query_mine_for_subregion("SRVC")
 
-        mock_cursor.close.assert_called_once()
+        assert mock_cursor.close.call_count >= 1
+
+    # --- reconnect-on-failure ---
+
+    @patch("app.snowflake_client._reconnect")
+    @patch("app.snowflake_client._get_connection")
+    def test_reconnect_succeeds_on_retry(self, mock_get_conn, mock_reconnect):
+        """First query fails, reconnect provides a fresh connection, retry succeeds."""
+        failing_cursor = MagicMock()
+        failing_cursor.execute.side_effect = Exception("connection gone")
+        failing_conn = MagicMock()
+        failing_conn.cursor.return_value = failing_cursor
+
+        success_cursor = MagicMock()
+        success_cursor.fetchone.return_value = MOCK_ROW
+        success_conn = MagicMock()
+        success_conn.cursor.return_value = success_cursor
+
+        mock_get_conn.return_value = failing_conn
+        mock_reconnect.return_value = success_conn
+
+        result = query_mine_for_subregion("SRVC")
+        assert result is not None
+        assert result["mine"] == "Bailey Mine"
+        mock_reconnect.assert_called_once()
 
     # --- mine_type label mapping ---
 
@@ -318,7 +380,7 @@ class TestAuthPolicy:
         _get_connection()
         mock_connect.assert_called_once()
         call_kwargs = mock_connect.call_args[1]
-        assert call_kwargs["password"] == "secret"  # NOSONAR — test mock value
+        assert call_kwargs["password"] == "secret"  # NOSONAR — test assertion
 
     @patch("app.snowflake_client.snowflake.connector.connect")
     @patch("app.snowflake_client.settings")
@@ -384,6 +446,30 @@ class TestAuthPolicy:
 
         with pytest.raises(FileNotFoundError):
             _get_connection()
+
+    @patch("app.snowflake_client.snowflake.connector.connect")
+    @patch("app.snowflake_client.settings")
+    def test_session_setup_failure_closes_connection(self, mock_settings, mock_connect):
+        """If ALTER SESSION fails, the connection must be closed to avoid leaks."""
+        mock_settings.snowflake_account = "test"
+        mock_settings.snowflake_user = "user"
+        mock_settings.snowflake_role = "ROLE"
+        mock_settings.snowflake_warehouse = "WH"
+        mock_settings.snowflake_database = "DB"
+        mock_settings.snowflake_private_key_path = ""
+        mock_settings.snowflake_password = "secret"  # NOSONAR — test mock value
+        mock_settings.allow_password_auth = True
+
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_cursor.execute.side_effect = RuntimeError("ALTER SESSION failed")
+        mock_conn.cursor.return_value = mock_cursor
+        mock_connect.return_value = mock_conn
+
+        with pytest.raises(RuntimeError, match="ALTER SESSION failed"):
+            _get_connection()
+
+        mock_conn.close.assert_called_once()
 
 
 ANALYST_INTERP = "This is our interpretation of your question: Total coal tonnage for SRVC."
@@ -830,20 +916,19 @@ class TestExecuteAnalystSql:
         mock_conn.close.assert_not_called()
 
     @patch("app.snowflake_client._get_connection")
-    def test_session_timeout_set_before_query(self, mock_get_conn):
-        """ALTER SESSION must be called before the actual SQL to enforce timeout."""
+    def test_no_per_query_alter_session(self, mock_get_conn):
+        """Timeout and row limit are set at connection creation, not per query."""
         mock_conn = self._mock_connection([])
         mock_get_conn.return_value = mock_conn
         execute_analyst_sql("SELECT 1")
 
         cursor = mock_conn.cursor.return_value
-        calls = [str(c) for c in cursor.execute.call_args_list]
-        assert "STATEMENT_TIMEOUT_IN_SECONDS" in calls[0]
-        assert "SELECT 1" in calls[1]
+        assert cursor.execute.call_count == 1
+        assert "SELECT 1" in str(cursor.execute.call_args)
 
     @patch("app.snowflake_client._get_connection")
-    def test_fetchmany_limited_to_500(self, mock_get_conn):
-        """Results must be capped at 500 rows."""
+    def test_fetchmany_caps_at_500(self, mock_get_conn):
+        """fetchmany(500) enforces the documented 500-row cap at the application layer."""
         mock_conn = self._mock_connection([{"X": 1}])
         mock_get_conn.return_value = mock_conn
         execute_analyst_sql("SELECT 1")
@@ -868,6 +953,83 @@ class TestExecuteAnalystSql:
         execute_analyst_sql("  SELECT 1 ;  ")
 
         cursor = mock_conn.cursor.return_value
-        # Second execute call is the actual SQL (first is ALTER SESSION)
-        actual_sql = cursor.execute.call_args_list[1][0][0]
+        actual_sql = cursor.execute.call_args[0][0]
         assert actual_sql == "SELECT 1"
+
+
+class TestSummarizeAnalystResults:
+    @patch("app.snowflake_client._get_connection")
+    def test_returns_prose_from_complete(self, mock_get_conn):
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = ("Black Thunder is an active mine.",)
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_get_conn.return_value = mock_conn
+
+        result = summarize_analyst_results(
+            "Is Black Thunder still active?",
+            [{"MINE_NAME": "Black Thunder", "MINE_STATUS": "Active"}],
+        )
+        assert result == "Black Thunder is an active mine."
+        mock_cursor.close.assert_called_once()
+
+    @patch("app.snowflake_client._get_connection")
+    def test_empty_results_returns_empty_string(self, mock_get_conn):
+        result = summarize_analyst_results("test?", [])
+        assert result == ""
+        mock_get_conn.assert_not_called()
+
+    @patch("app.snowflake_client._get_connection")
+    def test_complete_returns_none_falls_back(self, mock_get_conn):
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = None
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_get_conn.return_value = mock_conn
+
+        result = summarize_analyst_results("test?", [{"X": 1}])
+        assert result == ""
+        mock_cursor.close.assert_called_once()
+
+    @patch("app.snowflake_client._get_connection")
+    def test_prompt_includes_question_and_data(self, mock_get_conn):
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = ("Summary.",)
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_get_conn.return_value = mock_conn
+
+        summarize_analyst_results("How many fatalities?", [{"FATALITIES": 5}])
+
+        prompt = mock_cursor.execute.call_args[0][1][0]
+        assert "How many fatalities?" in prompt
+        assert "FATALITIES" in prompt
+
+    @patch("app.snowflake_client._get_connection")
+    def test_execute_failure_propagates(self, mock_get_conn):
+        """Cortex Complete failure propagates — caller in main.py catches it."""
+        mock_cursor = MagicMock()
+        mock_cursor.execute.side_effect = Exception("Cortex down")
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_get_conn.return_value = mock_conn
+
+        with pytest.raises(Exception, match="Cortex down"):
+            summarize_analyst_results("test?", [{"X": 1}])
+        mock_cursor.close.assert_called_once()
+
+    @patch("app.snowflake_client._get_connection")
+    def test_only_first_10_rows_sent_to_complete(self, mock_get_conn):
+        """Prompt must cap results at 10 rows to avoid token overflow."""
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = ("Summary.",)
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_get_conn.return_value = mock_conn
+
+        rows = [{"MINE": f"Mine_{i}", "TONS": i * 1000} for i in range(25)]
+        summarize_analyst_results("top mines?", rows)
+
+        prompt = mock_cursor.execute.call_args[0][1][0]
+        assert "Mine_9" in prompt
+        assert "Mine_10" not in prompt

@@ -1,19 +1,23 @@
 {
-  "mine": "West Elk Mine",
-  "mine_operator": "Mountain Coal Company, L.L.C.",
-  "mine_county": "Gunnison",
-  "mine_state": "CO",
-  "mine_type": "Underground",
-  "mine_coords": [
-    38.933056,
-    -107.458056
-  ],
-  "plant": "Argus Cogen Plant",
-  "plant_operator": "Searles Valley Minerals Operations Inc.",
-  "plant_coords": [
-    35.765,
-    -117.3833
-  ],
-  "tons": 338979.0,
-  "tons_year": 2024
+    "mine_id": "503672",
+    "mine": "West Elk Mine",
+    "mine_operator": "Mountain Coal Company, L.L.C.",
+    "mine_county": "Gunnison",
+    "mine_state": "CO",
+    "mine_type": "Underground",
+    "mine_coords": [
+        38.933056,
+        -107.458056
+    ],
+    "plant": "Argus Cogen Plant",
+    "plant_operator": "Searles Valley Minerals Operations Inc.",
+    "plant_coords": [
+        35.765,
+        -117.3833
+    ],
+    "tons": 338979.0,
+    "tons_year": 2024,
+    "fatalities": 0,
+    "injuries": 0,
+    "days_lost": 0
 }

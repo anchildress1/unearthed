@@ -31,7 +31,7 @@ Subregion IDs validated with `^[A-Za-z0-9]{2,10}$`. Unknown subregions return **
 ### Frontend
 
 - SvelteKit (Vite) with static adapter. Scroll-driven typographic sections.
-- Google Maps JavaScript API for satellite map with animated flow lines.
+- Google Maps JS API for satellite map with animated flow lines.
 - Chat UI for Cortex Analyst: Svelte component with chips and transcript.
 - Geolocation: Browser API with permission prompt. Point-in-polygon against bundled eGRID GeoJSON runs client-side.
 - State-picker dropdown as fallback when geolocation is denied or user is outside US.
@@ -80,21 +80,23 @@ All Snowflake identifiers use **UPPERCASE with underscores**.
 
 ```
 UNEARTHED_DB
-├── RAW          — raw ingested CSVs/XLSX, untransformed
+├── RAW          — cleaned CSVs, key columns cast to native types
 │   ├── MSHA_MINES
 │   ├── MSHA_QUARTERLY_PRODUCTION
 │   ├── MSHA_ACCIDENTS           (fatalities, injuries, narratives)
 │   ├── EIA_923_FUEL_RECEIPTS
 │   ├── EIA_860_PLANTS
 │   └── PLANT_SUBREGION_LOOKUP
-└── MRT          — consumption-ready views
+└── MRT          — consumption-ready views and tables
     ├── V_MINE_FOR_PLANT        (mine rankings per plant)
-    └── V_MINE_FOR_SUBREGION    (mine rankings per eGRID subregion)
+    ├── V_MINE_FOR_SUBREGION    (mine rankings per eGRID subregion)
+    ├── MINE_PLANT_FOR_SUBREGION (materialized: top mine + plant per subregion, 19 rows)
+    └── EMISSIONS_BY_PLANT      (pre-aggregated EPA CO2/SO2/NOx per coal facility)
 
-SNOWFLAKE_PUBLIC_DATA_FREE       — Marketplace (free, no load needed)
+SNOWFLAKE_PUBLIC_DATA_FREE       — Marketplace (free, source for EMISSIONS_BY_PLANT)
 └── PUBLIC_DATA_FREE
     ├── EPA_CAM_PLANT_UNIT_INDEX (plant emissions metadata)
-    └── EPA_CAM_TIMESERIES       (CO2/SO2/NOx hourly + quarterly)
+    └── EPA_CAM_TIMESERIES       (CO2/SO2/NOx hourly + quarterly, 2.2B rows)
 ```
 
 ### SQL Standards
@@ -122,10 +124,11 @@ Two Cortex features in use:
 | Feature | Purpose | Where Used |
 |---|---|---|
 | Cortex Analyst | NL-to-SQL via semantic model YAML | `/ask` endpoint, runtime user questions |
-| Cortex Complete (`openai-gpt-5.2`) | Short safety prose from MSHA_ACCIDENTS stats | `/mine-for-me` response, in-process cache per subregion |
-| Cortex Complete (`openai-gpt-5.2`) | 2-3 sentence explanation of the H3 density map | `/h3-density` `summary` field, in-process cache per scope (state / national) |
+| Cortex Complete (`llama3.3-70b`) | Short safety prose from MSHA_ACCIDENTS stats | `/mine-for-me` response, in-process cache per subregion |
+| Cortex Complete (`llama3.3-70b`) | 2-3 sentence explanation of the H3 density map | `/h3-density` `summary` field, in-process cache per scope (state / national) |
 
 - **Cortex Analyst semantic model:** Checked into repo as YAML. Covers only the 4-5 chip question patterns — not open-ended.
+- **Cortex Complete model:** `llama3.3-70b` via `SNOWFLAKE.CORTEX.COMPLETE()`. Used in `prose_client.py` for mine narratives and `snowflake_client.summarize_analyst_results` for SQL result explanations.
 - **Cortex Complete prompts:** Injuries lead, fatalities land second — see `app/prose_client.py`. H3 summary prompt leads with what the reader sees, then the scale. Both strip outer quotes before returning.
 - **Honest attribution:** `generate_prose` returns `(text, degraded, stats)` — the `stats` dict carries the MSHA safety counts (`fatalities`, `injuries_lost_time`, `days_lost`, `incidents`) that the frontend's unified cost block (people subsection) surfaces at the top of section 2, independent of whether the prose itself is Cortex-written or templated. `generate_h3_summary` returns `(text, degraded)`. Only Cortex output is cached — template fallbacks are not, so a recovered model shows up on the next request and the "Cortex, on this map" / "Cortex, reading the record" bylines never sit over template prose.
 - **Honest totals:** `/h3-density` runs a second unfiltered count query and returns `totals` alongside the hex cells. The hex SQL drops null-coord rows, ocean outliers, and small clusters for legibility; the `totals` payload does none of that so the Cortex summary and the frontend legend both claim "X mines on record" against MSHA's full registry, not the hexes visible at this resolution. `generate_h3_summary` accepts a `role` kwarg so the readonly endpoint can scope the Cortex connection to `UNEARTHED_READONLY_ROLE` instead of the default app role.
@@ -143,7 +146,7 @@ Two endpoints lean on Snowflake's built-in geospatial / Marketplace story:
 
 - **Key-pair auth** preferred for Snowflake (password auth requires explicit `ALLOW_PASSWORD_AUTH=true`). Private key stored as Cloud Run Secret Manager secret.
 - **Never hardcode credentials** in source code, environment files, or SQL scripts.
-- **Two roles:** `UNEARTHED_APP_ROLE` for data queries, `UNEARTHED_READONLY_ROLE` (SELECT-only grants on MRT schema) for executing Analyst-generated SQL.
+- **Two roles:** `UNEARTHED_APP_ROLE` (SELECT on RAW + MRT, Cortex function access) for data queries, `UNEARTHED_READONLY_ROLE` (SELECT on RAW + MRT) for executing Analyst-generated SQL. Both roles have USAGE on `UNEARTHED_APP_WH`.
 - **SQL validation:** Analyst SQL is regex-validated before execution — must start with SELECT/WITH, no DML/DDL keywords. **Semicolons:** Cortex Analyst appends a trailing semicolon to generated SQL; `execute_analyst_sql` strips it before validation. After stripping, any remaining semicolons (multi-statement) are rejected. Defense-in-depth on top of the read-only role.
 - **Input validation:** Subregion IDs validated with `^[A-Za-z0-9]{2,10}$` to prevent path traversal. Fallback file paths resolved and verified under `assets/fallback/`.
 - **XS warehouse only.** The free trial has $400 of credits. Do not burn them on oversized warehouses.
@@ -153,7 +156,12 @@ Two endpoints lean on Snowflake's built-in geospatial / Marketplace story:
 
 - Queries against `V_MINE_FOR_SUBREGION` must return in **under 2 seconds** on XS warehouse.
 - Leverage Snowflake's **24-hour result cache** — identical queries return instantly with no compute cost.
-- No clustering keys needed at this data scale (~500 mines after coal filter).
+- **RAW tables are pre-cleaned** — embedded CSV quotes stripped, key columns cast to native types (MINE_ID → NUMBER, LATITUDE/LONGITUDE → DOUBLE, QUANTITY → NUMBER). Use column values directly — no `REPLACE()`, `TRY_TO_NUMBER()`, or `TRY_TO_DOUBLE()` needed.
+- **Emissions are pre-aggregated** — `MRT.EMISSIONS_BY_PLANT` (240 rows, `FACILITY_NAME` uppercase) replaces the 2.2B-row EPA_CAM_TIMESERIES join. Query the MRT table, not the Marketplace tables directly. The `/emissions` endpoint strips EIA parenthetical suffixes (e.g. `(TN)`) and uses `LIKE` prefix matching to bridge EIA→EPA naming differences.
+- **Mine-plant lookup is materialized** — `MRT.MINE_PLANT_FOR_SUBREGION` (19 rows) pre-computes the top mine + plant per eGRID subregion. `/mine-for-me` reads this single table instead of joining 4 RAW tables through views.
+- **Session-level guards** — every connection sets `STATEMENT_TIMEOUT_IN_SECONDS = 10` and `ROWS_PER_RESULTSET = 500` via `ALTER SESSION` at creation time. These cap runaway Analyst SQL and protect credit burn. `execute_analyst_sql` also enforces a hard 500-row cap via `fetchmany(500)`. If `ALTER SESSION` fails, the connection is closed before re-raising to prevent session leaks.
+- **Bounded in-memory caches** — `_emissions_cache` and `_mine_context` are LRU `OrderedDict`s capped at 256 entries. Prose and H3 summary caches are bounded by their fixed key spaces (19 subregions, ~50 states). All caches reset on process restart.
+- **Prose prewarm** — gated behind `PREWARM_PROSE=true` env var (default off). When enabled, a background thread pre-warms prose for all 19 fallback subregions at startup. Disabled by default to avoid multiplying Cortex costs on autoscaled Cloud Run instances.
 
 ## 4. Frontend Rules
 
