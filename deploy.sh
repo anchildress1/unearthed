@@ -9,6 +9,19 @@ DOMAIN="unearthed.anchildress1.dev"
 SECRET_NAME="unearthed-snowflake-key"
 SA_NAME="unearthed-run"
 
+# Snowflake identity is overridable via env so a teammate, judge, or
+# forked deploy can target a different account/user without touching
+# this script. Defaults match the submission deployment.
+SNOWFLAKE_ACCOUNT="${SNOWFLAKE_ACCOUNT:-OJIDCKD-MDC60154}"
+SNOWFLAKE_USER="${SNOWFLAKE_USER:-anchildress1}"
+
+# Prewarm runs a Cortex Complete against every fallback subregion on
+# boot so the first real request hits a warm cache. Off by default — it
+# costs Cortex credits on every cold start, which is the wrong default
+# for a forked/test deploy. Set PREWARM_PROSE=true in the invoking env
+# to opt in for the submission deployment.
+PREWARM_PROSE="${PREWARM_PROSE:-false}"
+
 # Banner rule — used for boxed headers and the closing summary.
 readonly RULE="═══════════════════════════════════════════════════════════"
 
@@ -123,14 +136,14 @@ gcloud run deploy "${SERVICE_NAME}" \
   --cpu-boost \
   --set-secrets="/secrets/snowflake_key.p8=${SECRET_NAME}:latest" \
   --set-env-vars="\
-SNOWFLAKE_ACCOUNT=OJIDCKD-MDC60154,\
-SNOWFLAKE_USER=anchildress1,\
+SNOWFLAKE_ACCOUNT=${SNOWFLAKE_ACCOUNT},\
+SNOWFLAKE_USER=${SNOWFLAKE_USER},\
 SNOWFLAKE_PRIVATE_KEY_PATH=/secrets/snowflake_key.p8,\
 SNOWFLAKE_ROLE=UNEARTHED_APP_ROLE,\
 SNOWFLAKE_WAREHOUSE=UNEARTHED_APP_WH,\
 SNOWFLAKE_DATABASE=UNEARTHED_DB,\
 CORS_ORIGINS=https://${DOMAIN},\
-PREWARM_PROSE=true" \
+PREWARM_PROSE=${PREWARM_PROSE}" \
   --quiet
 
 # ─── Smoke test ──────────────────────────────────────────────────────────────────
