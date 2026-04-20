@@ -245,7 +245,7 @@ class TestPrewarmGating:
 
         async def _run():
             async with _lifespan(MagicMock()):
-                pass
+                ...  # lifespan enters/exits; body intentionally empty
 
         with patch.dict("os.environ", {}, clear=False):
             # Ensure PREWARM_PROSE is not set
@@ -268,7 +268,7 @@ class TestPrewarmGating:
 
         async def _run():
             async with _lifespan(MagicMock()):
-                pass
+                ...  # lifespan enters/exits; body intentionally empty
 
         with patch.dict("os.environ", {"PREWARM_PROSE": "true"}):
             asyncio.run(_run())
