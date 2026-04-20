@@ -215,6 +215,46 @@ class TestAskSubregionHandling:
 
     @patch(
         "app.main.query_cortex_analyst",
+        return_value={
+            "answer": "",
+            "interpretation": None,
+            "sql": None,
+            "error": "Upstream 502",
+        },
+    )
+    def test_cortex_error_logs_warning_not_no_sql(self, mock_cortex, client, caplog):
+        """When Cortex returns an error payload, the missing-SQL branch must not
+        fire — otherwise real upstream failures get misclassified as semantic
+        model coverage gaps."""
+        import logging
+
+        with caplog.at_level(logging.DEBUG, logger="app.main"):
+            client.post("/ask", json={"question": "test"})
+
+        warning_msgs = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+        assert any("Cortex Analyst returned an error" in m for m in warning_msgs)
+        debug_msgs = [r.getMessage() for r in caplog.records if r.levelno == logging.DEBUG]
+        assert not any("returned no SQL" in m for m in debug_msgs)
+
+    @patch(
+        "app.main.query_cortex_analyst",
+        return_value={"answer": "42", "interpretation": None, "sql": None, "error": None},
+    )
+    def test_cortex_no_sql_no_error_logs_debug(self, mock_cortex, client, caplog):
+        """Conversational answer without SQL and without error logs at debug
+        level — informational signal for semantic model gaps, not a warning."""
+        import logging
+
+        with caplog.at_level(logging.DEBUG, logger="app.main"):
+            client.post("/ask", json={"question": "test"})
+
+        debug_msgs = [r.getMessage() for r in caplog.records if r.levelno == logging.DEBUG]
+        assert any("returned no SQL" in m for m in debug_msgs)
+        warning_msgs = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+        assert not any("returned an error" in m for m in warning_msgs)
+
+    @patch(
+        "app.main.query_cortex_analyst",
         return_value={"answer": "42", "interpretation": None, "sql": None, "error": None},
     )
     def test_response_content_type_is_json(self, mock_cortex, client):

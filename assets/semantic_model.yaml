@@ -26,17 +26,52 @@ tables:
         expr: MINE_ID
         data_type: NUMBER
       - name: mine_name
-        description: Current name of the mine
+        synonyms:
+          - mine
+          - mine name
+          - pit
+          - colliery
+        description: >
+          Current name of the mine. Use ILIKE with a trailing wildcard
+          when matching a short form of the name (e.g. 'Bailey%').
         expr: TRIM(CURRENT_MINE_NAME)
         data_type: VARCHAR
+        sample_values:
+          - Bailey Mine
+          - Black Thunder
+          - North Antelope Rochelle Mine
+          - Buckingham Mine No. 6
+          - Marshall County Mine
+          - Century Mine
+          - Enlow Fork Mine
       - name: mine_operator
+        synonyms:
+          - operator
+          - company
+          - owner
+          - mining company
         description: Current operator of the mine
         expr: TRIM(CURRENT_OPERATOR_NAME)
         data_type: VARCHAR
+        sample_values:
+          - Consol Pennsylvania Coal Company
+          - Peabody Powder River Mining LLC
+          - Arch Resources WY LLC
+          - Murray American Energy Inc
       - name: mine_state
-        description: State where the mine is located
+        synonyms:
+          - state
+          - us state
+        description: Two-letter US state code where the mine is located (e.g. 'WY', 'WV', 'KY')
         expr: TRIM(STATE)
         data_type: VARCHAR
+        sample_values:
+          - WY
+          - WV
+          - KY
+          - PA
+          - IL
+          - MT
       - name: mine_county
         description: County where the mine is located
         expr: TRIM(FIPS_CNTY_NM)
@@ -118,11 +153,25 @@ tables:
         expr: PLANT_ID
         data_type: NUMBER
       - name: plant_name
+        synonyms:
+          - plant
+          - power plant
+          - facility
+          - generating station
         description: Name of the receiving power plant
         expr: PLANT_NAME
         data_type: VARCHAR
+        sample_values:
+          - Cross
+          - Gavin
+          - Bruce Mansfield
+          - Rockport
+          - Cardinal
+          - Mountaineer
       - name: plant_state
-        description: State of the receiving power plant
+        synonyms:
+          - plant state
+        description: Two-letter state code of the receiving power plant
         expr: PLANT_STATE
         data_type: VARCHAR
       - name: coalmine_msha_id

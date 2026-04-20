@@ -1,8 +1,17 @@
-"""Unit tests for prose_client: stats from mine_data, Cortex Complete fallbacks."""
+"""Unit tests for prose_client: stats from mine_data, Cortex Complete fallbacks, H3 summaries."""
 
 from unittest.mock import MagicMock, patch
 
-from app.prose_client import _FALLBACK_NO_DATA, generate_prose
+import pytest
+
+from app.prose_client import (
+    _COMPLETE_PROMPT,
+    _FALLBACK_NO_DATA,
+    _H3_SUMMARY_PROMPT,
+    _build_fallback,
+    generate_h3_summary,
+    generate_prose,
+)
 
 
 def _make_mine_data(**overrides):
@@ -24,6 +33,88 @@ def _make_mine_data(**overrides):
     }
     base.update(overrides)
     return base
+
+
+@pytest.fixture(autouse=True)
+def _clear_h3_cache():
+    """Keep H3 summary cache isolated across tests — otherwise the first
+    successful test pins the value for every later one."""
+    from app import prose_client
+
+    prose_client._h3_summary_cache.clear()
+    yield
+    prose_client._h3_summary_cache.clear()
+
+
+class TestBuildFallback:
+    def test_includes_plant_and_mine(self):
+        args = {
+            "plant_name": "Cross",
+            "mine_name": "Bailey Mine",
+            "mine_county": "Greene",
+            "mine_state": "PA",
+            "mine_type": "Underground",
+            "tons": "500,000",
+            "tons_year": 2024,
+            "fatalities": 3,
+            "injuries": 10,
+            "days_lost": "500",
+        }
+        out = _build_fallback(args)
+        assert "Cross" in out
+        assert "Bailey Mine" in out
+        assert "3 workers have died" in out
+
+    def test_skips_zero_fatalities(self):
+        args = {
+            "plant_name": "P",
+            "mine_name": "M",
+            "mine_county": "C",
+            "mine_state": "WV",
+            "mine_type": "Surface",
+            "tons": "1,000",
+            "tons_year": 2024,
+            "fatalities": 0,
+            "injuries": 5,
+            "days_lost": "50",
+        }
+        out = _build_fallback(args)
+        assert "died" not in out
+        assert "injured" in out
+
+    def test_skips_zero_injuries(self):
+        args = {
+            "plant_name": "P",
+            "mine_name": "M",
+            "mine_county": "C",
+            "mine_state": "WV",
+            "mine_type": "Surface",
+            "tons": "1,000",
+            "tons_year": 2024,
+            "fatalities": 2,
+            "injuries": 0,
+            "days_lost": "0",
+        }
+        out = _build_fallback(args)
+        assert "injured" not in out
+        assert "2 workers have died" in out
+
+
+class TestCompletePrompt:
+    def test_prompt_carries_plant_and_mine_context(self):
+        """The full-narrative prompt must receive plant + mine + tonnage fields."""
+        for placeholder in (
+            "{plant_name}",
+            "{plant_operator}",
+            "{mine_name}",
+            "{mine_operator}",
+            "{mine_type}",
+            "{tons}",
+        ):
+            assert placeholder in _COMPLETE_PROMPT, f"missing {placeholder}"
+
+    def test_prompt_is_eulogy_style(self):
+        assert "eulogy" in _COMPLETE_PROMPT.lower()
 
 
 class TestGenerateProse:
@@ -244,3 +335,132 @@ class TestProseCache:
 
         assert "TNVA" not in _prose_cache
         _prose_cache.clear()
+
+
+class TestH3SummaryPrompt:
+    def test_prompt_has_active_pct_and_scope_placeholders(self):
+        for placeholder in (
+            "{scope_line}",
+            "{total",
+            "{active",
+            "{abandoned",
+            "{active_pct}",
+            "{top_counties}",
+        ):
+            assert placeholder in _H3_SUMMARY_PROMPT, f"missing {placeholder}"
+
+
+class TestGenerateH3Summary:
+    @patch("app.prose_client._get_connection")
+    def test_returns_cortex_output_when_populated(self, mock_conn):
+        cursor = MagicMock()
+        cursor.fetchone.return_value = ("Most of these mines are already closed.",)
+        mock_conn.return_value.cursor.return_value = cursor
+
+        text, degraded = generate_h3_summary(state="WV", total=500, active=20, abandoned=480)
+        assert degraded is False
+        assert text == "Most of these mines are already closed."
+
+    @patch("app.prose_client._get_connection")
+    def test_cache_hit_skips_cortex(self, mock_conn):
+        cursor = MagicMock()
+        cursor.fetchone.return_value = ("Cached H3 summary.",)
+        mock_conn.return_value.cursor.return_value = cursor
+
+        first, first_degraded = generate_h3_summary(state="WV", total=100, active=10, abandoned=90)
+        second, second_degraded = generate_h3_summary(
+            state="WV", total=100, active=10, abandoned=90
+        )
+        assert first == second == "Cached H3 summary."
+        assert first_degraded is False
+        assert second_degraded is False
+        # Cursor only opened once — the second call must short-circuit on cache.
+        assert mock_conn.return_value.cursor.call_count == 1
+
+    @patch("app.prose_client._get_connection")
+    def test_fallback_used_when_cortex_raises(self, mock_conn):
+        mock_conn.side_effect = RuntimeError("cortex down")
+
+        text, degraded = generate_h3_summary(state="KY", total=800, active=30, abandoned=770)
+        assert degraded is True
+        assert "KY" in text
+        assert "800" in text
+
+    @patch("app.prose_client._get_connection")
+    def test_fallback_not_cached(self, mock_conn):
+        """A fallback response must not get pinned under the Cortex byline —
+        the next request needs to re-attempt Cortex in case it recovered."""
+        mock_conn.side_effect = RuntimeError("cortex down")
+
+        generate_h3_summary(state="WY", total=50, active=5, abandoned=45)
+
+        # Next call: Cortex back online. Must call the cursor again.
+        mock_conn.side_effect = None
+        cursor = MagicMock()
+        cursor.fetchone.return_value = ("Cortex recovered.",)
+        mock_conn.return_value.cursor.return_value = cursor
+
+        text, degraded = generate_h3_summary(state="WY", total=50, active=5, abandoned=45)
+        assert degraded is False
+        assert text == "Cortex recovered."
+
+    @patch("app.prose_client._get_connection")
+    def test_national_scope_when_state_none(self, mock_conn):
+        mock_conn.side_effect = RuntimeError("cortex down")
+
+        text, degraded = generate_h3_summary(state=None, total=10_000, active=200, abandoned=9_800)
+        assert degraded is True
+        # National fallback doesn't template any state name.
+        assert "10,000" in text
+        assert "None" not in text
+
+    @patch("app.prose_client._get_connection")
+    def test_zero_total_does_not_divide_by_zero(self, mock_conn):
+        cursor = MagicMock()
+        cursor.fetchone.return_value = ("Empty map.",)
+        mock_conn.return_value.cursor.return_value = cursor
+
+        text, degraded = generate_h3_summary(state="AK", total=0, active=0, abandoned=0)
+        # No ZeroDivisionError; Cortex is still asked (caller gates on total>0
+        # at the endpoint layer, but the generator itself must be safe).
+        assert degraded is False
+        assert text == "Empty map."
+
+    @patch("app.prose_client._get_connection")
+    def test_role_passed_through_to_connection(self, mock_conn):
+        """Readonly role from the /h3-density endpoint must scope the Cortex
+        connection — passing ``role=None`` would silently fall back to the
+        default APP_ROLE and break least-privilege on the public endpoint."""
+        cursor = MagicMock()
+        cursor.fetchone.return_value = ("Scoped.",)
+        mock_conn.return_value.cursor.return_value = cursor
+
+        generate_h3_summary(
+            state="WV",
+            total=10,
+            active=1,
+            abandoned=9,
+            role="READONLY_ROLE",
+        )
+        mock_conn.assert_called_once_with(role="READONLY_ROLE")
+
+    @patch("app.prose_client._get_connection")
+    def test_fallback_prose_avoids_banned_words(self, mock_conn):
+        """ "still" and "moss" were removed from the fallback templates —
+        "still" violates the voice rule the prompt itself enforces, and
+        "moss" reads as "life grew back" which contradicts the ash legend
+        on the map. Lock that out so a future edit can't quietly reintroduce
+        them under a "Cortex, on this map" byline."""
+        mock_conn.side_effect = RuntimeError("cortex down")
+
+        state_text, _ = generate_h3_summary(state="WV", total=500, active=20, abandoned=480)
+        national_text, _ = generate_h3_summary(
+            state=None, total=10_000, active=200, abandoned=9_800
+        )
+        for text in (state_text, national_text):
+            assert "still" not in text.lower()
+            assert "moss" not in text.lower()
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

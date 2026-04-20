@@ -23,6 +23,126 @@ workers — not a report. Name the plant, name the mine, say what it cost in hum
 life. If a number is zero, leave it out entirely. Plain language, no hedging, no \
 markdown. End on the reader: their lights stayed on because of this."""
 
+_FALLBACK_NO_DATA = "This mine ships coal to your power grid. The earth does not grow back."
+
+_H3_SUMMARY_PROMPT = """You are writing ONE short paragraph (2-3 sentences) that explains a
+coal-mine density map to a general reader. No jargon. No acronyms.
+
+Scope:
+{scope_line}
+
+Numbers from MSHA's public mine registry:
+- {total:,} coal mines on record
+- {active:,} active (currently producing)
+- {abandoned:,} closed / abandoned
+- {active_pct}% of mines are active
+- The {top_n_counties} counties with the most mines: {top_counties}
+
+Rules:
+- Lead with what the reader is looking at, then the scale (e.g. "most of these
+  mines are already closed" or "this is where the industry cuts coal now").
+- Do not use "still", "continues to", or "keeps"—they imply the reader was
+  expecting the activity to have stopped. State what is.
+- Quote the active-vs-abandoned ratio in plain English, not as a raw percentage
+  unless it is the cleanest way to say it.
+- If the numbers are cumulative across MSHA's full registry (roughly 1983 to
+  present), say so—readers must not mistake the figure for a recent window.
+- End on a sentence that grounds the reader: "what this map is telling you."
+- No markdown, no bullets, no headers. Em-dashes are tight ("word—word"),
+  never "word — word".
+"""
+
+_H3_SUMMARY_FALLBACK_STATE = (
+    "In {state}, MSHA has {total:,} coal mines on record across its full registry "
+    "(roughly 1983 to present). {abandoned:,} are already closed; {active:,} are "
+    "active. What this map shows is the shape of an industry mostly in retreat—"
+    "the rust dots are the few active mines, the ash dots are what the earth will "
+    "not grow back."
+)
+
+_H3_SUMMARY_FALLBACK_NATIONAL = (
+    "MSHA's full registry holds {total:,} US coal mines, roughly 1983 to present. "
+    "{abandoned:,} are closed; {active:,} are active. Across the country the map "
+    "is mostly ash—a map of what was, not what is."
+)
+
+
+# Only Cortex-sourced prose is cached. A cached fallback would pin the template
+# under a "Cortex, on this map" byline long after Cortex recovers — for a site
+# built around "the data must be explained by the model," that reads as a lie.
+_h3_summary_cache: dict[str, str] = {}
+
+
+def generate_h3_summary(
+    *,
+    state: str | None,
+    total: int,
+    active: int,
+    abandoned: int,
+    top_counties: list[str] | None = None,
+    role: str | None = None,
+) -> tuple[str, bool]:
+    """Cortex-generated 2-3 sentence summary of the density map.
+
+    Returns ``(text, degraded)``. ``degraded=True`` signals a hand-written
+    fallback template fired because Cortex was unavailable — the caller must
+    relabel or hide the "Cortex, on this map" byline so the site doesn't
+    attribute template prose to the model. Cortex output is cached per scope;
+    fallbacks are not, so a Cortex recovery shows up on the next request.
+
+    ``role`` lets the caller scope the Snowflake connection to its own
+    endpoint role (e.g. READONLY_ROLE for public endpoints). Without it, the
+    default role from settings is used — which can bypass the least-privilege
+    intent when ``/h3-density`` already opened a readonly cursor upstream.
+    """
+    cache_key = (state or "NATIONAL").upper()
+    cached = _h3_summary_cache.get(cache_key)
+    if cached is not None:
+        return cached, False
+
+    counties = top_counties or []
+    active_pct = int(round((active / total) * 100)) if total else 0
+    scope_line = (
+        f"A map of coal mines in {state}." if state else "A map of coal mines across the US."
+    )
+    prompt = _H3_SUMMARY_PROMPT.format(
+        scope_line=scope_line,
+        total=total,
+        active=active,
+        abandoned=abandoned,
+        active_pct=active_pct,
+        top_n_counties=min(len(counties), 3) or 0,
+        top_counties=", ".join(counties[:3]) if counties else "—",
+    )
+
+    try:
+        conn = _get_connection(role=role)
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "SELECT SNOWFLAKE.CORTEX.COMPLETE('llama3.3-70b', %s)",
+                (prompt,),
+            )
+            row = cur.fetchone()
+        finally:
+            cur.close()
+        if row and row[0]:
+            text = row[0].strip().strip('"').strip()
+            if text:
+                _h3_summary_cache[cache_key] = text
+                return text, False
+    except Exception:
+        logger.exception("H3 summary generation failed—using fallback")
+
+    fallback = (
+        _H3_SUMMARY_FALLBACK_STATE.format(
+            state=state, total=total, active=active, abandoned=abandoned
+        )
+        if state
+        else _H3_SUMMARY_FALLBACK_NATIONAL.format(total=total, active=active, abandoned=abandoned)
+    )
+    return fallback, True
+
 
 def _build_fallback(args: dict) -> str:
     """Build fallback prose, omitting any zero safety stats."""
@@ -42,9 +162,6 @@ def _build_fallback(args: dict) -> str:
         parts.append(injury_text)
     parts.append("The coal kept moving to your grid.")
     return " ".join(parts)
-
-
-_FALLBACK_NO_DATA = "This mine ships coal to your power grid. The earth does not grow back."
 
 
 def generate_prose(mine_data: dict) -> tuple[str, bool]:
