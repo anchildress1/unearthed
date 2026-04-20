@@ -1,4 +1,4 @@
-.PHONY: install install-dev dev server test test-ci test-cov lint clean docker-build docker-run fallbacks
+.PHONY: install install-dev dev server test test-ci test-cov test-frontend test-e2e lhci lint clean docker-build docker-run deploy fallbacks
 
 # Install runtime dependencies
 install:
@@ -18,17 +18,38 @@ dev:
 server:
 	uv run uvicorn app.main:app --reload --port 8001
 
-# Run the full test suite (all tests including e2e)
+# Run the full test suite: backend pytest + frontend unit/component + e2e + Lighthouse.
+# "test" means every tier — unit, integration, e2e, and perf/a11y audits — so a
+# green `make test` is the ship-ready signal.
 test:
 	uv run pytest tests/ -v --tb=short
+	cd frontend && pnpm test
+	cd frontend && pnpm test:e2e
+	cd frontend && pnpm lhci
 
-# Run CI-safe tests (excludes timing-sensitive e2e tests)
+# CI-safe: skip the timing-sensitive backend e2e marker and skip LHCI (which
+# requires a full build + Chromium audit and is too slow for per-commit CI).
+# Frontend unit + Playwright e2e still run — they're deterministic and fast.
 test-ci:
 	uv run pytest tests/ -v --tb=short -m "not e2e"
+	cd frontend && pnpm test
+	cd frontend && pnpm test:e2e
 
 # Run tests with coverage (CI-safe)
 test-cov:
 	uv run pytest tests/ -v --tb=short -m "not e2e" --cov=app --cov-report=term-missing
+
+# Frontend unit/component tests (Vitest + jsdom + @testing-library/svelte)
+test-frontend:
+	cd frontend && pnpm test
+
+# Frontend e2e tests (Playwright, Chromium, mocked backend)
+test-e2e:
+	cd frontend && pnpm test:e2e
+
+# Lighthouse CI (thresholds: a11y>=1.0, SEO>=1.0, best-practices>=0.98, perf>=0.90)
+lhci:
+	cd frontend && pnpm lhci
 
 # Lint with ruff (install separately: uv pip install ruff)
 lint:
@@ -43,13 +64,17 @@ fmt:
 fallbacks:
 	uv run python -m scripts.generate_fallbacks
 
-# Build Docker image
+# Build Docker image (reads VITE_GOOGLE_MAPS_KEY from frontend/.env)
 docker-build:
-	docker build -t unearthed .
+	docker build --build-arg VITE_GOOGLE_MAPS_KEY=$$(grep VITE_GOOGLE_MAPS_KEY frontend/.env | cut -d= -f2) -t unearthed .
 
 # Run Docker container locally
 docker-run:
 	docker run --rm -p 8080:8080 --env-file .env unearthed
+
+# Deploy to Cloud Run (builds, pushes, maps domain, configures secrets)
+deploy:
+	./deploy.sh
 
 # Remove build artifacts
 clean:

@@ -6,30 +6,43 @@ import pytest
 
 from tests.conftest import SAMPLE_MINE_DATA
 
+# Shared dummy stats payload for mocked generate_prose calls. The real
+# generator returns this alongside prose + degraded flag so the endpoint can
+# surface fatality/injury counts at the top of section 2; for most tests the
+# exact numbers don't matter, so we hold them constant and assert on the
+# fields that do vary per case.
+_STATS = {
+    "fatalities": 2,
+    "injuries_lost_time": 15,
+    "days_lost": 430,
+}
+
 
 class TestMineForMeEndpoint:
     """Tests with mocked Snowflake and Cortex."""
 
-    @patch("app.main.generate_prose", return_value=("Grief prose.", False))
+    @patch("app.main.generate_prose", return_value=("Grief prose.", False, _STATS))
     @patch("app.main.query_mine_for_subregion", return_value=SAMPLE_MINE_DATA)
     def test_success_returns_full_payload(self, mock_sf, mock_prose, client):
         resp = client.post("/mine-for-me", json={"subregion_id": "SRVC"})
         assert resp.status_code == 200
         data = resp.json()
         assert data["mine"] == "Bailey Mine"
+        assert data["mine_id"] == "36609947"
         assert data["plant"] == "Cross"
         assert data["tons"] == pytest.approx(1247001.0)
         assert data["prose"] == "Grief prose."
         assert data["subregion_id"] == "SRVC"
         assert data["degraded"] is False
 
-    @patch("app.main.generate_prose", return_value=("Grief prose.", False))
+    @patch("app.main.generate_prose", return_value=("Grief prose.", False, _STATS))
     @patch("app.main.query_mine_for_subregion", return_value=SAMPLE_MINE_DATA)
     def test_response_contains_all_required_fields(self, mock_sf, mock_prose, client):
         resp = client.post("/mine-for-me", json={"subregion_id": "SRVC"})
         data = resp.json()
         required = [
             "mine",
+            "mine_id",
             "mine_operator",
             "mine_county",
             "mine_state",
@@ -43,11 +56,21 @@ class TestMineForMeEndpoint:
             "prose",
             "subregion_id",
             "degraded",
+            # MSHA safety-stats fields surfaced for the section-2 anchor cards.
+            # These must always be present (defaulting to 0, never missing) so
+            # the frontend can render the block unconditionally.
+            "fatalities",
+            "injuries_lost_time",
+            "days_lost",
         ]
         for field in required:
             assert field in data, f"Missing field: {field}"
+        assert data["fatalities"] == _STATS["fatalities"]
+        assert data["injuries_lost_time"] == _STATS["injuries_lost_time"]
+        assert data["days_lost"] == _STATS["days_lost"]
+        assert "incidents" not in data
 
-    @patch("app.main.generate_prose", return_value=("Grief prose.", False))
+    @patch("app.main.generate_prose", return_value=("Grief prose.", False, _STATS))
     @patch("app.main.query_mine_for_subregion", return_value=SAMPLE_MINE_DATA)
     def test_coords_are_lat_lon_pairs(self, mock_sf, mock_prose, client):
         resp = client.post("/mine-for-me", json={"subregion_id": "SRVC"})
@@ -62,7 +85,7 @@ class TestMineForMeSnowflakeFailure:
     """Degraded mode when Snowflake is down."""
 
     @patch("app.main.load_fallback_data", return_value=SAMPLE_MINE_DATA)
-    @patch("app.main.generate_prose", return_value=("Fallback prose.", True))
+    @patch("app.main.generate_prose", return_value=("Fallback prose.", True, _STATS))
     @patch("app.main.query_mine_for_subregion", side_effect=Exception("Connection refused"))
     def test_snowflake_down_uses_fallback(self, mock_sf, mock_prose, mock_fb, client):
         resp = client.post("/mine-for-me", json={"subregion_id": "SRVC"})
@@ -87,7 +110,7 @@ class TestMineForMeSnowflakeFailure:
 class TestMineForMeProseFailure:
     """Degraded mode when Prose generation fails but Snowflake works."""
 
-    @patch("app.main.generate_prose", return_value=("Template fallback.", True))
+    @patch("app.main.generate_prose", return_value=("Template fallback.", True, _STATS))
     @patch("app.main.query_mine_for_subregion", return_value=SAMPLE_MINE_DATA)
     def test_prose_fails_sets_degraded(self, mock_sf, mock_prose, client):
         resp = client.post("/mine-for-me", json={"subregion_id": "SRVC"})
@@ -101,7 +124,7 @@ class TestMineForMeSnowflakeNoneFallbackSuccess:
     """Snowflake returns None (no data) but fallback succeeds."""
 
     @patch("app.main.load_fallback_data", return_value=SAMPLE_MINE_DATA)
-    @patch("app.main.generate_prose", return_value=("Fallback prose.", True))
+    @patch("app.main.generate_prose", return_value=("Fallback prose.", True, _STATS))
     @patch("app.main.query_mine_for_subregion", return_value=None)
     def test_snowflake_none_fallback_succeeds(self, mock_sf, mock_prose, mock_fb, client):
         resp = client.post("/mine-for-me", json={"subregion_id": "SRVC"})
@@ -110,14 +133,14 @@ class TestMineForMeSnowflakeNoneFallbackSuccess:
         assert data["degraded"] is True
         assert data["mine"] == "Bailey Mine"
 
-    @patch("app.main.generate_prose", return_value=("Prose.", False))
+    @patch("app.main.generate_prose", return_value=("Prose.", False, _STATS))
     @patch("app.main.query_mine_for_subregion", return_value=SAMPLE_MINE_DATA)
     def test_subregion_id_in_response(self, mock_sf, mock_prose, client):
         resp = client.post("/mine-for-me", json={"subregion_id": "SRVC"})
         data = resp.json()
         assert data["subregion_id"] == "SRVC"
 
-    @patch("app.main.generate_prose", return_value=("Prose.", False))
+    @patch("app.main.generate_prose", return_value=("Prose.", False, _STATS))
     @patch("app.main.query_mine_for_subregion", return_value=SAMPLE_MINE_DATA)
     def test_subregion_id_injected_into_generate_prose(self, mock_sf, mock_prose, client):
         """mine_data dict passed to generate_prose must include subregion_id."""
@@ -125,7 +148,7 @@ class TestMineForMeSnowflakeNoneFallbackSuccess:
         call_args = mock_prose.call_args[0][0]
         assert call_args["subregion_id"] == "SRVC"
 
-    @patch("app.main.generate_prose", return_value=("Prose.", False))
+    @patch("app.main.generate_prose", return_value=("Prose.", False, _STATS))
     @patch("app.main.query_mine_for_subregion", return_value=SAMPLE_MINE_DATA)
     def test_response_content_type_is_json(self, mock_sf, mock_prose, client):
         resp = client.post("/mine-for-me", json={"subregion_id": "SRVC"})

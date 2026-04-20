@@ -10,7 +10,10 @@ from pathlib import Path
 import snowflake.connector
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
+from starlette.routing import Match
 
 from app.models import AskRequest, AskResponse, MineForMeRequest, MineForMeResponse
 from app.prose_client import generate_h3_summary, generate_prose
@@ -59,6 +62,30 @@ def _prewarm_prose_cache() -> None:
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
+    from app.config import get_settings
+
+    s = get_settings()
+    missing = [
+        name
+        for name, val in [
+            ("SNOWFLAKE_ACCOUNT", s.snowflake_account),
+            ("SNOWFLAKE_USER", s.snowflake_user),
+            ("SNOWFLAKE_PRIVATE_KEY_PATH", s.snowflake_private_key_path),
+        ]
+        if not val
+    ]
+    if missing:
+        logger.error(
+            "Required environment variables not set: %s — Snowflake queries will fail.",
+            ", ".join(missing),
+        )
+    if s.snowflake_private_key_path:
+        key_path = Path(s.snowflake_private_key_path)
+        if not key_path.exists():
+            logger.error("Private key file not found: %s", key_path)
+        elif key_path.stat().st_size == 0:
+            logger.error("Private key file is empty (0 bytes): %s", key_path)
+
     if os.getenv("PREWARM_PROSE", "").lower() in ("1", "true"):
         threading.Thread(target=_prewarm_prose_cache, daemon=True).start()
     yield
@@ -73,6 +100,13 @@ app = FastAPI(
     openapi_url="/openapi.json" if _enable_docs else None,
 )
 
+
+@app.get("/health")
+def health():
+    """Liveness probe for Cloud Run and smoke tests."""
+    return {"status": "ok"}
+
+
 _cors_origins = os.getenv("CORS_ORIGINS", "").split(",") if os.getenv("CORS_ORIGINS") else ["*"]
 
 app.add_middleware(
@@ -81,6 +115,15 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["Content-Security-Policy"] = "frame-ancestors 'self' https://dev.to"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
 
 
 # Static assets (images, data files)
@@ -345,6 +388,14 @@ def _suggestions_for(subregion_id: str | None) -> list[str]:
     },
 )
 def mine_for_me(req: MineForMeRequest):
+    """Return the top mine→plant shipment for an eGRID subregion.
+
+    Falls back to bundled per-subregion JSON when Snowflake is unreachable;
+    returns 404 only when both sources miss. Response schema is stable across
+    the Cortex, fallback, and error paths — ``stats`` counts are always
+    populated (0 means "none on file"), and ``degraded`` flips true when
+    either the data layer or the prose layer had to degrade.
+    """
     subregion = req.subregion_id.upper()
     degraded = False
     mine_data = None
@@ -370,11 +421,12 @@ def mine_for_me(req: MineForMeRequest):
         _mine_context[subregion] = mine_data
         if len(_mine_context) > _CACHE_MAXSIZE:
             _mine_context.popitem(last=False)
-    prose, prose_degraded = generate_prose(mine_data)
+    prose, prose_degraded, stats = generate_prose(mine_data)
     degraded = degraded or prose_degraded
 
     return MineForMeResponse(
         mine=mine_data["mine"],
+        mine_id=mine_data.get("mine_id"),
         mine_operator=mine_data["mine_operator"],
         mine_county=mine_data["mine_county"],
         mine_state=mine_data["mine_state"],
@@ -388,11 +440,48 @@ def mine_for_me(req: MineForMeRequest):
         prose=prose,
         subregion_id=subregion,
         degraded=degraded,
+        fatalities=stats["fatalities"],
+        injuries_lost_time=stats["injuries_lost_time"],
+        days_lost=stats["days_lost"],
     )
+
+
+def _summarize_analyst_rows(question: str, results: list[dict]) -> tuple[str | None, bool]:
+    """Run Cortex Complete against Analyst rows; return ``(summary, degraded)``.
+
+    ``degraded=True`` covers two indistinguishable user-facing failure modes:
+    an exception from Cortex Complete, or a successful call that returned an
+    empty string. Both leave rows on screen with no prose, and both require
+    the frontend to hide the "Cortex, reading the record" byline so template
+    silence isn't attributed to the model. Extracted from ``ask`` so the
+    endpoint keeps its cognitive complexity under the project lint threshold.
+    """
+    try:
+        summary = summarize_analyst_results(question, results)
+    except Exception:
+        logger.warning("Analyst summary generation failed", exc_info=True)
+        return None, True
+    if summary:
+        return summary, False
+    logger.warning("Analyst summary returned empty text")
+    return None, True
 
 
 @app.post("/ask", response_model=AskResponse)
 def ask(req: AskRequest):
+    """Pass a natural-language question through Cortex Analyst.
+
+    Three outcome branches:
+    1. SQL generated → execute under the readonly role, optionally summarize
+       the rows via Cortex Complete. Sets ``summary_degraded=True`` if the
+       summary path raises so the frontend can hide the Cortex byline.
+    2. No SQL, Cortex gave a conversational ``answer`` → return as-is.
+    3. Upstream error (``query_cortex_analyst`` raised or returned ``error``)
+       → return suggestions with an ``error`` message; no SQL, no results.
+
+    ``suggestions`` is always populated (contextual if ``subregion_id`` is set,
+    default otherwise) so the UI never dead-ends a user.
+    """
     question = req.question
     if req.subregion_id:
         question = f"{req.question} (for eGRID subregion {req.subregion_id})"
@@ -440,11 +529,11 @@ def ask(req: AskRequest):
         # the signal is reviewable in logs without polluting info output.
         logger.debug("Cortex Analyst returned no SQL for question: %s", question)
 
+    summary_degraded = False
     if results and not result.get("answer"):
-        try:
-            answer = summarize_analyst_results(req.question, results)
-        except Exception:
-            logger.warning("Analyst summary generation failed", exc_info=True)
+        summary, summary_degraded = _summarize_analyst_rows(req.question, results)
+        if summary:
+            answer = summary
 
     suggestions = result.get("suggestions") or _suggestions_for(req.subregion_id)
 
@@ -455,10 +544,53 @@ def ask(req: AskRequest):
         error=error,
         suggestions=suggestions,
         results=results,
+        summary_degraded=summary_degraded,
     )
+
+
+# The SPA mount at "/" below is greedy: it matches any path the API routes
+# haven't claimed. That means `GET /mine-for-me` (POST-only API route) would
+# normally bypass Starlette's built-in 405 handling and get served by the SPA
+# mount as a missing static file — which would return 404, not 405. This
+# middleware runs before the mount is reached, checks every request against
+# the registered APIRoute set, and surfaces the correct 405 (with an `Allow`
+# header) when the path matches an API route but the method does not.
+@app.middleware("http")
+async def api_method_guard(request, call_next):
+    # OPTIONS is reserved for the CORS preflight the CORSMiddleware below
+    # intercepts; returning 405 here would swallow that handshake and break
+    # browser-initiated POSTs from the frontend.
+    if request.method == "OPTIONS":
+        return await call_next(request)
+    scope = request.scope
+    matched_methods: set[str] = set()
+    for route in app.routes:
+        if not isinstance(route, APIRoute):
+            continue
+        match, _ = route.matches(scope)
+        if match == Match.PARTIAL:
+            # Path matched but method didn't — record what this route allows.
+            matched_methods.update(route.methods or ())
+        elif match == Match.FULL:
+            matched_methods = set()
+            break
+    if matched_methods:
+        return JSONResponse(
+            status_code=405,
+            content={"detail": "Method Not Allowed"},
+            headers={"Allow": ", ".join(sorted(matched_methods))},
+        )
+    return await call_next(request)
 
 
 # Serve SvelteKit build output in production (must be AFTER API routes).
 _FRONTEND_DIR = _PROJECT_ROOT / "frontend" / "build"
 if _FRONTEND_DIR.exists():
     app.mount("/", StaticFiles(directory=_FRONTEND_DIR, html=True), name="frontend")
+else:
+    logger.warning(
+        "Frontend build directory not found at %s — the SPA will not be served. "
+        "This is expected in local dev (Vite serves the frontend), "
+        "but signals a broken Dockerfile COPY in production.",
+        _FRONTEND_DIR,
+    )

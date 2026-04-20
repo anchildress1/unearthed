@@ -9,6 +9,11 @@ class MineForMeRequest(BaseModel):
 
 class MineForMeResponse(BaseModel):
     mine: str
+    # MSHA mine ID (federal registry identifier) — optional because the
+    # offline fallback JSONs were shipped before it was surfaced. When
+    # present, it anchors the map tag subtitle ("MSHA 46-09627 · …") so
+    # readers can cross-reference the federal record.
+    mine_id: str | None = None
     mine_operator: str
     mine_county: str
     mine_state: str
@@ -23,6 +28,14 @@ class MineForMeResponse(BaseModel):
     subregion_id: str
     user_coords: list[float] | None = None
     degraded: bool = False
+    # MSHA accident-record counts for this mine, cumulative across the
+    # registry (roughly 1983–present). Surfaced alongside the prose so the
+    # frontend can show the raw numbers at the top of section 2 before the
+    # narrative weaves them. All three are always present — 0 means "none on
+    # file," not "unknown."
+    fatalities: int = Field(default=0, ge=0)
+    injuries_lost_time: int = Field(default=0, ge=0)
+    days_lost: int = Field(default=0, ge=0)
 
     model_config = {"extra": "forbid"}
 
@@ -73,6 +86,15 @@ class AskResponse(BaseModel):
     results: list[dict] | None = Field(
         default=None,
         description="Rows returned by executing the generated SQL (capped at 500).",
+    )
+    summary_degraded: bool = Field(
+        default=False,
+        description=(
+            "True when SQL results are shown without a Cortex-written summary — "
+            "either summarize_analyst_results raised or Cortex returned nothing "
+            "for the row set. Lets the frontend hide the 'Cortex, reading the "
+            "record' byline so template silence is never misattributed."
+        ),
     )
 
     model_config = {"extra": "forbid"}

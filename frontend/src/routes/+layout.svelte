@@ -3,6 +3,20 @@
 </script>
 
 <svelte:head>
+	<!--
+		Inline SVG favicon (primary) + `static/favicon.ico` (legacy fallback
+		for older browsers and crawlers that still request `/favicon.ico`
+		by convention). The SVG is a single rust disc over the page
+		background tone; the .ico mirrors the same mark so the site never
+		surfaces a default-browser favicon. Both together close the
+		`errors-in-console` Lighthouse check that a missing /favicon.ico
+		would trip and tank best-practices below the 0.98 gate.
+	-->
+	<link
+		rel="icon"
+		type="image/svg+xml"
+		href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23070605'/%3E%3Ccircle cx='16' cy='16' r='9' fill='%23a85639'/%3E%3C/svg%3E"
+	/>
 	<link rel="preconnect" href="https://fonts.googleapis.com" />
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
 	<link
@@ -13,13 +27,47 @@
 
 <div class="bg-fixed" aria-hidden="true"></div>
 <div class="bg-grain" aria-hidden="true"></div>
+<!--
+	Photo attribution lives with the fixed background, not inside any one
+	section. `position: fixed` pins it to the viewport so it stays visible
+	for as long as the photo is — which is the entire page, since .bg-fixed
+	is the site-wide background. Moving this out of Hero fixes the "credit
+	scrolls away while the photo it credits is still on screen" bug.
+
+	Wrapped in `<aside aria-label>` so the credit sits inside an explicit
+	complementary landmark — axe-core's `region` rule flags top-level page
+	content that isn't contained by a landmark, and `<main>` / `<footer>`
+	both fit the content they own but not this viewport-fixed link. The
+	wrapper is in flow but its only child is `position: fixed`, so it
+	contributes zero layout.
+-->
+<aside class="photo-credit-landmark" aria-label="Background photo credit">
+	<a
+		class="photo-credit"
+		href="https://www.flickr.com/photos/nationalmemorialforthemountains/255887679/"
+		target="_blank"
+		rel="noopener"
+	>
+		Photo: Kent Kessinger · iLoveMountains.org<br/>Flight courtesy SouthWings
+	</a>
+</aside>
 {@render children()}
 
+<!--
+	Site-wide credits. Single footer for the whole page — section-internal
+	credits (Ticker previously carried its own) have been consolidated here
+	so links appear once, at the bottom, and the page body stays focused
+	on the story instead of repeated attribution rows.
+-->
 <footer class="site-footer">
 	<p>© 2026 Ashley Childress</p>
 	<p class="data-credit">
-		Federal public-domain data: MSHA · EIA · EPA · eGRID ·
-		via Snowflake Cortex + Marketplace
+		Data:
+		<a href="https://www.msha.gov/" target="_blank" rel="noopener">MSHA</a> ·
+		<a href="https://www.eia.gov/" target="_blank" rel="noopener">EIA</a> ·
+		<a href="https://www.epa.gov/egrid" target="_blank" rel="noopener">EPA eGRID</a>
+		· AI:
+		<a href="https://www.snowflake.com/en/data-cloud/cortex/" target="_blank" rel="noopener">Snowflake Cortex</a>
 	</p>
 </footer>
 
@@ -33,17 +81,26 @@
 	:global(:root) {
 		--bg: #070605;
 		--text: #e8dfcc;
-		--text-dim: #7d7466;
-		--text-ghost: #5c554a;
-		/* Two-tier rust palette. --rust is the dim, iron-oxide primary: it
-		   carries nearly every accent surface (text ems, rules, card values,
-		   the one map route). --rust-bright is held back for charged moments
-		   where the page needs to shout (text selection, forthcoming live
-		   pulses). The OKLCH values are perceptually chosen — same hue, two
-		   luminances — so the bright tier reads as the same color, louder. */
-		--rust: oklch(58% 0.14 36);
-		--rust-bright: oklch(70% 0.17 38);
-		--rust-glow: oklch(58% 0.14 36 / 0.15);
+		--text-dim: #a89e8c;
+		/* --text-ghost is the dimmest legible tone — footer copy, anchor-
+		   secondary captions, map legends, every "on the margins" label.
+		   Luminance-tuned so 8-10px body copy still clears WCAG AA (≥4.5:1)
+		   against the near-black --bg; darker than that looked editorial
+		   but failed accessibility audits outright. */
+		--text-ghost: #a09488;
+		/* Two-tier rust palette. --rust is the iron-oxide primary: it carries
+		   nearly every accent surface (text ems, rules, card values, the one
+		   map route). --rust-bright is held back for charged moments where
+		   the page needs to shout (text selection, forthcoming live pulses).
+		   The OKLCH values are perceptually chosen — same hue, two
+		   luminances — so the bright tier reads as the same color, louder.
+		   Lightness sits at 64% so small-text uses (span.rail-num, .primary,
+		   .geo-btn, .e-value, emissions-source strong) clear WCAG AA ≥4.5:1
+		   against --bg and the dark-glass overlays; the prior 58% read as
+		   editorially right but failed the deployed Lighthouse audit. */
+		--rust: oklch(64% 0.145 36);
+		--rust-bright: oklch(76% 0.18 38);
+		--rust-glow: oklch(64% 0.145 36 / 0.15);
 		--green: #5a7a5a;
 		--border-glass: rgba(255, 255, 255, 0.07);
 		/* Hairline divider used for the ledger-look stat grids: sits between
@@ -82,6 +139,19 @@
 	:global(strong), :global(b) {
 		font-weight: 600;
 		color: var(--text);
+	}
+
+	/* Sitewide accent-color utility classes. Inline `<span class="rust">`
+	   and `<span class="ash">` in prose stay symmetric — both carry a
+	   color, neither depends on a section-scoped style accidentally
+	   leaking globally. Scoped so it only takes effect when written
+	   explicitly on a span/em; section headings still use the canonical
+	   `h2 em` / `h3 em` rust treatment in SectionRail. */
+	:global(.rust) {
+		color: var(--rust);
+	}
+	:global(.ash) {
+		color: #a89e92;
 	}
 
 	/* Override the browser's default blue text-selection highlight, which
@@ -151,6 +221,40 @@
 		backface-visibility: hidden;
 	}
 
+	/* Site-wide photo attribution. Fixed to the viewport so it sticks while
+	   the background does. Larger than the previous hero-local credit
+	   (0.52rem was too small to read) and in the ghost tone so it doesn't
+	   compete with primary content. */
+	.photo-credit {
+		position: fixed;
+		bottom: clamp(1rem, 2.5vh, 1.5rem);
+		right: clamp(1.25rem, 3vw, 2.5rem);
+		z-index: 5;
+		font-family: var(--mono);
+		font-size: 0.7rem;
+		line-height: 1.5;
+		letter-spacing: 0.04em;
+		text-align: right;
+		text-decoration: none;
+		color: var(--text-ghost);
+		opacity: 0.7;
+		transition: opacity 0.25s;
+	}
+	.photo-credit:hover,
+	.photo-credit:focus-visible {
+		opacity: 1;
+		color: var(--text-dim);
+	}
+
+	@media (max-width: 720px) {
+		.photo-credit {
+			font-size: 0.62rem;
+			bottom: 0.75rem;
+			right: 0.9rem;
+			line-height: 1.4;
+		}
+	}
+
 	@media (max-width: 768px) {
 		.bg-fixed {
 			background-image: url('/img/westva-strip-mine-768.webp');
@@ -175,7 +279,27 @@
 		margin-top: 0.5rem;
 		font-size: 0.55rem;
 		letter-spacing: 0.1em;
-		color: rgba(128, 123, 117, 0.6);
+		/* Solid tone rather than an alpha-composite — alpha against
+		   near-black crushed to a 2.4:1 ratio and failed contrast
+		   audits. 4.9:1 as a solid color still reads quieter than the
+		   line above it because the font is smaller and the tracking
+		   is wider. */
+		color: #857c70;
+	}
+	/* Credit links are the same dim tone as the surrounding text with a
+	   subtle underline to mark them as affordances. Hover lifts to the
+	   rust accent used everywhere else on the page. */
+	.site-footer .data-credit a {
+		color: var(--text-dim);
+		text-decoration: underline;
+		text-decoration-color: rgba(255, 255, 255, 0.12);
+		text-underline-offset: 2px;
+		transition: color 0.15s, text-decoration-color 0.15s;
+	}
+	.site-footer .data-credit a:hover,
+	.site-footer .data-credit a:focus-visible {
+		color: var(--rust);
+		text-decoration-color: var(--rust);
 	}
 
 	/* ---- Glass utility ---- */

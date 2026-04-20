@@ -1,20 +1,6 @@
 /**
- * Geolocation, geocoding, point-in-polygon, and state-to-subregion lookup.
+ * Geolocation, point-in-polygon subregion lookup, and browser geolocation.
  */
-
-export const STATE_TO_SUBREGION = {
-	AL: 'SRSO', AK: 'AKGD', AZ: 'AZNM', AR: 'SRMV', CA: 'CAMX',
-	CO: 'RMPA', CT: 'NEWE', DE: 'RFCE', FL: 'FRCC', GA: 'SRSO',
-	HI: 'HIMS', ID: 'NWPP', IL: 'SRMW', IN: 'RFCW', IA: 'MROW',
-	KS: 'SPNO', KY: 'SRTV', LA: 'SRMV', ME: 'NEWE', MD: 'RFCE',
-	MA: 'NEWE', MI: 'RFCM', MN: 'MROW', MS: 'SRMV', MO: 'SRMW',
-	MT: 'NWPP', NE: 'MROW', NV: 'NWPP', NH: 'NEWE', NJ: 'RFCE',
-	NM: 'AZNM', NY: 'NYUP', NC: 'SRVC', ND: 'MROW', OH: 'RFCW',
-	OK: 'SPSO', OR: 'NWPP', PA: 'RFCE', RI: 'NEWE', SC: 'SRVC',
-	SD: 'MROW', TN: 'SRTV', TX: 'ERCT', UT: 'NWPP', VT: 'NEWE',
-	VA: 'SRVC', WA: 'NWPP', WV: 'SRVC', WI: 'MROE', WY: 'RMPA',
-	DC: 'RFCE',
-};
 
 const COAL_SUBREGIONS = new Set([
 	'AKGD', 'AZNM', 'CAMX', 'ERCT', 'FRCC',
@@ -70,30 +56,6 @@ function pointInRing(x, y, ring) {
 
 export function hasCoalData(subregionId) {
 	return COAL_SUBREGIONS.has(subregionId);
-}
-
-export function subregionForState(stateCode) {
-	return STATE_TO_SUBREGION[stateCode.toUpperCase()] || null;
-}
-
-export async function geocodeAddress(query) {
-	// Use Nominatim (no API key needed, works before Google Maps loads)
-	const url = new URL('https://nominatim.openstreetmap.org/search');
-	url.searchParams.set('format', 'json');
-	url.searchParams.set('q', query);
-	url.searchParams.set('countrycodes', 'us');
-	url.searchParams.set('limit', '1');
-
-	try {
-		const resp = await fetch(url.toString());
-		if (!resp.ok) throw new Error('Geocoding unavailable');
-		const results = await resp.json();
-		if (!results.length) return null;
-		return { lat: Number.parseFloat(results[0].lat), lon: Number.parseFloat(results[0].lon) };
-	} catch (e) {
-		console.error('[unearthed] geocoding failed:', e);
-		return null;
-	}
 }
 
 export function requestLocation(timeout = 10000) {

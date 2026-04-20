@@ -54,7 +54,18 @@ def _get_private_key_der() -> bytes:
     from cryptography.hazmat.primitives import serialization
 
     key_path = Path(settings.snowflake_private_key_path).expanduser()
+    if not key_path.exists():
+        raise RuntimeError(
+            f"Snowflake private key not found at {key_path}. "
+            "Verify the Cloud Run --set-secrets mount and SNOWFLAKE_PRIVATE_KEY_PATH."
+        )
     key_data = key_path.read_bytes()
+    if not key_data:
+        raise RuntimeError(
+            f"Snowflake private key at {key_path} is empty (0 bytes). "
+            "Check that the service account has roles/secretmanager.secretAccessor "
+            "and the secret version is enabled."
+        )
     passphrase = (
         settings.snowflake_private_key_passphrase.encode()
         if settings.snowflake_private_key_passphrase

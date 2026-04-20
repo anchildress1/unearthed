@@ -1,0 +1,16 @@
+#!include:.gitignore
+
+# Dev-only files Cloud Build does not need
+tests/
+scripts/
+*.md
+LICENSE
+Makefile
+deploy.sh
+.ruff_cache/
+.claude/
+.playwright-mcp/
+frontend/playwright-report/
+frontend/test-results/
+frontend/coverage/
+frontend/.lighthouseci/

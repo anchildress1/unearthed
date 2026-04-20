@@ -4,6 +4,11 @@ from unittest.mock import patch
 
 from tests.conftest import SAMPLE_MINE_DATA
 
+# Matches the stats dict shape returned by generate_prose — three MSHA fields
+# keyed by the frontend's public names. Zeros so these tests don't accidentally
+# depend on specific incident counts while checking caching.
+_STATS = {"fatalities": 0, "injuries_lost_time": 0, "days_lost": 0}
+
 
 class TestSuggestionsFor:
     """Tests for _suggestions_for() contextual question templating."""
@@ -80,7 +85,7 @@ class TestSuggestionsFor:
 class TestMineContextPopulation:
     """Tests that /mine-for-me populates _mine_context for downstream use."""
 
-    @patch("app.main.generate_prose", return_value=("Prose.", False))
+    @patch("app.main.generate_prose", return_value=("Prose.", False, _STATS))
     @patch("app.main.query_mine_for_subregion", return_value=SAMPLE_MINE_DATA)
     def test_mine_for_me_populates_context(self, mock_sf, mock_prose, client):
         from app.main import _mine_context
@@ -91,7 +96,7 @@ class TestMineContextPopulation:
         assert _mine_context["SRVC"]["mine"] == "Bailey Mine"
         _mine_context.clear()
 
-    @patch("app.main.generate_prose", return_value=("Prose.", False))
+    @patch("app.main.generate_prose", return_value=("Prose.", False, _STATS))
     @patch("app.main.query_mine_for_subregion", return_value=SAMPLE_MINE_DATA)
     def test_context_key_uppercased(self, mock_sf, mock_prose, client):
         from app.main import _mine_context
@@ -101,7 +106,7 @@ class TestMineContextPopulation:
         assert "SRVC" in _mine_context
         _mine_context.clear()
 
-    @patch("app.main.generate_prose", return_value=("Prose.", False))
+    @patch("app.main.generate_prose", return_value=("Prose.", False, _STATS))
     @patch("app.main.query_mine_for_subregion", return_value=SAMPLE_MINE_DATA)
     def test_context_cache_bounded(self, mock_sf, mock_prose, client):
         """Cache evicts the oldest entry when it exceeds _CACHE_MAXSIZE."""

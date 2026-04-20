@@ -1,54 +1,42 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
 	import { fetchH3Density } from '$lib/api.js';
-	import { loadSubregionGeoJSON } from '$lib/geo.js';
 	import {
 		loadGoogleMaps,
 		createDarkMap,
+		createLabeledMarker,
 		circleIcon,
 		MAP_COLORS,
 	} from '$lib/maps.js';
 	import SectionRail from '$lib/components/SectionRail.svelte';
 
-	// The section renders twice on the results page. Same component, same
-	// underlying query — just two different framings of the result.
-	//
-	// - `zoomTo="grid"` frames the user's eGRID subregion polygon so the
-	//   reader sees "the box your electrons live in" with the mine and
-	//   the meter as two dots inside it.
-	// - `zoomTo="mines"` frames tight on the hex cluster so the reader
-	//   sees the shape of extraction.
-	//
-	// `showChrome` lets the grid framing hide the Cortex summary + tallies
-	// + mine-density legend — chrome belongs to the seam view, not the
-	// orientation view. Anchor labels are always off: they cover the map
-	// data in both framings, and the section title already says what's
-	// being pointed at.
+	// Single hex density map framed tight on the hex cluster — "the shape
+	// of extraction." The eGRID subregion is labeled on the user's pin in
+	// the upstream route map (N° 03, MapSection) — it never renders as a
+	// polygon on either map. This section is only the heatmap.
 	let {
 		userCoords = null,
 		mineCoords = null,
 		mineName = '',
+		mineId = '',
+		mineCounty = '',
 		mineState = '',
-		subregionId = '',
-		zoomTo = 'mines',
-		showChrome = true,
-		number = '04',
-		label = 'The seam',
 	} = $props();
 
 	let mapEl;
 	let map = null;
 	let infoWindow = null;
 	let hexMarkers = [];
-	let subregionPolygons = [];
 	// Mine + user pins. Tracked separately from hexMarkers so the cleanup
 	// pass doesn't have to reason about which dots are data vs. which are
 	// anchors, and so HMR teardown fully detaches them from the map.
 	let anchorMarkers = [];
+	// Labeled-card overlays (MINE tag) sit on a different overlay pane
+	// than Markers, so they get their own teardown list.
+	let anchorOverlays = [];
 
 	let cells = $state([]);
 	let registryTotals = $state({ mines: 0, active: 0, abandoned: 0 });
-	let geojson = $state(null);
 	let loaded = $state(false);
 	let errored = $state(false);
 	let summary = $state('');
@@ -100,23 +88,21 @@
 
 	onMount(async () => {
 		// Fetch phase: "unavailable" here is the only honest reason to show
-		// the user a generic failure message. We log the GeoJSON failure
-		// separately so a missing asset doesn't disappear into the outer
-		// catch (eGRID overlays degrade to unadorned hexes instead of
-		// collapsing the whole section).
+		// the user a generic failure message.
 		let density;
-		let geo = null;
 		try {
-			[density, geo] = await Promise.all([
+			[density] = await Promise.all([
 				fetchH3Density(5, mineState || null),
-				loadSubregionGeoJSON().catch((err) => {
-					console.warn('[unearthed] eGRID overlay unavailable:', err.message);
-					return null;
-				}),
-				loadGoogleMaps(),
+				// Bootstrap first, then pull in just the `maps` library we
+				// use here (Map, Marker, InfoWindow, LatLngBounds,
+				// SymbolPath). Dynamic import means unused libraries — like
+				// `places` or `geometry` — never hit the wire.
+				loadGoogleMaps().then(() => google.maps.importLibrary('maps')),
 			]);
 		} catch (e) {
-			console.warn('[unearthed] h3-density fetch failed:', e.message);
+			// `console.error` (not warn): a data/SDK failure here is a hard
+			// outage, not a graceful degradation — no density data at all.
+			console.error('[unearthed] h3-density fetch failed:', e);
 			errored = true;
 			loaded = true;
 			return;
@@ -133,18 +119,22 @@
 		};
 		summary = density.summary || '';
 		summaryDegraded = Boolean(density.summary_degraded);
-		if (geo) geojson = geo;
 
 		// Render phase: failures here are code bugs, not API outages. We let
 		// them surface in the console with a full stack so they're fixable
 		// instead of hiding behind "map temporarily unavailable."
 		try {
+			if (!mapEl) {
+				// An unbound container would make `new google.maps.Map(null, …)`
+				// silently construct an orphan Map (no throw on some SDK
+				// versions). Raise explicitly so the catch below fires.
+				throw new Error('map container not bound');
+			}
 			map = createDarkMap(mapEl);
 			infoWindow = new google.maps.InfoWindow({
 				disableAutoPan: true,
 				headerDisabled: true,
 			});
-			renderSubregions();
 			renderHexes();
 			renderAnchors();
 			fitToData();
@@ -160,44 +150,17 @@
 		cancelled = true;
 		for (const m of hexMarkers) m.setMap(null);
 		for (const m of anchorMarkers) m.setMap(null);
-		for (const p of subregionPolygons) p.setMap(null);
+		for (const o of anchorOverlays) o.setMap(null);
 		infoWindow?.close();
 		hexMarkers = [];
 		anchorMarkers = [];
-		subregionPolygons = [];
+		anchorOverlays = [];
 		infoWindow = null;
+		// Null the Map instance itself: Google's Map holds strong refs to
+		// its container element and listeners, so HMR and SPA navigation
+		// leak without this.
+		map = null;
 	});
-
-	function renderSubregions() {
-		if (!geojson || !map) return;
-		for (const feature of geojson.features) {
-			const sub = feature.properties?.Subregion || '';
-			const type = feature.geometry.type;
-			const coords = feature.geometry.coordinates;
-			const polygons = type === 'MultiPolygon' ? coords : [coords];
-			const paths = [];
-			for (const polygon of polygons) {
-				for (const ring of polygon) {
-					if (!ring.length) continue;
-					paths.push(ring.map(([lng, lat]) => ({ lat, lng })));
-				}
-			}
-			if (!paths.length) continue;
-			const isUserRegion = sub === subregionId;
-			const poly = new google.maps.Polygon({
-				map,
-				paths,
-				fillColor: isUserRegion ? MAP_COLORS.rust : MAP_COLORS.white,
-				fillOpacity: isUserRegion ? 0.08 : 0.015,
-				strokeColor: isUserRegion ? MAP_COLORS.rust : MAP_COLORS.white,
-				strokeOpacity: isUserRegion ? 0.55 : 0.12,
-				strokeWeight: isUserRegion ? 1 : 0.6,
-				clickable: false,
-				zIndex: 1,
-			});
-			subregionPolygons.push(poly);
-		}
-	}
 
 	function renderHexes() {
 		if (!map) return;
@@ -212,6 +175,12 @@
 			const marker = new google.maps.Marker({
 				map,
 				position: { lat, lng },
+				// Google Maps renders classic Markers with an internal
+				// `role="button"`; without a title, axe-core flags each one
+				// under `aria-command-name`. The title promotes to an
+				// accessible name (and a native tooltip on hover, which is
+				// also a UX win — the cluster stops being anonymous dots).
+				title: `${total} coal mines in this area · ${active} active, ${abandoned} closed`,
 				icon: {
 					path: google.maps.SymbolPath.CIRCLE,
 					scale: radius(total),
@@ -233,28 +202,51 @@
 
 	function renderAnchors() {
 		if (!map) return;
-		// No OverlayView label cards here — on both the grid zoom and the
-		// mine zoom, a "YOUR MINE" / "YOU" pin card lands on top of the
-		// data the reader came to see (the subregion polygon edge or the
-		// hex cluster). `title` still shows on hover for the curious.
+		// Mine anchor gets a labeled MINE tag so the reader can name their
+		// dot in the cluster — the same 3-line card (glyph + MINE + name +
+		// MSHA/county) used on the route map, so the two sections read as
+		// one voice. The user pin stays label-free: a card over the cluster
+		// would block the shape it's trying to show.
 		if (mineCoords) {
-			anchorMarkers.push(new google.maps.Marker({
+			const marker = new google.maps.Marker({
 				map,
 				position: { lat: mineCoords[0], lng: mineCoords[1] },
 				title: mineName || 'your mine',
 				icon: circleIcon({ color: MAP_COLORS.rust, scale: 6 }),
 				zIndex: 20,
-			}));
+			});
+			anchorMarkers.push(marker);
+			if (mineName) {
+				anchorOverlays.push(
+					createLabeledMarker(map, marker, {
+						type: 'MINE',
+						name: mineName,
+						subtitle: buildMineSubtitle(),
+					}),
+				);
+			}
 		}
 		if (userCoords) {
 			anchorMarkers.push(new google.maps.Marker({
 				map,
 				position: { lat: userCoords[0], lng: userCoords[1] },
-				title: 'you',
+				title: 'Your location',
 				icon: circleIcon({ color: MAP_COLORS.you, scale: 5 }),
 				zIndex: 20,
 			}));
 		}
+	}
+
+	// Same format as MapSection's MINE subtitle — identifier · geography —
+	// so a reader who scrolls between sections 03 and 04 sees the same line
+	// under the same name. Falls back gracefully when optional fields
+	// (mine_id, county) are missing in degraded/fallback payloads.
+	function buildMineSubtitle() {
+		const parts = [];
+		if (mineId) parts.push(`MSHA ${mineId}`);
+		if (mineCounty && mineState) parts.push(`${mineCounty} Co., ${mineState}`);
+		else if (mineState) parts.push(mineState);
+		return parts.join(' · ');
 	}
 
 	function openHexInfo({ total, active, abandoned }, marker) {
@@ -274,58 +266,27 @@
 		infoWindow.open({ map, anchor: marker });
 	}
 
-	function extendFromSubregion(bounds) {
-		// Walk the user's eGRID subregion polygon(s) and add every vertex
-		// to the bounds. Returns true if the polygon was found and had
-		// points; the caller falls back to another framing otherwise.
-		if (!geojson || !subregionId) return false;
-		let any = false;
-		for (const feature of geojson.features) {
-			if (feature.properties?.Subregion !== subregionId) continue;
-			const type = feature.geometry.type;
-			const coords = feature.geometry.coordinates;
-			const polygons = type === 'MultiPolygon' ? coords : [coords];
-			for (const polygon of polygons) {
-				for (const ring of polygon) {
-					for (const [lng, lat] of ring) {
-						if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
-						bounds.extend({ lat, lng });
-						any = true;
-					}
-				}
-			}
-		}
-		return any;
-	}
-
 	function fitToData() {
 		if (!map) return;
 		const bounds = new google.maps.LatLngBounds();
 		let any = false;
-		if (zoomTo === 'grid') {
-			// Grid framing: fit to the eGRID subregion polygon — the reader
-			// sees "the box your electrons live in" with the mine and meter
-			// as two dots inside. Anchors aren't used as bounds contributors
-			// here because they would push the frame beyond the polygon edge
-			// (e.g., a mine just outside the subregion line) and collapse the
-			// whole point of this framing.
-			any = extendFromSubregion(bounds);
-		} else {
-			for (const c of filteredCells) {
-				const lat = Number(c.LAT ?? c.lat);
-				const lng = Number(c.LNG ?? c.lng);
-				if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
-				bounds.extend({ lat, lng });
-				any = true;
-			}
-			for (const p of [userCoords, mineCoords]) {
-				if (!p) continue;
-				const lat = Number(p[0]);
-				const lng = Number(p[1]);
-				if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
-				bounds.extend({ lat, lng });
-				any = true;
-			}
+		// Fit tight on the hex cluster + anchors — "the shape of
+		// extraction." No eGRID polygon is drawn here or upstream; the
+		// user's subregion is surfaced as text on their pin in MapSection.
+		for (const c of filteredCells) {
+			const lat = Number(c.LAT ?? c.lat);
+			const lng = Number(c.LNG ?? c.lng);
+			if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+			bounds.extend({ lat, lng });
+			any = true;
+		}
+		for (const p of [userCoords, mineCoords]) {
+			if (!p) continue;
+			const lat = Number(p[0]);
+			const lng = Number(p[1]);
+			if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+			bounds.extend({ lat, lng });
+			any = true;
 		}
 		if (!any) {
 			// Continental US fallback so the frame isn't empty.
@@ -365,26 +326,19 @@
 	}
 </script>
 
-<SectionRail {number} {label} class="h3-section">
-	<div class="h3-header" aria-label={zoomTo === 'grid' ? 'Your eGRID subregion' : 'Regional coal mining footprint'}>
-		<h3>
-			{#if zoomTo === 'grid'}
-				This is your <em>grid subregion</em>.<br/>
-				The box your <em>electrons live in</em>.
-			{:else if mineState}
+<SectionRail number="04" label="The seam" class="h3-section">
+	<div class="section-header" aria-label="Regional coal mining footprint">
+		<h2>
+			{#if mineState}
 				This is <em>{mineState}'s</em> coal country.<br/>
 				Your mine is <em>one dot</em> in it.
 			{:else}
 				This is the country's <em>coal footprint</em>.<br/>
 				Your mine is <em>one dot</em> in it.
 			{/if}
-		</h3>
+		</h2>
 		<p class="sub">
-			{#if zoomTo === 'grid'}
-				The polygon is <strong>{subregionId || 'your subregion'}</strong> — every
-				plant inside it feeds the same slice of the US grid. Your mine and
-				your meter are the two dots on it.
-			{:else if mineState}
+			{#if mineState}
 				Every coal mine MSHA has on record in {mineState}, clustered by
 				location. <strong>Bigger dot, more mines in that patch.</strong>
 				Color fades from <span class="rust">rust (still cutting)</span> to
@@ -396,7 +350,7 @@
 				<span class="ash">ash (abandoned and gone)</span>.
 			{/if}
 		</p>
-		{#if showChrome && summary}
+		{#if summary}
 			<p class="cortex-note" class:degraded={summaryDegraded}>
 				<span class="cortex-note-tag">
 					{summaryDegraded ? 'On this map' : 'Cortex, on this map'}
@@ -423,71 +377,64 @@
 			class="map-container"
 			bind:this={mapEl}
 			role="img"
-			aria-label={zoomTo === 'grid'
-				? `eGRID subregion ${subregionId || ''}`.trim()
-				: mineState
-					? `Coal mine density map for ${mineState}`
-					: 'Coal mine density map for the US'}
+			aria-label={mineState
+				? `Coal mine density map for ${mineState}`
+				: 'Coal mine density map for the US'}
 		></div>
 	</div>
 
-	{#if showChrome}
-		<div class="map-legend">
-			<span class="legend-item">
-				<svg width="56" height="18" viewBox="0 0 56 18" aria-hidden="true">
-					<circle cx="5" cy="9" r="3" fill="#be573b" fill-opacity="0.5" stroke="#be573b" />
-					<circle cx="22" cy="9" r="5" fill="#be573b" fill-opacity="0.45" stroke="#be573b" />
-					<circle cx="45" cy="9" r="8" fill="#be573b" fill-opacity="0.4" stroke="#be573b" />
-				</svg>
-				hex size ∝ mine count
-			</span>
-			<span class="legend-item">
-				<span class="swatch rust"></span> still cutting
-				<span class="swatch ash"></span> abandoned
-			</span>
-			{#if subregionId}
-				<span class="legend-item">
-					<span class="swatch region"></span> your grid subregion ({subregionId})
-				</span>
-			{/if}
-		</div>
+	<div class="map-legend">
+		<span class="legend-item">
+			<svg width="56" height="18" viewBox="0 0 56 18" aria-hidden="true">
+				<circle cx="5" cy="9" r="3" fill="#be573b" fill-opacity="0.5" stroke="#be573b" />
+				<circle cx="22" cy="9" r="5" fill="#be573b" fill-opacity="0.45" stroke="#be573b" />
+				<circle cx="45" cy="9" r="8" fill="#be573b" fill-opacity="0.4" stroke="#be573b" />
+			</svg>
+			hex size ∝ mine count
+		</span>
+		<span class="legend-item">
+			<span class="swatch rust"></span> still cutting
+			<span class="swatch ash"></span> abandoned
+		</span>
+	</div>
 
-		{#if loaded && !errored && totals.mines > 0}
-			<div class="tallies">
-				<div class="tally">
-					<span class="t-value">{totals.mines.toLocaleString()}</span>
-					<span class="anchor-primary">
-						{mineState ? `coal mines in ${mineState}` : 'coal mines in the US'}
-					</span>
-					<span class="anchor-secondary">MSHA registry · 1983 to present</span>
-				</div>
-				<div class="tally">
-					<span class="t-value rust">{totals.active.toLocaleString()}</span>
-					<span class="anchor-primary">still cutting coal today</span>
-					<span class="anchor-secondary">active · the rust dots on the map</span>
-				</div>
-				<div class="tally">
-					<span class="t-value ash">{totals.abandoned.toLocaleString()}</span>
-					<span class="anchor-primary">closed, the ground left behind</span>
-					<span class="anchor-secondary">abandoned · the ash dots on the map</span>
-				</div>
+	{#if loaded && !errored && totals.mines > 0}
+		<div class="tallies">
+			<div class="tally">
+				<span class="t-value">{totals.mines.toLocaleString()}</span>
+				<span class="anchor-primary">
+					{mineState ? `coal mines in ${mineState}` : 'coal mines in the US'}
+				</span>
+				<span class="anchor-secondary">MSHA registry · 1983 to present</span>
 			</div>
-		{/if}
+			<div class="tally">
+				<span class="t-value rust">{totals.active.toLocaleString()}</span>
+				<span class="anchor-primary">still cutting coal today</span>
+				<span class="anchor-secondary">active · the rust dots on the map</span>
+			</div>
+			<div class="tally">
+				<span class="t-value ash">{totals.abandoned.toLocaleString()}</span>
+				<span class="anchor-primary">closed, the ground left behind</span>
+				<span class="anchor-secondary">abandoned · the ash dots on the map</span>
+			</div>
+		</div>
 	{/if}
 </SectionRail>
 
 <style>
-	.h3-header {
-		max-width: 720px;
-		margin-bottom: 2rem;
-	}
-
-
+	/* Matted frame — visual parity with MapSection (N° 03). The `.glass`
+	   utility supplies the 1px border, radius, and backdrop blur; the
+	   padding insets the map tiles so the frame reads as chrome around the
+	   map. `max-width` caps the section at editorial width so the N° 03
+	   route map and the N° 04 density map share the same outer silhouette
+	   — scrolling between them shouldn't feel like the chrome shifted. */
 	.map-wrap {
 		position: relative;
 		width: 100%;
+		max-width: min(1080px, 100%);
 		overflow: hidden;
-		padding: 0;
+		padding: clamp(0.6rem, 1.2vw, 1rem);
+		margin: 1rem 0 0;
 	}
 
 	.map-container {
@@ -535,11 +482,6 @@
 	}
 	.swatch.rust { background: var(--rust); }
 	.swatch.ash { background: #a89e92; }
-	.swatch.region {
-		background: oklch(58% 0.14 36 / 0.22);
-		border: 1px solid oklch(58% 0.14 36 / 0.55);
-		border-radius: 2px;
-	}
 
 	.tallies {
 		display: grid;

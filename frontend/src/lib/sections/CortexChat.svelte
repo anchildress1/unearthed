@@ -74,16 +74,27 @@
 	}
 </script>
 
-<SectionRail number="06" label="Ask the records" class="cortex-section">
+<SectionRail number="05" label="Ask the records" class="cortex-section">
 	<div class="header">
 		<span class="badge">
 			<span class="pulse" aria-hidden="true"></span>
 			<span>snowflake cortex analyst</span>
-			<span class="status" class:active={asking}>{asking ? 'querying' : 'live'}</span>
+			{#if asking}
+				<span class="status active">querying</span>
+			{/if}
 		</span>
 	</div>
 
-	<h3>Interrogate the <em>records</em>.</h3>
+	<h2>Interrogate the <em>records</em>.</h2>
+
+	<!--
+		`.cortex-shell` caps the interactive UI at a sensible reading width
+		even though the section's headline above is free to span the full
+		content column. The form, pipeline, chips, and results all need a
+		line-length that reads like prose, not a dashboard. The headline
+		above opts out of this cap by sitting outside the wrapper.
+	-->
+	<div class="cortex-shell">
 	<p class="sub">
 		Your question becomes <strong>SQL</strong>. The SQL runs against federal mine data
 		pooled in Snowflake. The answer comes back with the generated query attached —
@@ -98,7 +109,7 @@
 		<span class="p-step"><span class="p-num">03</span> federal data</span>
 	</div>
 
-	<div class="chips" role="list" aria-label="Suggested questions">
+	<div class="chips" role="group" aria-label="Suggested questions">
 		{#each chips as chip}
 			<button class="chip" onclick={() => ask(chip)} disabled={asking}>{chip}</button>
 		{/each}
@@ -217,6 +228,7 @@
 			{/if}
 		</div>
 	{/if}
+	</div>
 </SectionRail>
 
 <style>
@@ -225,6 +237,15 @@
 		align-items: center;
 		gap: 1rem;
 		margin-bottom: 1rem;
+	}
+
+	/* Reading measure for the interactive UI. SectionRail no longer caps
+	   the content column (so the h2 above can breathe edge-to-edge), but
+	   the form + pipeline + chips + results table all want line-lengths
+	   closer to prose than to a dashboard. 1040px matches the canonical
+	   map-frame width elsewhere on the page. */
+	.cortex-shell {
+		max-width: min(1040px, 100%);
 	}
 
 	.badge {
@@ -236,14 +257,14 @@
 		text-transform: uppercase;
 		letter-spacing: 0.2em;
 		color: var(--rust);
-		border: 1px solid oklch(58% 0.14 36 / 0.3);
+		border: 1px solid oklch(64% 0.145 36 / 0.3);
 		padding: 0.3rem 0.65rem 0.3rem 0.55rem;
 		border-radius: 3px;
 	}
 
 	/* Soft breathing dot. Rust dim → bright tier → dim, matching the two-
-	   tier palette. Reduced-motion fallback keeps the dot visible but still,
-	   since the animation is decorative (the nearby label says "live"). */
+	   tier palette. Reduced-motion fallback keeps the dot visible but still
+	   — the animation is purely decorative and nothing depends on it. */
 	.pulse {
 		width: 6px;
 		height: 6px;
@@ -255,11 +276,11 @@
 	@keyframes cortex-pulse {
 		0%, 100% {
 			background: var(--rust);
-			box-shadow: 0 0 0 0 oklch(58% 0.14 36 / 0);
+			box-shadow: 0 0 0 0 oklch(64% 0.145 36 / 0);
 		}
 		50% {
 			background: var(--rust-bright);
-			box-shadow: 0 0 0 4px oklch(58% 0.14 36 / 0.18);
+			box-shadow: 0 0 0 4px oklch(64% 0.145 36 / 0.18);
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {
@@ -271,13 +292,13 @@
 		font-size: 0.5rem;
 		letter-spacing: 0.18em;
 		padding-left: 0.4rem;
-		border-left: 1px solid oklch(58% 0.14 36 / 0.25);
+		border-left: 1px solid oklch(64% 0.145 36 / 0.25);
 	}
 	.status.active { color: var(--rust-bright); }
 
 	/* The form chrome sits too close to the sub paragraph without an extra
 	   breath of space before it—the rest of the sections end their header
-	   on the h3 or a summary block, so this nudge is specific to CortexChat. */
+	   on the h2 or a summary block, so this nudge is specific to CortexChat. */
 	.sub {
 		margin-bottom: 1.4rem;
 	}
@@ -409,12 +430,12 @@
 	}
 	.proof-toggle:hover {
 		color: var(--rust);
-		border-color: oklch(58% 0.14 36 / 0.45);
-		background: oklch(58% 0.14 36 / 0.06);
+		border-color: oklch(64% 0.145 36 / 0.45);
+		background: oklch(64% 0.145 36 / 0.06);
 	}
 	.proof-toggle[aria-expanded="true"] {
 		color: var(--rust);
-		border-color: oklch(58% 0.14 36 / 0.35);
+		border-color: oklch(64% 0.145 36 / 0.35);
 	}
 	.proof-toggle .caret {
 		font-size: 0.7rem;
@@ -507,7 +528,7 @@
 		line-height: 1.55;
 		margin: 0.4rem 0 0.6rem;
 		padding-left: 0.75rem;
-		border-left: 2px solid oklch(58% 0.14 36 / 0.45);
+		border-left: 2px solid oklch(64% 0.145 36 / 0.45);
 	}
 
 	.follow-ups {

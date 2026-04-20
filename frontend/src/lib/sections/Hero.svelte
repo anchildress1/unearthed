@@ -1,46 +1,184 @@
 <script>
+	import { onMount } from 'svelte';
 	import {
-		geocodeAddress,
 		loadSubregionGeoJSON,
 		findSubregion,
 		hasCoalData,
 		requestLocation,
-		subregionForState,
-		STATE_TO_SUBREGION,
 	} from '$lib/geo.js';
+	import { loadGoogleMaps } from '$lib/maps.js';
 
 	let { loading, error, onTrace } = $props();
 	let address = $state('');
-	let showStatePicker = $state(false);
-	let selectedState = $state('');
 	let localError = $state(null);
 
-	const states = Object.keys(STATE_TO_SUBREGION).sort();
-	const stateLabels = {
-		AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'California',
-		CO:'Colorado',CT:'Connecticut',DE:'Delaware',DC:'District of Columbia',
-		FL:'Florida',GA:'Georgia',HI:'Hawaii',ID:'Idaho',IL:'Illinois',
-		IN:'Indiana',IA:'Iowa',KS:'Kansas',KY:'Kentucky',LA:'Louisiana',
-		ME:'Maine',MD:'Maryland',MA:'Massachusetts',MI:'Michigan',MN:'Minnesota',
-		MS:'Mississippi',MO:'Missouri',MT:'Montana',NE:'Nebraska',NV:'Nevada',
-		NH:'New Hampshire',NJ:'New Jersey',NM:'New Mexico',NY:'New York',
-		NC:'North Carolina',ND:'North Dakota',OH:'Ohio',OK:'Oklahoma',
-		OR:'Oregon',PA:'Pennsylvania',RI:'Rhode Island',SC:'South Carolina',
-		SD:'South Dakota',TN:'Tennessee',TX:'Texas',UT:'Utah',VT:'Vermont',
-		VA:'Virginia',WA:'Washington',WV:'West Virginia',WI:'Wisconsin',WY:'Wyoming',
-	};
+	// Google Places autocomplete — adds a suggestion dropdown beneath the
+	// existing input and resolves every address through GCP. No Nominatim
+	// fallback; Places is the single source of geolocation.
+	let placesReady = $state(false);
+	let predictions = $state([]);
+	let showPredictions = $state(false);
+	// Counts consecutive autocomplete failures so a transient hiccup doesn't
+	// flash a warning under the input, but a sustained outage (quota exceeded,
+	// network dead) does surface instead of staying silent. Resets on success.
+	let predictionsFailures = $state(0);
+	const PREDICTIONS_ERR_THRESHOLD = 2;
+	// Modern (2026) pattern: load the Places classes via importLibrary so we
+	// never reach into `google.maps.places.*` as a global. Cached after first
+	// import.
+	let placesLib = null;
+	let sessionToken = null;
+	let debounceId;
+	// Remember the last prediction the user picked from the dropdown so that
+	// hitting "trace →" right after a selection skips a redundant
+	// autocomplete round-trip and goes straight to Place Details.
+	let cachedPrediction = null;
+
+	onMount(async () => {
+		try {
+			console.log('[unearthed] loading Google Maps…');
+			await loadGoogleMaps();
+			console.log('[unearthed] Maps bootstrap installed, importing places…');
+			placesLib = await google.maps.importLibrary('places');
+			console.log('[unearthed] Places library ready:', Object.keys(placesLib));
+			placesReady = true;
+		} catch (e) {
+			console.error('[unearthed] Places library unavailable:', e);
+			localError = 'Address search is temporarily unavailable. Try the location button.';
+		}
+	});
+
+	function newSession() {
+		sessionToken = new placesLib.AutocompleteSessionToken();
+	}
+
+	async function fetchPredictions(input) {
+		if (!placesReady) {
+			console.warn('[unearthed] fetchPredictions skipped — places not ready');
+			predictions = [];
+			return;
+		}
+		if (!input || input.trim().length < 3) {
+			predictions = [];
+			return;
+		}
+		if (!sessionToken) newSession();
+		try {
+			const { suggestions } = await placesLib.AutocompleteSuggestion.fetchAutocompleteSuggestions({
+				input,
+				// Hard restrict to US CLDR regions. `region` on its own only
+				// biases — it would still happily suggest Paris, France for
+				// "par". The app only has coal-supply data for US plants, so
+				// non-US suggestions are misleading even as autofill candidates.
+				// CLDR codes cover the states + territories we actually carry.
+				includedRegionCodes: ['us', 'pr', 'vi', 'gu', 'mp', 'as'],
+				language: 'en-US',
+				sessionToken,
+			});
+			const kept = (suggestions || [])
+				.filter((s) => s.placePrediction)
+				.slice(0, 5);
+			console.log(
+				'[unearthed] autocomplete:', input,
+				'→', (suggestions || []).length, 'suggestions,',
+				kept.length, 'predictions kept',
+			);
+			predictions = kept;
+			predictionsFailures = 0;
+		} catch (e) {
+			console.warn('[unearthed] autocomplete fetch failed:', e);
+			predictions = [];
+			predictionsFailures += 1;
+		}
+	}
+
+	function onAddressInput() {
+		// User is editing — any cached selection no longer applies.
+		cachedPrediction = null;
+		showPredictions = true;
+		clearTimeout(debounceId);
+		debounceId = setTimeout(() => fetchPredictions(address), 180);
+	}
+
+	// Picking a suggestion populates the input exactly as if the user had
+	// typed the full address. Resolution waits for the trace button — same
+	// flow as a hand-typed entry.
+	function selectPrediction(pred) {
+		const displayText = pred.text?.toString?.() ?? pred.text?.text ?? '';
+		address = displayText;
+		cachedPrediction = pred;
+		predictions = [];
+		showPredictions = false;
+		localError = null;
+	}
+
+	async function resolveFromPrediction(pred) {
+		const place = pred.toPlace();
+		await place.fetchFields({ fields: ['location'] });
+		// Details call consumes the session token — start a fresh one for
+		// the next typing session to stay on Autocomplete-Essentials billing.
+		newSession();
+		const loc = place.location;
+		if (!loc) {
+			localError = 'Could not resolve that place. Try another address.';
+			return;
+		}
+		await resolveSubregion(loc.lat(), loc.lng());
+	}
+
+	async function resolveCurrentAddress() {
+		// Prefer the cached prediction if the user picked one and hasn't
+		// since edited the input.
+		const cachedText = cachedPrediction?.text?.toString?.();
+		if (cachedPrediction && cachedText === address) {
+			await resolveFromPrediction(cachedPrediction);
+			return;
+		}
+		if (!placesReady) {
+			localError = 'Address search is temporarily unavailable. Try the location button.';
+			return;
+		}
+		// No cached pick — ask Places for the top match on whatever the user
+		// typed and resolve that. Keeps the single-path GCP contract.
+		if (!sessionToken) newSession();
+		try {
+			const { suggestions } = await placesLib.AutocompleteSuggestion.fetchAutocompleteSuggestions({
+				input: address,
+				// Same US-territory restriction as fetchPredictions above — when
+				// the user hits trace without picking from the dropdown, we ask
+				// Places for the top match and resolve that. Without the hard
+				// restrict, "london" could resolve to a UK address that has no
+				// US eGRID subregion and would error downstream.
+				includedRegionCodes: ['us', 'pr', 'vi', 'gu', 'mp', 'as'],
+				language: 'en-US',
+				sessionToken,
+			});
+			const top = suggestions?.find((s) => s.placePrediction)?.placePrediction;
+			if (!top) {
+				localError = 'Could not find that location. Try a full address or zip code.';
+				return;
+			}
+			await resolveFromPrediction(top);
+		} catch (e) {
+			console.error('[unearthed] resolution failed:', e);
+			localError = 'Could not resolve that address. Try again.';
+		}
+	}
 
 	async function resolveSubregion(lat, lon) {
 		const geojson = await loadSubregionGeoJSON();
 		const subregion = findSubregion(lat, lon, geojson);
 		if (!subregion) {
-			localError = 'That location is outside the US grid coverage area.';
-			showStatePicker = true;
+			// Reached from both geolocate (user is outside the US) and the
+			// address flow (user typed a non-US address). The address input
+			// above is the same recovery path for either — name it so the
+			// outside-US denial path has a visible next step.
+			localError =
+				'That location is outside the US grid coverage area — try a US address above.';
 			return;
 		}
 		if (!hasCoalData(subregion)) {
 			localError = `Your grid subregion (${subregion}) has no active coal supply chain.`;
-			showStatePicker = true;
 			return;
 		}
 		onTrace(subregion, { lat, lon });
@@ -50,48 +188,35 @@
 		e.preventDefault();
 		if (!address.trim()) return;
 		localError = null;
-		const coords = await geocodeAddress(address.trim());
-		if (!coords) {
-			localError = 'Could not find that location. Try a full address or zip code.';
-			return;
-		}
-		await resolveSubregion(coords.lat, coords.lon);
+		await resolveCurrentAddress();
 	}
 
 	async function handleGeolocate() {
 		localError = null;
 		const coords = await requestLocation();
 		if (!coords) {
-			localError = 'Location access denied.';
-			showStatePicker = true;
+			// Denied / unavailable: the address input is the explicit fallback
+			// per AGENTS.md §1 (Places-restricted input covers the geo-denied
+			// and outside-US cases). Name it in the copy AND move focus there
+			// so the recovery path is physically obvious — otherwise the user
+			// sees a dead-end error with the input visually unchanged.
+			localError = 'Location access denied — type an address above and hit trace.';
+			document.getElementById('address')?.focus();
 			return;
 		}
 		await resolveSubregion(coords.lat, coords.lon);
 	}
-
-	function handleStateGo() {
-		if (!selectedState) return;
-		// Clear any stale error from an earlier address/geolocation attempt
-		// so the user isn't told "CA is outside the US grid" after they've
-		// already picked California from the dropdown.
-		localError = null;
-		const sub = subregionForState(selectedState);
-		if (!sub || !hasCoalData(sub)) {
-			localError = `No coal data for ${stateLabels[selectedState]}.`;
-			return;
-		}
-		onTrace(sub);
-	}
 </script>
 
 <section class="hero" aria-label="Find your mine">
-	<header class="hero-chrome" aria-hidden="true">
-		<span class="rail-num">N° 01</span>
-		<span class="rail-rule"></span>
-		<span class="rail-label">Locate</span>
-	</header>
+	<div class="hero-layout">
+		<header class="hero-chrome" aria-hidden="true">
+			<span class="rail-num">N° 01</span>
+			<span class="rail-rule"></span>
+			<span class="rail-label">Locate</span>
+		</header>
 
-	<div class="hero-inner">
+		<div class="hero-inner">
 		<h1>
 			<span class="beat">You <span class="rust">came</span> home.</span>
 			<span class="beat">You turned <span class="rust">on</span> <em>a light.</em></span>
@@ -103,42 +228,65 @@
 		</p>
 
 		<div class="input-group glass">
-			<form class="form" onsubmit={handleSubmit}>
-				<input
-					id="address"
-					name="address"
-					type="text"
-					placeholder="Address, city, or zip code"
-					aria-label="Enter address or zip code"
-					bind:value={address}
-					maxlength="200"
-					autocomplete="off"
-					disabled={loading}
-				/>
-				<button class="primary" type="submit" disabled={loading}>
-					{loading ? '…' : 'trace →'}
-				</button>
-			</form>
+			<div class="search-wrap">
+				<!--
+					Plain text input + button list below — intentionally NOT a
+					WAI-ARIA combobox/listbox. The full combobox pattern requires
+					arrow-key navigation, active-descendant tracking, stable
+					option ids, and live aria-selected updates; shipping the
+					roles without the keyboard contract fails axe's combobox
+					rule and misleads screen readers. Tab order already carries
+					the user from input → trace button → each prediction
+					button, and Enter activates whichever button has focus, so
+					the simpler semantics give keyboard users a working path
+					with no ARIA debt.
+				-->
+				<form class="form" onsubmit={handleSubmit}>
+					<input
+						id="address"
+						name="address"
+						type="text"
+						placeholder="Address, city, or zip code"
+						aria-label="Enter address or zip code"
+						bind:value={address}
+						oninput={onAddressInput}
+						onfocus={() => (showPredictions = true)}
+						onblur={() => setTimeout(() => (showPredictions = false), 150)}
+						maxlength="200"
+						autocomplete="off"
+						disabled={loading}
+					/>
+					<button class="primary" type="submit" disabled={loading}>
+						{loading ? '…' : 'trace →'}
+					</button>
+				</form>
+				{#if showPredictions && predictions.length > 0}
+					<ul class="predictions" aria-label="Address suggestions">
+						{#each predictions as s}
+							{@const pred = s.placePrediction}
+							{@const main = pred.mainText?.toString?.() ?? pred.mainText?.text ?? ''}
+							{@const secondary = pred.secondaryText?.toString?.() ?? pred.secondaryText?.text ?? ''}
+							<li>
+								<button
+									type="button"
+									class="prediction"
+									onmousedown={(e) => e.preventDefault()}
+									onclick={() => selectPrediction(pred)}
+								>
+									<span class="pred-main">{main}</span>
+									{#if secondary}<span class="pred-sub">{secondary}</span>{/if}
+								</button>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			</div>
 
 			<div class="divider"><span>or</span></div>
 
 			<button class="geo-btn" onclick={handleGeolocate} disabled={loading}>
 				Use my location
 			</button>
-
-			{#if showStatePicker}
-				<div class="state-pick">
-					<select bind:value={selectedState} aria-label="Select a state">
-						<option value="">Select a state…</option>
-						{#each states as code}
-							<option value={code}>{stateLabels[code] || code}</option>
-						{/each}
-					</select>
-					<button onclick={handleStateGo} disabled={!selectedState || loading}>
-						Show me
-					</button>
-				</div>
-			{/if}
 		</div>
 
 		<div class="status" aria-live="polite">
@@ -146,15 +294,15 @@
 				<p class="loading">Following the wire back…</p>
 			{:else if localError || error}
 				<p class="err">{localError || error}</p>
+			{:else if predictionsFailures >= PREDICTIONS_ERR_THRESHOLD}
+				<p class="err">Address suggestions are temporarily unavailable — type the full address and hit trace.</p>
 			{:else}
 				<p class="hint">Your address is never stored.</p>
 			{/if}
 		</div>
+		</div>
 	</div>
 
-	<a class="credit" href="https://www.flickr.com/photos/nationalmemorialforthemountains/255887679/" target="_blank" rel="noopener">
-		Photo: Kent Kessinger · iLoveMountains.org<br/>Flight courtesy SouthWings
-	</a>
 </section>
 
 <style>
@@ -168,16 +316,33 @@
 		position: relative;
 	}
 
-	/* Horizontal chrome strip — a quiet editorial marker above the hero
-	   copy. Matches SectionRail's top-of-section chrome so every section
-	   on the page (Hero through Ticker) reads the same way. */
+	/* Editorial two-column layout. The chrome (N° 01 / rule / LOCATE) is a
+	   narrow vertical rail in the left gutter that runs alongside the
+	   headline column — like the signature mark in a magazine spread. On
+	   narrow screens the rail collapses above the content via the media
+	   query below. */
+	.hero-layout {
+		display: flex;
+		align-items: stretch;
+		gap: clamp(1.25rem, 3vw, 2.25rem);
+		width: 100%;
+	}
+
+	/* Vertical chrome rail — pinned in the left gutter and stretched to
+	   match the full height of the hero content column. N° caps the top,
+	   LOCATE anchors the bottom, and the hairline rule flexes to bridge
+	   whatever distance sits between them. The rail "runs the length of
+	   the editorial frame." */
 	.hero-chrome {
 		display: flex;
+		flex-direction: column;
 		align-items: center;
-		gap: 0.9rem;
-		margin-bottom: clamp(1.5rem, 3vh, 2.5rem);
+		gap: 0.8rem;
+		flex: 0 0 auto;
+		padding: 0.35rem 0;
 	}
 	.rail-num {
+		display: block;
 		font-family: var(--mono);
 		font-size: 0.7rem;
 		font-weight: 400;
@@ -185,16 +350,29 @@
 		color: var(--rust);
 		white-space: nowrap;
 	}
+	/* 1px-wide vertical hairline — `display: block` is required because the
+	   element is an empty <span>; without it the width/height don't paint
+	   reliably. `margin-left` centers the rule visually under the N°
+	   numeral so the column reads as a single stacked marker. */
 	.rail-rule {
-		height: 1px;
-		flex: 0 0 clamp(2.5rem, 6vw, 5rem);
+		display: block;
+		width: 1px;
+		/* Flex to fill whatever vertical space sits between N° and LOCATE,
+		   so the rule spans the full editorial frame height. min-height is
+		   a safety floor when the hero content is unusually short. */
+		flex: 1 1 auto;
+		min-height: 3rem;
+		align-self: center;
 		background: linear-gradient(
-			to right,
-			rgba(255, 255, 255, 0.18),
-			rgba(255, 255, 255, 0.02)
+			to bottom,
+			rgba(255, 255, 255, 0.04),
+			rgba(255, 255, 255, 0.22) 15%,
+			rgba(255, 255, 255, 0.22) 85%,
+			rgba(255, 255, 255, 0.04)
 		);
 	}
 	.rail-label {
+		display: block;
 		font-family: var(--mono);
 		font-size: 0.68rem;
 		font-weight: 400;
@@ -202,6 +380,13 @@
 		text-transform: uppercase;
 		color: var(--text-dim);
 		white-space: nowrap;
+		/* Rotate so the label reads vertically alongside the headline,
+		   classic magazine-rail typography. `writing-mode: vertical-rl`
+		   gives real sideways text (not a transform rotation) so it stays
+		   accessible to screen readers even though the parent is
+		   aria-hidden. */
+		writing-mode: vertical-rl;
+		transform: rotate(180deg);
 	}
 
 	/* Full-bleed hero content — no two-column grid, no middle-of-page
@@ -246,9 +431,6 @@
 		font-style: italic;
 		color: var(--text);
 	}
-	:global(.rust) {
-		color: var(--rust);
-	}
 
 	/* ---- Lede ---- */
 	.lede {
@@ -281,6 +463,65 @@
 		gap: 0.5rem;
 	}
 
+	/* Places suggestions dropdown — sits beneath the form, overlays the
+	   divider/geolocate block only while active. Matches the glass input
+	   aesthetic so it reads as part of the same surface. */
+	.search-wrap {
+		position: relative;
+	}
+	.predictions {
+		position: absolute;
+		top: calc(100% + 0.35rem);
+		left: 0;
+		right: 0;
+		margin: 0;
+		padding: 0.3rem;
+		list-style: none;
+		background: rgba(14, 12, 11, 0.96);
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		border-radius: 6px;
+		box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+		backdrop-filter: blur(8px);
+		z-index: 20;
+		max-height: 16rem;
+		overflow-y: auto;
+	}
+	.predictions li { margin: 0; padding: 0; }
+	.prediction {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		width: 100%;
+		padding: 0.55rem 0.75rem;
+		background: transparent;
+		border: none;
+		border-radius: 4px;
+		font-family: var(--serif);
+		color: var(--text);
+		letter-spacing: 0;
+		text-transform: none;
+		text-align: left;
+		cursor: pointer;
+		transition: background 0.15s;
+	}
+	.prediction:hover,
+	.prediction:focus-visible {
+		background: rgba(255, 255, 255, 0.05);
+		color: var(--text);
+		border: none;
+	}
+	.pred-main {
+		font-size: 0.95rem;
+		line-height: 1.3;
+	}
+	.pred-sub {
+		font-size: 0.78rem;
+		color: var(--text-ghost);
+		font-style: italic;
+		line-height: 1.3;
+		margin-top: 0.1rem;
+	}
+
 	input[type="text"] {
 		flex: 1;
 		min-width: 0;
@@ -309,7 +550,7 @@
 		padding: 0.85rem 1.1rem;
 		background: transparent;
 		color: var(--rust);
-		border: 1px solid oklch(58% 0.14 36 / 0.4);
+		border: 1px solid oklch(64% 0.145 36 / 0.4);
 		border-radius: 6px;
 		cursor: pointer;
 		letter-spacing: 0.1em;
@@ -326,7 +567,7 @@
 		cursor: not-allowed;
 	}
 	button.primary {
-		background: oklch(58% 0.14 36 / 0.15);
+		background: oklch(64% 0.145 36 / 0.15);
 	}
 
 	.divider {
@@ -363,29 +604,6 @@
 		letter-spacing: 0.02em;
 	}
 
-	.state-pick {
-		display: flex;
-		gap: 0.5rem;
-		margin-top: 0.8rem;
-	}
-	select {
-		flex: 1;
-		min-width: 0;
-		font-family: var(--serif);
-		font-size: 0.92rem;
-		padding: 0.7rem 0.85rem;
-		background: rgba(0, 0, 0, 0.42) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%239a9490' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E") no-repeat right 0.85rem center;
-		color: var(--text);
-		border: 1px solid rgba(255, 255, 255, 0.07);
-		border-radius: 6px;
-		appearance: none;
-		outline: none;
-		padding-right: 2rem;
-	}
-	select:focus {
-		border-color: var(--rust);
-	}
-
 	/* ---- Status line (reserved space—never shifts layout) ---- */
 	.status {
 		min-height: 3.2rem;
@@ -420,34 +638,36 @@
 		color: var(--text-ghost);
 		max-width: 48ch;
 	}
-	/* ---- Photo credit: anchored bottom-right of the hero ---- */
-	.credit {
-		position: absolute;
-		bottom: clamp(1rem, 3vh, 1.8rem);
-		right: clamp(1.25rem, 4vw, 3rem);
-		font-family: var(--mono);
-		font-size: 0.52rem;
-		color: var(--text-ghost);
-		opacity: 0.45;
-		text-decoration: none;
-		text-align: right;
-		line-height: 1.55;
-		letter-spacing: 0.04em;
-		transition: opacity 0.3s;
-	}
-	.credit:hover {
-		opacity: 0.9;
-	}
-
+	/* ---- Narrow-screen hero collapse ---- */
 	@media (max-width: 720px) {
 		.hero {
 			padding: 2.25rem 1.25rem 4rem;
 		}
+		/* Collapse the two-column editorial layout into a single column
+		   on narrow screens — the chrome stacks above the content with
+		   the label reading left-to-right again. */
+		.hero-layout {
+			flex-direction: column;
+			gap: 1rem;
+		}
 		.hero-chrome {
-			margin-bottom: 1.25rem;
+			flex-direction: row;
+			align-items: center;
+			gap: 0.8rem;
+			padding-top: 0;
 		}
 		.rail-rule {
-			flex: 0 0 2rem;
+			width: 2rem;
+			height: 1px;
+			background: linear-gradient(
+				to right,
+				rgba(255, 255, 255, 0.22),
+				rgba(255, 255, 255, 0.04)
+			);
+		}
+		.rail-label {
+			writing-mode: horizontal-tb;
+			transform: none;
 		}
 		.hero-inner {
 			gap: 1.3rem;
@@ -463,12 +683,6 @@
 		}
 		button {
 			width: 100%;
-		}
-		.credit {
-			position: static;
-			text-align: center;
-			margin-top: 2rem;
-			display: block;
 		}
 	}
 

@@ -20,7 +20,12 @@
 	onDestroy(() => { if (raf) cancelAnimationFrame(raf); });
 </script>
 
-<SectionRail number="07" label="While you read" class="ticker-section">
+<SectionRail number="06" label="While you read" class="ticker-section">
+	<h2>
+		The page <em>ends</em>.<br/>
+		The <em>seam</em> doesn't.
+	</h2>
+
 	<div class="counter">
 		<span class="number">{tons.toFixed(2)}</span>
 		<span class="unit-primary">tons of coal extracted while you've been reading</span>
@@ -56,13 +61,6 @@
 		</p>
 	</aside>
 
-	<footer class="footer">
-		<p>
-			Data: <a href="https://www.msha.gov/" target="_blank" rel="noopener">MSHA</a> +
-			<a href="https://www.eia.gov/" target="_blank" rel="noopener">EIA</a> (2024, public domain).
-			AI: <a href="https://www.snowflake.com/en/data-cloud/cortex/" target="_blank" rel="noopener">Snowflake Cortex Analyst</a>.
-		</p>
-	</footer>
 </SectionRail>
 
 <style>
@@ -105,58 +103,49 @@
 		margin-top: 0.35rem;
 	}
 
+	/* Closing kicker is still prose, not a headline. Matches body-prose
+	   typography so the section's "hero" beats stay reserved for the h3
+	   at the top. `<em>` falls back to browser-default italic — no rust
+	   color bleed from the hero treatment. No per-element width cap —
+	   SectionRail's `.rail-content` already anchors the column, and the
+	   prior 460px cap read as a narrow left gutter beside the wider
+	   CortexChat section above it. */
 	.closing {
 		font-family: var(--serif);
-		font-size: clamp(1.1rem, 2.5vw, 1.5rem);
+		font-size: clamp(0.95rem, 2vw, 1.15rem);
 		font-weight: 300;
 		color: var(--text-dim);
-		max-width: 460px;
-		line-height: 1.6;
+		line-height: 1.7;
 		margin-bottom: 4rem;
 	}
-	.closing em { color: var(--rust); font-style: italic; }
 
 	/* Dedication: quieter than .closing—the page has already said the loud
 	   things; this block lowers the voice to acknowledge the people. A thin
 	   rule above sets it apart from the closing paragraph without shouting
-	   "new section". */
+	   "new section". Width inherits the rail column — no local cap, so this
+	   block shares the same right edge as the rest of the page. */
 	.dedication {
-		max-width: 560px;
 		margin: 0 0 3.5rem;
 		padding-top: 1.8rem;
 		border-top: 1px solid rgba(255, 255, 255, 0.05);
 	}
 	.ded-body {
 		font-family: var(--serif);
-		font-size: clamp(1rem, 2vw, 1.2rem);
+		font-size: clamp(0.95rem, 2vw, 1.15rem);
 		font-weight: 300;
 		font-style: italic;
-		line-height: 1.7;
+		line-height: 1.8;
 		color: var(--text-dim);
 		margin-bottom: 1rem;
 	}
 	.ded-close {
 		font-family: var(--serif);
-		font-size: clamp(1rem, 2vw, 1.2rem);
+		font-size: clamp(0.95rem, 2vw, 1.15rem);
 		font-weight: 400;
-		line-height: 1.6;
+		line-height: 1.8;
 		color: var(--text);
 	}
-	.ded-close em {
-		color: var(--rust);
-		font-style: italic;
-	}
-
-	.footer {
-		padding-top: 2rem;
-		border-top: 1px solid rgba(255,255,255,0.04);
-	}
-	.footer p {
-		font-family: var(--mono);
-		font-size: 0.55rem;
-		color: var(--text-ghost);
-		letter-spacing: 0.05em;
-	}
-	.footer a { color: var(--text-dim); }
-	.footer a:hover { color: var(--rust); }
+	/* No `.ded-close em` override: <em> falls back to browser-default italic.
+	   Rust coloring is reserved for headings and the canonical `.sub` subtitle,
+	   so the dedication reads as prose, not as a second hero. */
 </style>

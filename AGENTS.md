@@ -34,7 +34,7 @@ Subregion IDs validated with `^[A-Za-z0-9]{2,10}$`. Unknown subregions return **
 - Google Maps JS API for satellite map with animated flow lines.
 - Chat UI for Cortex Analyst: Svelte component with chips and transcript.
 - Geolocation: Browser API with permission prompt. Point-in-polygon against bundled eGRID GeoJSON runs client-side.
-- State-picker dropdown as fallback when geolocation is denied or user is outside US.
+- Geolocation denial or outside-US location: inline error copy on the Hero. Google Places autocomplete (restricted to US + territories) covers the state-only case — typing a state name or two-letter abbreviation surfaces valid predictions, so a separate picker isn't needed.
 - Dev: `make dev` (frontend :5173) + `make server` (backend :8001). Vite proxies API calls.
 
 ### Backend
@@ -45,6 +45,7 @@ Subregion IDs validated with `^[A-Za-z0-9]{2,10}$`. Unknown subregions return **
 - Cortex Analyst: REST API via `/ask` endpoint. Generated SQL is validated (SELECT-only, no multi-statement, no DML/DDL keywords) and executed under the read-only role with a 500-row cap and 10-second statement timeout.
 - Default suggestions (from 5 verified queries) are always returned in `/ask` responses.
 - Docs/OpenAPI disabled by default (set `ENABLE_DOCS=true` for local dev). CORS origins configurable via `CORS_ORIGINS` env var.
+- **Security headers middleware** sets `Content-Security-Policy: frame-ancestors 'self' https://dev.to` (allows DEV embed), `X-Content-Type-Options: nosniff`, and `Referrer-Policy: strict-origin-when-cross-origin` on every response. Tests live in `tests/integration/test_new_endpoints.py::TestSecurityHeaders`.
 
 ### Degraded Mode
 
@@ -130,7 +131,7 @@ Two Cortex features in use:
 - **Cortex Analyst semantic model:** Checked into repo as YAML. Covers only the 4-5 chip question patterns — not open-ended.
 - **Cortex Complete model:** `llama3.3-70b` via `SNOWFLAKE.CORTEX.COMPLETE()`. Used in `prose_client.py` for mine narratives and `snowflake_client.summarize_analyst_results` for SQL result explanations.
 - **Cortex Complete prompts:** Injuries lead, fatalities land second — see `app/prose_client.py`. H3 summary prompt leads with what the reader sees, then the scale. Both strip outer quotes before returning.
-- **Honest attribution:** Both `generate_prose` and `generate_h3_summary` return `(text, degraded)`. Only Cortex output is cached — template fallbacks are not, so a recovered model shows up on the next request and the "Cortex, on this map" / "Cortex, reading the record" bylines never sit over template prose.
+- **Honest attribution:** `generate_prose` returns `(text, degraded, stats)` — the `stats` dict carries the MSHA safety counts (`fatalities`, `injuries_lost_time`, `days_lost`) that the frontend's unified cost block (people subsection) surfaces at the top of section 2, independent of whether the prose itself is Cortex-written or templated. `generate_h3_summary` returns `(text, degraded)`. Only Cortex output is cached — template fallbacks are not, so a recovered model shows up on the next request and the "Cortex, on this map" / "Cortex, reading the record" bylines never sit over template prose.
 - **Honest totals:** `/h3-density` runs a second unfiltered count query and returns `totals` alongside the hex cells. The hex SQL drops null-coord rows, ocean outliers, and small clusters for legibility; the `totals` payload does none of that so the Cortex summary and the frontend legend both claim "X mines on record" against MSHA's full registry, not the hexes visible at this resolution. `generate_h3_summary` accepts a `role` kwarg so the readonly endpoint can scope the Cortex connection to `UNEARTHED_READONLY_ROLE` instead of the default app role.
 
 ### Snowflake-Native Features Beyond Cortex
@@ -167,34 +168,65 @@ Two endpoints lean on Snowflake's built-in geospatial / Marketplace story:
 
 ### Map (Google Maps JavaScript API)
 
-- Loader lives in `frontend/src/lib/maps.js` — one idempotent script tag shared by `MapSection` (mine→plant→meter) and `H3Density` (hexbin), with a 15s watchdog and poll-for-ready so a cached script can't hang the promise forever.
+- Loader lives in `frontend/src/lib/maps.js` — a single idempotent `importLibrary` bootstrap shared by `Hero` (Places suggestions), `MapSection` (mine→plant→meter), and `H3Density` (hexbin). Calling `loadGoogleMaps()` installs `google.maps.importLibrary` as a shim that records every requested library name, then lazily injects the API script on first use with `libraries=<union of requested>&v=weekly&callback=google.maps.__ib__`. The callback resolves the shared promise; after that, `importLibrary('geometry')` etc. return real library modules. Consumers `await google.maps.importLibrary(name)` directly — no watchdog, no polling, no static `<script>` tag (Google no longer ships one with a static library list).
+- **Hero address resolution** goes through GCP end-to-end via the Places API (New). Places classes are imported through `google.maps.importLibrary('places')` — never the legacy `AutocompleteService`. As the user types (≥3 chars, debounced) we call `AutocompleteSuggestion.fetchAutocompleteSuggestions` with `{ input, includedRegionCodes: ['us', 'pr', 'vi', 'gu', 'mp', 'as'], language: 'en-US', sessionToken }` — a hard restrict to the US + territories we carry eGRID coverage for. `region` alone only *biases* results and would still surface Paris, France for "par"; `includedRegionCodes` is the parameter that excludes non-US predictions entirely. Up to 5 predictions render in a custom dropdown beneath the existing input — **the input, trace button, and glass styling are untouched**. Clicking a prediction just populates the input (same as typing); hitting `trace →` resolves the chosen (or top) prediction via `place.fetchFields({ fields: ['location'] })` on the Autocomplete-Essentials tier. No Nominatim, no other geocoder.
 - `DARK_STATE_STYLES` + `MAP_COLORS` are the single source of truth for both maps. No cloud-registered `mapId` — that would silently disable the local style array.
 - `MapSection` arc: mine → plant → your meter, one rust color, animated dot rides the geodesic. Labels fan out (above / below / side) to avoid InfoWindow stacking.
-- `H3Density`: resolution-5 hexbins, bigger dot = more mines, rust→ash gradient for active→abandoned. SQL filters null-island and ocean outliers at the query layer.
+- **Labeled pin cards (`createLabeledMarker` in `maps.js`).** All three map tags — MINE, PLANT, METER — render as one unified 3-line card: rust glyph + mono TYPE eyebrow, serif name, mono subtitle. Only the glyph shape changes by type (diamond for MINE, flat square for PLANT, circle for METER/YOU) so the family reads as one voice across sections 03 and 04. Subtitle format is `identifier · geography` — for MINE, `MSHA {id} · {county} Co., {state}` when all fields are present; empty strings skip the row so degraded payloads don't render "undefined". The METER name stays `your meter` until reverse geocoding lands; its subtitle uses the eGRID subregion as the honest identifier. Do not fork the card chrome per section — extend `createLabeledMarker` instead.
+- `H3Density`: resolution-5 hexbins, bigger dot = more mines, rust→ash gradient for active→abandoned. SQL filters null-island and ocean outliers at the query layer. Single map frame fit tight on the hex cluster ("the shape of extraction"). **No eGRID polygon is drawn on either map** — the user's subregion is surfaced only as text on their pin in `MapSection` (N° 03, via `meterSubtitle`), so each section owns one framing and the two don't compete for the reader's focus. A labeled MINE card anchors the reader's dot in the cluster (same helper, same subtitle format as section 03); the user pin stays label-free on purpose — a card over the cluster would block the shape it's trying to show. Render failures surface in the console with a full stack and flip a single `errored` flag; the outer data-fetch catch is the only path that degrades the whole section.
 - All three pins and labels must be readable on mobile (>= 375px wide) without horizontal scroll.
 
 ### Section chrome (editorial unification)
 
-**One title treatment for the whole page.** `SectionRail.svelte` is the canonical wrapper — every scroll section uses it. The component owns:
+**One title treatment for the whole page.** `SectionRail.svelte` is the canonical wrapper — every scroll section uses it, and it must mirror the Hero section's editorial signature so the page reads as one magazine spread instead of disconnected blocks. The component owns:
 
-- The left-rail number + label (`N° 02 / Your coal`) — chrome, not content.
+- **Vertical left-gutter rail.** The chrome (`N° ## / hairline / rotated label`) is a narrow flex column pinned in the left gutter; the content column is `flex: 1 1 0` to its right. The hairline uses `flex: 1 1 auto` so it stretches the full height of the content column — N° caps the top, the rotated label anchors the bottom, the rule runs the length of the editorial frame. Exactly matches `Hero.svelte`'s `.hero-layout` structure — if you touch one, touch the other. Do **not** regress to a horizontal chrome strip.
+- **Rotated label.** `writing-mode: vertical-rl; transform: rotate(180deg);` — real sideways text so screen readers still read it. Do not use transform-only rotation (breaks accessibility and paints inconsistently).
+- **Narrow-screen collapse.** At `≤720px` the `.section-layout` flex-direction flips to `column`, the rail goes horizontal, and the label reads left-to-right again. Same breakpoint as Hero.
 - Canonical `h2`/`h3` typography (serif, clamped, `em` accent) — do NOT re-declare in sections. If a title doesn't match, it's a bug in the section, not a license to override.
 - The `.sub` subtitle pattern.
 - The `.cortex-note` block (rust border-left) signaling Cortex-written text.
-- The **three-line anchor pattern** via `:global(.anchor-primary)` + `:global(.anchor-secondary)`: big value / serif plain-English primary / mono uppercase tag. Used by PlantReveal cards, the land-disturbed block, the emissions panel, and the H3 tallies. **Do not re-declare these per section.** If you need a larger closing beat (Ticker), define a distinct class — don't shadow the canonical one.
+- The **three-line anchor pattern** via `:global(.anchor-primary)` + `:global(.anchor-secondary)`: big value / serif plain-English primary / mono uppercase tag. Used by PlantReveal's lower stat cards, the emissions panel, and the H3 tallies. **Do not re-declare these per section.** If you need a larger closing beat (Ticker), define a distinct class — don't shadow the canonical one.
+- The **cost block** at the top of section 2 (`.cost` in `PlantReveal.svelte`) is an intentional break from the three-line anchor pattern: it's the moral center of the page and needs its own editorial voice. Structure is an inset column (rust left-gutter, small rust tick, rust-glow pooled at top-left — no glass card) with a mono eyebrow attribution, a serif title (`.cost-title`), a **people** ledger (`.ledger[data-kind="people"]` — oversized serif numerals on the left, serif primary + italic sub on the right; fatalities row is `.row--grave` with the numeral bumped and colored `--rust-bright` italic — the charged moment that tier exists for; injuries first, fatalities second, days-lost third; zero-value rows omitted), a typographic caesura (`.cost-break` with rust interpuncts), a **land** ledger (`.ledger--quiet` with compact inline `254 / 192` for surface mines, or a prose note for underground), and a closing couplet (`.cost-kicker`: first line `--text-dim` italic, second line `--rust-bright` italic bigger — "The acres can be restored. / The miners cannot."). The whole block hides only when both subsections have nothing to show. Do not revert to a card grid here; the asymmetric typographic weight *is* the argument.
+- **Section content widths.** `SectionRail`'s `.rail-content` no longer caps the content column — headlines fill it edge-to-edge as the editorial beat of each section, and sections cap their own interactive/wide-prone content locally. Canonical caps to keep in mind: CortexChat's `.cortex-shell` wraps the form + pipeline + chips + results table at `min(1040px, 100%)` (the old outer cap, moved in); MapSection's `.map-frame` at `min(1080px, 100%)`; PlantReveal's internal panels at `min(820px, 100%)` and `.cost` at `min(720px, 100%)`; canonical `.sub` at `640px`. Do NOT re-introduce the outer `.rail-content` clamp — it caps headlines, which is the regression that prompted removing it. The old per-section `.map-header` / `.h3-header` wrappers have been consolidated into `.section-header`; do not reintroduce per-file copies, and do not re-add narrow `.closing` / `.dedication` caps on Ticker — those regressed the column unification.
 
 ### Share URL
 
 - Structure: `/?m=SRVC` (eGRID subregion ID, not mine slug).
 - Open Graph tags updated client-side with mine name and hook text after reveal.
 - Share URL skips geolocation and jumps straight to that subregion's reveal.
+- Every successful trace (not just share-link arrivals) calls `history.pushState({}, '', ?m=<subregion>)` so a refresh preserves the trace — `onMount` replays it from the URL, and the browser restores scroll position to where the user was reading. Do not "fix" the refresh-lands-on-empty-space symptom with `scrollRestoration = 'manual'`; the root cause is URL state, and the pushState handles it end-to-end.
+
+### Testing (frontend)
+
+Three tiers, all runnable from `frontend/` with `pnpm`:
+
+| Tier | Command | Stack | Scope |
+|---|---|---|---|
+| Unit / component | `pnpm test` | Vitest + jsdom + @testing-library/svelte | Pure JS modules (`geo.js` + edge, `api.js` + edge, `reveal.js`) and component chrome (`SectionRail`, `PlantReveal` + emissions, `CortexChat`, `Ticker`). Coverage via `pnpm test:coverage`. |
+| E2E | `pnpm test:e2e` | Playwright (Chromium) against the built `vite preview` bundle | Share-URL replay (`/?m=NWPP`), pushState refresh preservation, editorial rail rendering on every section, lowercase token normalization, degraded / error-state rendering, and Google Maps runtime (MapSection + H3Density marker/OverlayView lifecycle) via the behavioral `google.maps` stub in `fixtures.js`. Backend is mocked at the `page.route` layer — no FastAPI or Snowflake required. |
+| Lighthouse | `pnpm lhci` | @lhci/cli against `vite preview` | Audits `/`. Thresholds are load-bearing and enforced by `lighthouserc.cjs`. |
+
+**Lighthouse thresholds (non-negotiable):**
+
+- Accessibility ≥ **1.00**
+- SEO ≥ **1.00**
+- Best Practices ≥ **0.98**
+- Performance ≥ **0.90**
+
+Missed thresholds fail CI. Fix the root cause — do not relax the gate. A fresh run should produce all-four-green. Known contributors to regressions:
+
+- `errors-in-console` — any 404 (favicon, missing asset) or unhandled console error drops Best Practices. A real `static/favicon.ico` is in-tree; do not delete it.
+- `color-contrast` — dim copy against the near-black background. `--text-ghost` and the `.data-credit` footer color are tuned to ≥4.5:1; darken them and the a11y score falls back to 0.95. Keep the rationale comments in `+layout.svelte`.
+
+E2E specs live in `frontend/e2e/`. Shared fixtures are in `e2e/fixtures.js`: `mockBackend(page)` installs routes for `/mine-for-me`, `/emissions/*`, `/h3-density`, `/ask`, plus a swallow-route for `maps.googleapis.com` so the Places bootstrap doesn't stall tests. `installGoogleMapsStub(page)` is the behavioral `google.maps` double used by `maps-render.spec.js` — it records every `new Map`, `new Marker`, and `OverlayView.setMap` call on `globalThis.__gmapsCalls` so tests can assert on marker construction and the projection/draw lifecycle without pixel-perfect rendering. Register test-specific routes **after** `mockBackend` — Playwright matches most-recent-first.
 
 ## 5. Error Handling Philosophy
 
 - **Cortex Analyst misfires:** Display the generated SQL plus "I could not answer that confidently." Honesty > hallucinated numbers.
 - **Out-of-scope questions:** Semantic model guardrails reject. UI offers chip suggestions instead.
 - **Snowflake failure:** Cached static JSON fallback per-subregion.
-- **Location outside US:** Graceful message + state picker. Never a dead end.
+- **Location outside US:** Graceful message on the Hero + the Places-restricted input (US territories included) so the reader can type any state and reach coverage. Never a dead end.
 - **No coal in user's subregion:** Show the mine supplying the nearest coal-burning plant in their eGRID subregion, or fall back to national median contract.
 
 ## 6. Code Quality & Maintenance

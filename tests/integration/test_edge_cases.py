@@ -4,6 +4,16 @@ from unittest.mock import MagicMock, patch
 
 from tests.conftest import SAMPLE_MINE_DATA
 
+# Generic MSHA safety-stats payload for mocked generate_prose returns. Real
+# values are exercised in the unit tests and in the dedicated happy-path
+# integration test; these edge-case tests only need the third tuple slot
+# populated so the endpoint still returns a schema-valid response.
+_STATS = {
+    "fatalities": 0,
+    "injuries_lost_time": 0,
+    "days_lost": 0,
+}
+
 
 class TestAskEdgeCases:
     """Edge cases for the /ask endpoint."""
@@ -129,7 +139,10 @@ class TestHttpMethods:
 class TestResponseHeaders:
     """Verify response headers on API endpoints."""
 
-    @patch("app.main.generate_prose", return_value=("Prose.", False))
+    @patch(
+        "app.main.generate_prose",
+        return_value=("Prose.", False, _STATS),
+    )
     @patch("app.main.query_mine_for_subregion", return_value=SAMPLE_MINE_DATA)
     def test_mine_for_me_no_cache_header(self, mock_sf, mock_prose, client):
         """API JSON responses should not include cache-control by default."""
@@ -151,7 +164,10 @@ class TestResponseHeaders:
 class TestConcurrentFailures:
     """Both Snowflake query and Cortex Complete prose fail simultaneously."""
 
-    @patch("app.main.generate_prose", return_value=("Fallback.", True))
+    @patch(
+        "app.main.generate_prose",
+        return_value=("Fallback.", True, _STATS),
+    )
     @patch("app.main.load_fallback_data", return_value=SAMPLE_MINE_DATA)
     @patch("app.main.query_mine_for_subregion", side_effect=Exception("SF down"))
     def test_both_snowflake_and_prose_degraded(self, mock_sf, mock_fb, mock_prose, client):
@@ -191,12 +207,46 @@ class TestSummaryFailurePath:
     def test_summary_failure_returns_empty_answer(
         self, mock_analyst, mock_exec, mock_summary, client
     ):
-        """Summary failure falls back silently — answer stays empty, results still present."""
+        """Summary failure surfaces as summary_degraded, results still present.
+
+        The frontend reads ``summary_degraded`` to hide the "Cortex, reading the
+        record" byline when template silence would otherwise sit under it — so
+        the flag is load-bearing, not cosmetic.
+        """
         resp = client.post("/ask", json={"question": "How much coal?"})
         assert resp.status_code == 200
         data = resp.json()
         assert data["answer"] == ""
         assert data["results"] is not None
+        assert data["summary_degraded"] is True
+
+    @patch("app.main.summarize_analyst_results", return_value="")
+    @patch(
+        "app.main.execute_analyst_sql",
+        return_value=[{"MINE": "Bailey", "TONS": 5000000}],
+    )
+    @patch(
+        "app.main.query_cortex_analyst",
+        return_value={
+            "answer": "",
+            "interpretation": "Total tonnage query",
+            "sql": "SELECT 1",
+            "error": None,
+            "suggestions": None,
+        },
+    )
+    def test_empty_summary_marks_degraded(self, mock_analyst, mock_exec, mock_summary, client):
+        """Cortex Complete returning '' is the same user outcome as an
+        exception — rows shown, no prose — so ``summary_degraded`` must
+        flip to True. Otherwise the frontend would keep the "Cortex,
+        reading the record" byline over a blank paragraph.
+        """
+        resp = client.post("/ask", json={"question": "How much coal?"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["answer"] == ""
+        assert data["results"] is not None
+        assert data["summary_degraded"] is True
 
 
 class TestSnowflakeUnavailable:
@@ -216,7 +266,10 @@ class TestSnowflakeUnavailable:
 class TestResponsePayloadBounds:
     """Verify response payloads stay within reasonable bounds."""
 
-    @patch("app.main.generate_prose", return_value=("Short prose.", False))
+    @patch(
+        "app.main.generate_prose",
+        return_value=("Short prose.", False, _STATS),
+    )
     @patch("app.main.query_mine_for_subregion", return_value=SAMPLE_MINE_DATA)
     def test_mine_for_me_response_under_10kb(self, mock_sf, mock_prose, client):
         resp = client.post("/mine-for-me", json={"subregion_id": "SRVC"})
@@ -276,7 +329,7 @@ class TestPrewarmGating:
         mock_thread.assert_called_once()
         mock_instance.start.assert_called_once()
 
-    @patch("app.main.generate_prose", return_value=("Cached.", False))
+    @patch("app.main.generate_prose", return_value=("Cached.", False, _STATS))
     @patch("app.main.query_mine_for_subregion", return_value=SAMPLE_MINE_DATA)
     def test_prewarm_aborts_on_first_failure(self, mock_sf, mock_prose):
         """Prewarm bails after the first exception to avoid hammering Snowflake."""

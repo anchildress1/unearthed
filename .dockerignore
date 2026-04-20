@@ -1,10 +1,14 @@
+# ─── Secrets (never bake into an image) ──────────────────────────────────────
 .env
 .env.*
 *.p8
 .mcp.json
 
+# ─── Version control / CI ───────────────────────────────────────────────────
 .git/
 .github/
+
+# ─── Python build artifacts ─────────────────────────────────────────────────
 .venv/
 venv/
 __pycache__/
@@ -15,6 +19,16 @@ htmlcov/
 dist/
 build/
 
+# ─── Frontend build artifacts (built inside Docker, not from host) ──────────
+frontend/node_modules/
+frontend/.svelte-kit/
+frontend/build/
+frontend/playwright-report/
+frontend/test-results/
+frontend/coverage/
+frontend/.lighthouseci/
+
+# ─── Dev-only files ─────────────────────────────────────────────────────────
 tests/
 scripts/
 *.md
@@ -24,3 +38,6 @@ requirements-dev.txt
 snowflake-mcp-config.yaml
 .gitignore
 .dockerignore
+.gcloudignore
+.ruff_cache/
+.claude/

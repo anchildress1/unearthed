@@ -14,10 +14,19 @@ from tests.conftest import SAMPLE_MINE_DATA
 
 pytestmark = pytest.mark.e2e
 
+# Dummy MSHA safety-stats payload for mocked generate_prose returns. Perf
+# tests only care about latency, not field values — keep zeros so the
+# response still validates against MineForMeResponse.
+_STATS = {
+    "fatalities": 0,
+    "injuries_lost_time": 0,
+    "days_lost": 0,
+}
+
 
 class TestMineForMePerformance:
     @pytest.mark.timeout(2)
-    @patch("app.main.generate_prose", return_value=("Prose.", False))
+    @patch("app.main.generate_prose", return_value=("Prose.", False, _STATS))
     @patch("app.main.query_mine_for_subregion", return_value=SAMPLE_MINE_DATA)
     def test_mine_for_me_under_200ms_mocked(self, mock_sf, mock_prose, client):
         start = time.perf_counter()
@@ -99,7 +108,7 @@ class TestFallbackPerformance:
     """Fallback-degraded path should complete quickly."""
 
     @pytest.mark.timeout(2)
-    @patch("app.main.generate_prose", return_value=("Fallback.", True))
+    @patch("app.main.generate_prose", return_value=("Fallback.", True, _STATS))
     @patch("app.main.load_fallback_data", return_value=SAMPLE_MINE_DATA)
     @patch("app.main.query_mine_for_subregion", side_effect=Exception("Down"))
     def test_fallback_under_200ms(self, mock_sf, mock_fb, mock_prose, client):

@@ -21,7 +21,7 @@ A live data product that shows any US resident which specific coal mine supplies
 - **Deploy:** Google Cloud Run, secrets via Secret Manager, Docker multi-stage
 - **Lint/Format:** `ruff` via `make lint` / `make fmt`
 - **Dev:** `make server` (backend :8001) + `make dev` (frontend :5173, proxies API)
-- **Tests:** `pytest` — `make test` (all), `make test-ci` (excludes e2e)
+- **Tests:** Backend `pytest` — `make test` (all), `make test-ci` (excludes e2e). Frontend `vitest` (unit/component), `playwright` (e2e), `@lhci/cli` (Lighthouse) — run from `frontend/` via `pnpm test`, `pnpm test:e2e`, `pnpm lhci`. Lighthouse gates: a11y≥1.0, SEO≥1.0, best-practices≥0.98, perf≥0.90.
 - **Assets:** eGRID GeoJSON (~1 MB), 19 fallback JSONs, semantic model YAML
 
 ## Data Sources

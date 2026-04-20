@@ -11,7 +11,7 @@ from app.snowflake_client import _get_connection
 
 logger = logging.getLogger(__name__)
 
-_prose_cache: dict[str, tuple[str, bool]] = {}
+_prose_cache: dict[str, tuple[str, bool, dict]] = {}
 
 _COMPLETE_PROMPT = """\
 {plant_name} ({plant_operator}) received {tons} tons of coal in {tons_year} from \
@@ -164,20 +164,53 @@ def _build_fallback(args: dict) -> str:
     return " ".join(parts)
 
 
-def generate_prose(mine_data: dict) -> tuple[str, bool]:
+def _stats_from(mine_data: dict) -> dict:
+    """Extract the three MSHA stat fields surfaced on PlantReveal's cost block.
+
+    Input/output key asymmetry: the Snowflake adapter (``snowflake_client.
+    query_mine_for_subregion``) emits ``injuries`` — shorter, matches the
+    internal prose template's ``args['injuries']`` read — but the public
+    response schema (``MineForMeResponse.injuries_lost_time``) uses the full
+    MSHA column name. This function is the one hop that translates
+    ``injuries`` → ``injuries_lost_time``; every other field passes through
+    with the same key. Keep the mapping here rather than renaming either
+    side: the template reads ``injuries`` in several places and the response
+    schema is a public contract.
+
+    The UI treats 0 as "none on file" rather than "unknown," so a missing
+    field is safe — the response schema stays stable either way. See
+    ``MineForMeResponse.fatalities`` etc. — ``Field(default=0, ge=0)`` is
+    the other half of the stability contract.
+    """
+    return {
+        "fatalities": int(mine_data.get("fatalities") or 0),
+        "injuries_lost_time": int(mine_data.get("injuries") or 0),
+        "days_lost": int(mine_data.get("days_lost") or 0),
+    }
+
+
+def generate_prose(mine_data: dict) -> tuple[str, bool, dict]:
+    """Generate memorial prose plus the safety stats the UI surfaces.
+
+    Returns ``(prose, degraded, stats)``. ``stats`` is always a dict — never
+    None — so the response schema stays stable across the Cortex, fallback,
+    and error paths. Only Cortex-sourced prose is cached; a cached fallback
+    would pin template copy under a "Cortex" byline after the model recovers.
+    """
     subregion_id = mine_data.get("subregion_id", "")
 
     if subregion_id and subregion_id in _prose_cache:
         return _prose_cache[subregion_id]
 
+    stats = _stats_from(mine_data)
     try:
         prose, degraded = _generate(mine_data)
         if subregion_id and not degraded:
-            _prose_cache[subregion_id] = (prose, degraded)
-        return prose, degraded
+            _prose_cache[subregion_id] = (prose, degraded, stats)
+        return prose, degraded, stats
     except Exception:
         logger.exception("Prose generation failed")
-        return _FALLBACK_NO_DATA, True
+        return _FALLBACK_NO_DATA, True, stats
 
 
 def _generate(mine_data: dict) -> tuple[str, bool]:

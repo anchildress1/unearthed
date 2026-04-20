@@ -1,6 +1,7 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
 	import SectionRail from '$lib/components/SectionRail.svelte';
+	import { loadSubregionGeoJSON } from '$lib/geo.js';
 	import {
 		loadGoogleMaps,
 		createDarkMap,
@@ -14,6 +15,7 @@
 	let mapEl;
 	let mapError = $state(null);
 	let flowOverlay = null;
+	let subregionPolygons = [];
 	// onMount has an `await` before overlay attachment, so the component can
 	// unmount (HMR, fast re-trace) before the overlay is assigned. `cancelled`
 	// gates every post-await side-effect so we don't strand animation loops
@@ -23,6 +25,22 @@
 	onMount(async () => {
 		try {
 			await loadGoogleMaps();
+			// Pull in exactly the libraries this section needs. `maps` gives
+			// us `Map`, `Marker`, `LatLngBounds`, `SymbolPath`, `OverlayView`;
+			// `geometry` gives `spherical.interpolate` for the flow path.
+			// Once imported, the classes are also attached to `google.maps.*`
+			// so the existing `new google.maps.Marker(...)` call keeps working.
+			// GeoJSON fetch runs alongside so the eGRID overlay is ready by
+			// the time the map renders — a missing asset degrades to no
+			// subregion outline rather than blocking the whole section.
+			const [,, geojson] = await Promise.all([
+				google.maps.importLibrary('maps'),
+				google.maps.importLibrary('geometry'),
+				loadSubregionGeoJSON().catch((err) => {
+					console.warn('[unearthed] eGRID overlay unavailable:', err.message);
+					return null;
+				}),
+			]);
 			if (cancelled) return;
 
 			const mine = { lat: data.mine_coords[0], lng: data.mine_coords[1] };
@@ -32,6 +50,13 @@
 				: null;
 
 			const map = createDarkMap(mapEl);
+
+			// Lay the eGRID subregion boundaries down first so hex dots,
+			// flow lines, and pin cards render on top. The user's subregion
+			// gets a brighter rust treatment; all others fade to near-
+			// invisible outlines for geographic context.
+			if (geojson) renderSubregions(map, geojson, data.subregion_id);
+
 			const bounds = new google.maps.LatLngBounds();
 			bounds.extend(mine);
 			bounds.extend(plant);
@@ -45,30 +70,45 @@
 			const waypoints = user ? [mine, plant, user] : [mine, plant];
 			flowOverlay = createFlowOverlay(map, waypoints);
 
-			// Fan the three cards out by relative geography so two close-together
-			// markers don't stack their labels. Northmost floats above, southmost
-			// drops below, anyone in between slides to the side the other two
-			// aren't using. Cards render as HTML overlays (OverlayView), so
-			// "above/below/left/right" are real CSS transforms, not nudges.
-			const placement = computeLabelPlacement({ mine, plant, user });
-
-			createLabeledMarker(
-				map,
-				anchorMarker(map, mine, MAP_COLORS.rust),
-				{ type: 'MINE', name: data.mine, placement: placement.mine },
-			);
-			createLabeledMarker(
-				map,
-				anchorMarker(map, plant, MAP_COLORS.moss),
-				{ type: 'PLANT', name: data.plant, placement: placement.plant },
-			);
+			// Create the anchor pins immediately so they come in with the
+			// flow reveal. Labels wait for pixel-space placement below.
+			const anchors = [
+				{
+					key: 'mine',
+					latLng: mine,
+					marker: anchorMarker(map, mine, MAP_COLORS.rust, `Coal mine: ${data.mine}`),
+					opts: { type: 'MINE', name: data.mine, subtitle: mineSubtitle(data) },
+				},
+				{
+					key: 'plant',
+					latLng: plant,
+					marker: anchorMarker(map, plant, MAP_COLORS.moss, `Power plant: ${data.plant}`),
+					opts: { type: 'PLANT', name: data.plant, subtitle: plantSubtitle(data) },
+				},
+			];
 			if (user) {
-				createLabeledMarker(
-					map,
-					anchorMarker(map, user, MAP_COLORS.you),
-					{ type: 'YOU', name: 'your meter', placement: placement.user },
-				);
+				anchors.push({
+					key: 'user',
+					latLng: user,
+					marker: anchorMarker(map, user, MAP_COLORS.you, 'Your meter'),
+					opts: { type: 'METER', name: 'your meter', subtitle: meterSubtitle(data) },
+				});
 			}
+
+			// Wait for fitBounds to settle before placing label cards.
+			// Placement has to reason in pixel space — latitude ordering
+			// alone stacks cards when mine, plant, and meter all project to
+			// nearly the same screen position (common when they share one
+			// eGRID subregion). Once idle, pixel Y becomes "what the reader
+			// actually sees" and we can scale the card offset with cluster
+			// density so cards stay legibly separate even at coincident
+			// pins.
+			google.maps.event.addListenerOnce(map, 'idle', () => {
+				if (cancelled) return;
+				attachLabels(map, anchors).catch((err) => {
+					console.error('[unearthed] label placement failed:', err);
+				});
+			});
 		} catch (e) {
 			console.error('[unearthed] map error:', e);
 			mapError = 'Map could not load.';
@@ -78,60 +118,190 @@
 	onDestroy(() => {
 		cancelled = true;
 		if (flowOverlay) flowOverlay.setMap(null);
+		for (const p of subregionPolygons) p.setMap(null);
+		subregionPolygons = [];
 	});
 
-	function anchorMarker(map, pos, color) {
+	function renderSubregions(map, geojson, subregionId) {
+		for (const feature of geojson.features) {
+			const sub = feature.properties?.Subregion || '';
+			const type = feature.geometry.type;
+			const coords = feature.geometry.coordinates;
+			const polygons = type === 'MultiPolygon' ? coords : [coords];
+			const paths = [];
+			for (const polygon of polygons) {
+				for (const ring of polygon) {
+					if (!ring.length) continue;
+					paths.push(ring.map(([lng, lat]) => ({ lat, lng })));
+				}
+			}
+			if (!paths.length) continue;
+			const isUserRegion = sub === subregionId;
+			const poly = new google.maps.Polygon({
+				map,
+				paths,
+				fillColor: isUserRegion ? MAP_COLORS.rust : MAP_COLORS.white,
+				fillOpacity: isUserRegion ? 0.08 : 0.015,
+				strokeColor: isUserRegion ? MAP_COLORS.rust : MAP_COLORS.white,
+				strokeOpacity: isUserRegion ? 0.55 : 0.12,
+				strokeWeight: isUserRegion ? 1 : 0.6,
+				clickable: false,
+				zIndex: 1,
+			});
+			subregionPolygons.push(poly);
+		}
+	}
+
+	// Tag subtitles. All three tag kinds share chrome and typography; the
+	// subtitle is the place where each kind speaks in its own register
+	// (MSHA ID + county, plant operator, EPA subregion). Empty strings
+	// render nothing — the helper skips the row — so missing data degrades
+	// cleanly instead of showing "undefined". Formats mirror the editorial
+	// designs in the PRD: identifier · geography.
+	function mineSubtitle(d) {
+		const parts = [];
+		if (d.mine_id) parts.push(`MSHA ${d.mine_id}`);
+		if (d.mine_county && d.mine_state) {
+			parts.push(`${d.mine_county} Co., ${d.mine_state}`);
+		} else if (d.mine_state) {
+			parts.push(d.mine_state);
+		}
+		return parts.join(' · ');
+	}
+
+	function plantSubtitle(d) {
+		const parts = [];
+		if (d.plant_operator) parts.push(d.plant_operator);
+		if (d.subregion_id) parts.push(`subregion ${d.subregion_id}`);
+		return parts.join(' · ');
+	}
+
+	function meterSubtitle(d) {
+		// No reverse-geocoding yet, so the honest identifier is the eGRID
+		// subregion the meter pools into. Keeps the tag structure consistent
+		// with MINE/PLANT without inventing an address we don't have.
+		return d.subregion_id ? `EPA subregion ${d.subregion_id}` : '';
+	}
+
+	// `title` is required (not optional) so every anchor marker carries an
+	// accessible name. Google Maps renders classic Markers with an internal
+	// `role="button"`, and axe-core's `aria-command-name` rule fails any
+	// anonymous one — so the caller must name the pin for screen readers.
+	function anchorMarker(map, pos, color, title) {
 		return new google.maps.Marker({
 			map,
 			position: pos,
+			title,
 			icon: circleIcon({ color }),
 		});
 	}
 
-	// Fan the three labels so they don't stack when markers are close.
-	// Latitude ordering drives the primary assignment: northmost floats
-	// above, southmost drops below. Any middle point slides to whichever
-	// side it sits on relative to the other two's longitude midpoint. The
-	// returned values are keys of PIN_TRANSFORMS in maps.js.
-	function computeLabelPlacement({ mine, plant, user }) {
-		const points = [
-			{ key: 'mine', lat: mine.lat, lng: mine.lng },
-			{ key: 'plant', lat: plant.lat, lng: plant.lng },
-		];
-		if (user) points.push({ key: 'user', lat: user.lat, lng: user.lng });
+	// Place label cards after the map has fit bounds. Works in pixel space:
+	//   - Topmost pin on screen gets the `above` card, bottommost the
+	//     `below` card, and any middle pin fans to whichever side it sits
+	//     on relative to the pixel-X midpoint of the other two. Pixel Y
+	//     (not latitude) decides ordering so a map zoomed into a tight
+	//     cluster fans by what the reader actually sees.
+	//   - The card offset scales with cluster density. A 14px gap is fine
+	//     at 200+ px separation, but below ~140 px the above/below/side
+	//     cards start intersecting — scale the offset up so each card
+	//     clears its neighbors down to coincident markers.
+	async function attachLabels(map, anchors) {
+		const pts = await projectAnchors(map, anchors);
+		if (!pts || cancelled) return;
 
-		const byLat = [...points].sort((a, b) => b.lat - a.lat);
-		const slot = { [byLat[0].key]: 'above', [byLat[byLat.length - 1].key]: 'below' };
-		if (byLat.length === 3) slot[byLat[1].key] = 'side';
-
-		function sidePlacementFor(key) {
-			const me = points.find((p) => p.key === key);
-			const others = points.filter((p) => p.key !== key);
-			const avgLng = others.reduce((s, p) => s + p.lng, 0) / others.length;
-			return me.lng >= avgLng ? 'right' : 'left';
+		const byY = [...pts].sort((a, b) => a.px.y - b.px.y);
+		const slot = {};
+		slot[byY[0].key] = 'above';
+		slot[byY[byY.length - 1].key] = 'below';
+		if (byY.length === 3) {
+			const middle = byY[1];
+			const others = pts.filter((p) => p.key !== middle.key);
+			const avgX = others.reduce((s, p) => s + p.px.x, 0) / others.length;
+			slot[middle.key] = middle.px.x >= avgX ? 'right' : 'left';
 		}
 
-		const out = {};
-		for (const p of points) {
-			if (slot[p.key] === 'side') out[p.key] = sidePlacementFor(p.key);
-			else out[p.key] = slot[p.key];
+		const offsetPx = clusterOffsetPx(pts);
+
+		for (const p of pts) {
+			createLabeledMarker(map, p.marker, {
+				...p.opts,
+				placement: slot[p.key],
+				offsetPx,
+			});
 		}
-		return out;
+	}
+
+	// lat/lng → pixel requires an OverlayView whose draw() has fired at
+	// least once — that's when getProjection() returns a real projection.
+	// `setMap(map)` only schedules onAdd/draw into Google's next render
+	// cycle, so reading getProjection() synchronously after setMap returns
+	// null on the first tick even when the map has already idled. Resolve
+	// from inside draw() so we wait for the projection instead of dropping
+	// every label. A 2s safety timeout rejects the promise if draw never
+	// fires (e.g., container hidden/detached) so the idle handler's catch
+	// surfaces a console error instead of leaving the map labelless.
+	function projectAnchors(map, anchors) {
+		return new Promise((resolve, reject) => {
+			const probe = new google.maps.OverlayView();
+			let resolved = false;
+			const finish = (result, error) => {
+				if (resolved) return;
+				resolved = true;
+				clearTimeout(timeoutId);
+				// Detach on a microtask so we don't setMap(null) from inside
+				// the probe's own draw callback.
+				queueMicrotask(() => probe.setMap(null));
+				if (error) reject(error);
+				else resolve(result);
+			};
+			probe.onAdd = () => {};
+			probe.draw = () => {
+				const proj = probe.getProjection();
+				if (!proj) return;
+				const pts = anchors.map((a) => {
+					const px = proj.fromLatLngToDivPixel(
+						new google.maps.LatLng(a.latLng.lat, a.latLng.lng),
+					);
+					return { ...a, px: { x: px.x, y: px.y } };
+				});
+				finish(pts);
+			};
+			probe.onRemove = () => {};
+			const timeoutId = setTimeout(
+				() => finish(null, new Error('projection probe draw() never fired')),
+				2000,
+			);
+			probe.setMap(map);
+		});
+	}
+
+	// Shared offset for every card on this map. Using one value (not
+	// per-card) keeps the fan symmetric — otherwise close pairs get
+	// mixed gap sizes and the cluster reads lopsided. The tightest
+	// pairwise distance sets the scale.
+	function clusterOffsetPx(pts) {
+		let minDist = Infinity;
+		for (let i = 0; i < pts.length; i++) {
+			for (let j = i + 1; j < pts.length; j++) {
+				const d = Math.hypot(pts[i].px.x - pts[j].px.x, pts[i].px.y - pts[j].px.y);
+				if (d < minDist) minDist = d;
+			}
+		}
+		const CLUSTER_PX = 140;
+		const BASE_PX = 14;
+		const MAX_PX = 80;
+		if (!Number.isFinite(minDist) || minDist >= CLUSTER_PX) return BASE_PX;
+		return Math.min(MAX_PX, Math.round(BASE_PX + (CLUSTER_PX - minDist) * 0.5));
 	}
 </script>
 
 <SectionRail number="03" label="The route" class="map-section">
-	<div class="map-header">
-		<h3>
+	<div class="section-header">
+		<h2>
 			Your <em>meter</em> pulls from the stack.<br/>
 			The stack pulls from the <em>mountain</em>.
-		</h3>
-		<p class="sub">
-			One rust line is the coal—from the <span class="rust">seam it was cut out of</span>,
-			to the <span class="rust">stack that burned it</span>, to
-			<span class="rust">your meter</span>. One route, one color.
-			<strong>Close markers fan their labels out</strong> so nothing stacks on top of anything else.
-		</p>
+		</h2>
 	</div>
 
 	<div class="map-frame glass">
@@ -148,19 +318,27 @@
 			<span class="legend-item"><span class="dot you"></span> you</span>
 		{/if}
 		<span class="legend-item"><span class="line-sample rust"></span> the coal, from mine to your meter</span>
+		{#if data.subregion_id}
+			<span class="legend-item"><span class="swatch region"></span> your grid subregion ({data.subregion_id})</span>
+		{/if}
 	</div>
 </SectionRail>
 
 <style>
-	.map-header {
-		max-width: 720px;
-		margin-bottom: 2rem;
-	}
-
+	/* Matted frame. The `.glass` class supplies the 1px border + radius;
+	   internal padding insets the map tiles so the frame reads as chrome
+	   around the map, not as a flush full-bleed panel. `max-width` keeps
+	   the map editorial-width instead of stretching to the full column. */
 	.map-frame {
 		width: 100%;
+		max-width: min(1080px, 100%);
 		overflow: hidden;
-		padding: 0;
+		padding: clamp(0.6rem, 1.2vw, 1rem);
+		/* Left-aligned inside the content column so the matted frame lines
+		   up with the headline, sub, legend, and every other section body
+		   — all of which flow from the left edge of the rail's content
+		   column. Centering made the map a visual outlier. */
+		margin: 1rem 0 0;
 	}
 
 	.map-container {
@@ -205,11 +383,22 @@
 	.dot.plant { background: var(--green); }
 	.dot.you { background: #e8dfcc; }
 
+	.swatch {
+		display: inline-block;
+		width: 10px;
+		height: 10px;
+		border-radius: 50%;
+	}
+	.swatch.region {
+		background: oklch(58% 0.14 36 / 0.22);
+		border: 1px solid oklch(58% 0.14 36 / 0.55);
+		border-radius: 2px;
+	}
+
 	.line-sample {
 		width: 20px;
 		height: 2px;
 		opacity: 0.6;
 	}
 	.line-sample.rust { background: var(--rust); }
-	.line-sample.moss { background: var(--green); }
 </style>

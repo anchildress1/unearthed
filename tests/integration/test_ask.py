@@ -28,6 +28,10 @@ class TestAskEndpoint:
         assert data["results"] == [{"TOTAL": 42}]
         assert data["error"] is None
         assert data["suggestions"] is not None
+        # Successful summary path: summary_degraded must stay False so the
+        # frontend shows the "Cortex, reading the record" byline over the
+        # real summary.
+        assert data["summary_degraded"] is False
 
     @patch(
         "app.main.query_cortex_analyst",

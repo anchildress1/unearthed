@@ -1,6 +1,7 @@
 <script>
 	import { onMount, tick } from 'svelte';
 	import { browser } from '$app/environment';
+	import { pushState } from '$app/navigation';
 	import Hero from '$lib/sections/Hero.svelte';
 	import PlantReveal from '$lib/sections/PlantReveal.svelte';
 	import MapSection from '$lib/sections/MapSection.svelte';
@@ -19,9 +20,9 @@
 	// Keying on subregion alone would skip the remount and leave
 	// MapSection / H3Density / CortexChat holding stale onMount state.
 	let traceNonce = $state(0);
-	let resultsEl;
+	let resultsEl = $state();
 
-	async function onTrace(subregionId, userCoords = null) {
+	async function onTrace(subregionId, userCoords = null, { pushUrl = true } = {}) {
 		loading = true;
 		error = null;
 		console.log('[unearthed] tracing subregion:', subregionId);
@@ -33,10 +34,30 @@
 				mineData.user_coords = [userCoords.lat, userCoords.lon];
 			}
 			console.log('[unearthed] loaded:', mineData.mine, '→', mineData.plant);
+			// Push the subregion into the URL on fresh traces so refresh
+			// survives: the browser restores the scroll position, onMount
+			// replays the trace from ?m=XYZ, and the user lands back on the
+			// same results page instead of on empty space below the hero.
+			// pushUrl=false when we're *handling* the share URL on mount so
+			// we don't stack a duplicate history entry. `pushState` from
+			// $app/navigation is SvelteKit's shallow-routing helper — it
+			// updates the URL without re-running load functions or
+			// desyncing the router's internal history state (bare
+			// `window.history.pushState` can cause odd back/forward
+			// behavior and full reloads in a SvelteKit app).
+			if (browser && pushUrl) {
+				const url = new URL(window.location.href);
+				url.searchParams.set('m', subregionId);
+				pushState(url, {});
+			}
 			// tick() waits for Svelte to commit the {#if mineData} block so the
 			// results container is in the DOM and `resultsEl` is bound before
-			// we try to scroll to it.
-			if (browser) {
+			// we try to scroll to it. Scroll only on fresh user traces — the
+			// share-URL mount replay (pushUrl=false) must leave the viewport
+			// alone so the browser's native scroll restoration can return the
+			// reader to where they were before refresh. Overriding it would
+			// snap them back to `main.scroll` top on every reload.
+			if (browser && pushUrl) {
 				await tick();
 				resultsEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 			}
@@ -54,7 +75,9 @@
 		const sub = params.get('m');
 		if (sub && /^[A-Za-z0-9]{2,10}$/.test(sub)) {
 			console.log('[unearthed] share URL:', sub);
-			onTrace(sub.toUpperCase());
+			// pushUrl=false: the URL is already ?m=XYZ, don't stack a dup
+			// history entry on the initial replay.
+			onTrace(sub.toUpperCase(), null, { pushUrl: false });
 		}
 	});
 </script>
@@ -88,35 +111,19 @@
 			<PlantReveal data={mineData} />
 			<MapSection data={mineData} />
 			<!--
-				Two H3Density instances, same data, different viewports. Split
-				per user feedback: the grid framing (N° 04) zooms to the eGRID
-				subregion polygon so the box containing "your electrons" is
-				legible; the seam framing (N° 05) zooms to the hex cluster +
-				user/mine anchors so the coal supply shape is visible. The
-				first strips the Cortex summary + legend + tallies so the
-				chrome only appears once, on the mine framing.
+				N° 04 "The seam": a single hex-cluster heatmap framed tight
+				on "the shape of extraction." No eGRID polygon here — the
+				user's subregion is surfaced only as text on their pin in
+				the upstream route map (MapSection, N° 03), so the two
+				sections don't compete for the same framing.
 			-->
 			<H3Density
 				userCoords={mineData.user_coords}
 				mineCoords={mineData.mine_coords}
 				mineName={mineData.mine}
+				mineId={mineData.mine_id}
+				mineCounty={mineData.mine_county}
 				mineState={mineData.mine_state}
-				subregionId={mineData.subregion_id}
-				zoomTo="grid"
-				number="04"
-				label="Your grid"
-				showChrome={false}
-			/>
-			<H3Density
-				userCoords={mineData.user_coords}
-				mineCoords={mineData.mine_coords}
-				mineName={mineData.mine}
-				mineState={mineData.mine_state}
-				subregionId={mineData.subregion_id}
-				zoomTo="mines"
-				number="05"
-				label="The seam"
-				showChrome={true}
 			/>
 			<CortexChat subregionId={mineData.subregion_id} mineName={mineData.mine} plantName={mineData.plant} />
 			<Ticker data={mineData} />

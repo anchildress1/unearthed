@@ -152,7 +152,7 @@ class TestGenerateProse:
         del data["fatalities"]
         del data["injuries"]
         del data["days_lost"]
-        prose, degraded = generate_prose(data)
+        prose, degraded, _stats = generate_prose(data)
 
         assert prose == "Prose without safety data."
         assert degraded is False
@@ -166,7 +166,7 @@ class TestGenerateProse:
         )
         mock_get_conn.return_value = mock_conn
 
-        prose, degraded = generate_prose(
+        prose, degraded, _stats = generate_prose(
             _make_mine_data(fatalities=None, injuries=None, days_lost=None)
         )
 
@@ -183,7 +183,9 @@ class TestGenerateProse:
         )
         mock_get_conn.return_value = mock_conn
 
-        prose, degraded = generate_prose(_make_mine_data(fatalities=0, injuries=0, days_lost=0))
+        prose, degraded, _stats = generate_prose(
+            _make_mine_data(fatalities=0, injuries=0, days_lost=0),
+        )
 
         assert prose == "Prose about the mine and plant."
         assert degraded is False
@@ -196,7 +198,7 @@ class TestGenerateProse:
         )
         mock_get_conn.return_value = mock_conn
 
-        prose, degraded = generate_prose(_make_mine_data())
+        prose, degraded, _stats = generate_prose(_make_mine_data())
 
         assert prose == "Three workers have died at this mine."
         assert degraded is False
@@ -206,7 +208,7 @@ class TestGenerateProse:
         mock_conn, _ = self._mock_connection(complete_result=("",))
         mock_get_conn.return_value = mock_conn
 
-        prose, degraded = generate_prose(_make_mine_data())
+        prose, degraded, _stats = generate_prose(_make_mine_data())
 
         assert "Test Plant" in prose
         assert "Test Mine" in prose
@@ -218,7 +220,7 @@ class TestGenerateProse:
         mock_conn, _ = self._mock_connection(complete_result=None)
         mock_get_conn.return_value = mock_conn
 
-        prose, degraded = generate_prose(_make_mine_data())
+        prose, degraded, _stats = generate_prose(_make_mine_data())
 
         assert "Test Plant" in prose
         assert "Test Mine" in prose
@@ -231,7 +233,9 @@ class TestGenerateProse:
         mock_conn, _ = self._mock_connection(complete_result=("",))
         mock_get_conn.return_value = mock_conn
 
-        prose, degraded = generate_prose(_make_mine_data(fatalities=0, injuries=0, days_lost=0))
+        prose, degraded, _stats = generate_prose(
+            _make_mine_data(fatalities=0, injuries=0, days_lost=0),
+        )
 
         assert "Test Plant" in prose
         assert "Test Mine" in prose
@@ -241,7 +245,7 @@ class TestGenerateProse:
 
     @patch("app.prose_client._get_connection", side_effect=Exception("Connection refused"))
     def test_connection_failure_returns_fallback(self, mock_get_conn):
-        prose, degraded = generate_prose(_make_mine_data())
+        prose, degraded, _stats = generate_prose(_make_mine_data())
 
         assert prose == _FALLBACK_NO_DATA
         assert degraded is True
@@ -295,11 +299,20 @@ class TestProseCache:
     def test_cache_hit_skips_snowflake(self):
         from app.prose_client import _prose_cache
 
-        _prose_cache["SRVC"] = ("Cached prose.", False)
+        _prose_cache["SRVC"] = (
+            "Cached prose.",
+            False,
+            {"fatalities": 0, "injuries_lost_time": 0, "days_lost": 0},
+        )
         try:
-            prose, degraded = generate_prose({"subregion_id": "SRVC", "mine_id": "1"})
+            prose, degraded, stats = generate_prose({"subregion_id": "SRVC", "mine_id": "1"})
             assert prose == "Cached prose."
             assert degraded is False
+            assert stats == {
+                "fatalities": 0,
+                "injuries_lost_time": 0,
+                "days_lost": 0,
+            }
         finally:
             _prose_cache.pop("SRVC", None)
 

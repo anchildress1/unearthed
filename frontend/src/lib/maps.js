@@ -12,88 +12,120 @@
  * single source of truth for how both maps look.
  */
 
-let _scriptPromise = null;
-
-// Hard cap so a missing/blocked Google Maps response can't hang the UI
-// indefinitely. 15s is comfortably above typical cold-load times and well
-// below anything a user would wait without assuming the page is broken.
-const MAPS_LOAD_TIMEOUT_MS = 15000;
-
+/**
+ * Install the Google Maps Dynamic Library Import bootstrap.
+ *
+ * The traditional `<script src="…/js?libraries=…">` loader only exposes
+ * the classic globals and does NOT install `google.maps.importLibrary`.
+ * The Places API (New) classes — `AutocompleteSuggestion`, `Place`, etc.
+ * — are only reachable via `importLibrary`, so the Hero autocomplete
+ * fails without this bootstrap.
+ *
+ * Idiomatic reimplementation of the 2024+ Google Maps dynamic library
+ * import bootstrap (see developers.google.com/maps/documentation/
+ * javascript/load-maps-js-api). The published snippet is minified;
+ * this rewrite preserves the exact contract — exposes
+ * `google.maps.importLibrary(name)`, lazily injects the API script on
+ * first call, and batches concurrent `importLibrary` calls into a
+ * single network fetch — while using let/const, non-async executors,
+ * and idiomatic control flow. Callers each `await importLibrary(X)`
+ * for exactly the library they need (Hero → 'places',
+ * MapSection → 'maps' + 'geometry', H3Density → 'maps'). Once the
+ * script loads, Google replaces `google.maps.importLibrary` with its
+ * real implementation and the shim's recursive call hits that.
+ *
+ * Do not pre-import libraries here. Each caller is responsible for
+ * requesting the scope it uses — that's the whole point of dynamic
+ * import (billing is per-library, unused libraries shouldn't load at
+ * all). Loading 'places' alongside 'maps' meant every landing-page view
+ * pulled the Places API even when the user never typed into the input.
+ */
 export function loadGoogleMaps() {
-	if (_scriptPromise) return _scriptPromise;
+	if (globalThis.window === undefined) {
+		return Promise.reject(new Error('loadGoogleMaps can only run in the browser'));
+	}
+	if (typeof globalThis.google?.maps?.importLibrary === 'function') {
+		return Promise.resolve();
+	}
+	const key = import.meta.env.VITE_GOOGLE_MAPS_KEY || '';
+	if (!key) {
+		return Promise.reject(new Error('VITE_GOOGLE_MAPS_KEY not set — map cannot load'));
+	}
 
-	_scriptPromise = new Promise((resolve, reject) => {
-		if (globalThis.window === undefined) {
-			reject(new Error('loadGoogleMaps can only run in the browser'));
-			return;
-		}
-		if (globalThis.google?.maps) {
-			resolve();
-			return;
-		}
-		const key = import.meta.env.VITE_GOOGLE_MAPS_KEY || '';
-		if (!key) {
-			reject(new Error('VITE_GOOGLE_MAPS_KEY not set — map cannot load'));
-			return;
-		}
+	installImportLibraryShim({ key, v: 'weekly' });
+	return Promise.resolve();
+}
 
-		// A single shared script tag: if another component added it before us
-		// and it's already loaded, `load` will not fire again and an
-		// addEventListener('load', …) listener would hang forever. Poll
-		// briefly for `window.google.maps` to cover the "already loaded
-		// between the readiness check above and the querySelector below"
-		// race. The timeout below bounds every path so a genuinely stuck
-		// load still surfaces to the caller.
-		const watchdog = setTimeout(
-			() => reject(new Error('Google Maps script timed out')),
-			MAPS_LOAD_TIMEOUT_MS,
+/**
+ * Installs the shim that Google's dynamic-bootstrap doc snippet installs.
+ * Split out so the nesting stays shallow and each step reads as prose.
+ */
+function installImportLibraryShim(config) {
+	const ERROR_PREFIX = 'The Google Maps JavaScript API';
+	const google = globalThis.google ?? (globalThis.google = {});
+	const maps = google.maps ?? (google.maps = {});
+
+	if (maps.importLibrary) {
+		// eslint-disable-next-line no-console
+		console.warn(`${ERROR_PREFIX} only loads once. Ignoring:`, config);
+		return;
+	}
+
+	const requestedLibs = new Set();
+	let scriptPromise = null;
+
+	maps.importLibrary = (name, ...rest) => {
+		requestedLibs.add(name);
+		return ensureScriptLoaded(config, requestedLibs, ERROR_PREFIX).then(() =>
+			maps.importLibrary(name, ...rest),
 		);
-		const succeed = () => {
-			clearTimeout(watchdog);
-			resolve();
-		};
-		const fail = (err) => {
-			clearTimeout(watchdog);
-			reject(err);
-		};
+	};
 
-		const existing = document.querySelector('script[data-unearthed-maps]');
-		if (existing) {
-			const poll = setInterval(() => {
-				if (globalThis.google?.maps) {
-					clearInterval(poll);
-					succeed();
-				}
-			}, 50);
-			existing.addEventListener('load', () => {
-				clearInterval(poll);
-				succeed();
-			});
-			existing.addEventListener('error', () => {
-				clearInterval(poll);
-				fail(new Error('Google Maps failed to load'));
-			});
-			// Give the watchdog responsibility for stopping the poll if
-			// neither event fires and google never appears.
-			setTimeout(() => clearInterval(poll), MAPS_LOAD_TIMEOUT_MS);
-			return;
-		}
-		const s = document.createElement('script');
-		s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&v=weekly&libraries=geometry`;
-		s.async = true;
-		s.dataset.unearthedMaps = '1';
-		s.onload = () => succeed();
-		s.onerror = () => fail(new Error('Google Maps failed to load'));
-		document.head.appendChild(s);
-	}).catch((err) => {
-		// Reset so the next caller can retry after a transient failure
-		// (network blip, ad-blocker toggled off, etc.) instead of being
-		// locked onto a permanently-rejected promise for the page lifetime.
-		_scriptPromise = null;
-		throw err;
-	});
+	function ensureScriptLoaded(cfg, libs, errorPrefix) {
+		if (scriptPromise) return scriptPromise;
+		scriptPromise = new Promise((resolve, reject) => {
+			const script = document.createElement('script');
+			const params = new URLSearchParams();
+			params.set('libraries', [...libs].join(','));
+			for (const [k, v] of Object.entries(cfg)) {
+				const param = k.replaceAll(/[A-Z]/g, (t) => '_' + t.toLowerCase());
+				params.set(param, v);
+			}
+			params.set('callback', 'google.maps.__ib__');
+			script.src = `https://maps.googleapis.com/maps/api/js?${params}`;
 
-	return _scriptPromise;
+			// Watchdog: neither Google's callback nor `script.onerror` fires
+			// when the network hangs mid-request (corporate filters, flaky
+			// Wi-Fi, an outage that drops the TCP stream after the response
+			// headers). Without this, every `importLibrary` caller awaits
+			// forever and the Hero/map sections never surface a recoverable
+			// error state. 10s is long enough for a slow connection to finish
+			// on the first paint and short enough that the UI doesn't feel
+			// dead before it reports the failure.
+			const BOOTSTRAP_TIMEOUT_MS = 10_000;
+			const timeoutId = setTimeout(() => {
+				scriptPromise = null;
+				reject(
+					new Error(
+						`${errorPrefix} did not load within ${BOOTSTRAP_TIMEOUT_MS}ms.`,
+					),
+				);
+			}, BOOTSTRAP_TIMEOUT_MS);
+
+			maps.__ib__ = (value) => {
+				clearTimeout(timeoutId);
+				resolve(value);
+			};
+			script.onerror = () => {
+				clearTimeout(timeoutId);
+				scriptPromise = null;
+				reject(new Error(`${errorPrefix} could not load.`));
+			};
+			script.nonce = document.querySelector('script[nonce]')?.nonce || '';
+			document.head.append(script);
+		});
+		return scriptPromise;
+	}
 }
 
 /**
@@ -186,19 +218,72 @@ export function createDarkMap(el, extra = {}) {
  * `placement` (optional): `'above' | 'below' | 'left' | 'right'` — which
  * side of the marker the card floats on. Used for fan-out when two markers
  * are close enough that their default (above) cards would stack.
+ *
+ * `offsetPx` (optional, default 14): pixel gap between marker and card edge.
+ * Boost this when markers cluster tightly — above+below cards separated by
+ * only 14px each intersect once the cluster shrinks below ~140px in pixel
+ * space. MapSection scales it with cluster density; callers with a single
+ * label (H3Density's mine anchor) can leave it at the default.
+ *
+ * `subtitle` (optional): a third mono line under the name, used to surface
+ * identifiers/geography ("MSHA 46-09627 · Raleigh Co., WV"). All three tag
+ * kinds (MINE / PLANT / METER) share chrome and typography; only the glyph
+ * shape changes so the reader can tell them apart at a glance.
  */
-const PIN_TRANSFORMS = {
-	above: 'translate(-50%, calc(-100% - 14px))',
-	below: 'translate(-50%, 14px)',
-	left: 'translate(calc(-100% - 14px), -50%)',
-	right: 'translate(14px, -50%)',
-};
+// Card transform relative to the marker's pixel position. `offsetPx` is the
+// gap between marker and card edge; callers boost it when markers cluster
+// so close that a default 14px gap lets neighboring cards intersect.
+function pinTransform(placement, offsetPx) {
+	switch (placement) {
+		case 'below':
+			return `translate(-50%, ${offsetPx}px)`;
+		case 'left':
+			return `translate(calc(-100% - ${offsetPx}px), -50%)`;
+		case 'right':
+			return `translate(${offsetPx}px, -50%)`;
+		case 'above':
+		default:
+			return `translate(-50%, calc(-100% - ${offsetPx}px))`;
+	}
+}
 
-export function createLabeledMarker(map, marker, { type, name, placement = 'above' }) {
+// Semantic glyph per tag type. MINE → rotated square reads as diamond,
+// PLANT → flat square reads as industrial, METER/YOU → circle reads as
+// endpoint. All render at 8px in rust so the tag family stays one voice.
+function glyphShapeFor(type) {
+	const upper = (type || '').toUpperCase();
+	if (upper === 'MINE') return 'diamond';
+	if (upper === 'PLANT') return 'square';
+	return 'circle'; // METER, YOU, and any future point-of-delivery kinds
+}
+
+function buildGlyph(shape) {
+	const el = document.createElement('span');
+	const base = [
+		'display:inline-block',
+		'width:8px',
+		'height:8px',
+		'background:#be573b',
+		'vertical-align:middle',
+		'margin-right:6px',
+		'flex-shrink:0',
+	];
+	if (shape === 'diamond') base.push('transform:rotate(45deg)');
+	else if (shape === 'circle') base.push('border-radius:50%');
+	// square: no extra
+	el.style.cssText = base.join(';');
+	return el;
+}
+
+export function createLabeledMarker(
+	map,
+	marker,
+	{ type, name, subtitle = '', placement = 'above', offsetPx = 14 },
+) {
 	const card = document.createElement('div');
 	card.style.cssText = [
 		'position:absolute',
-		`transform:${PIN_TRANSFORMS[placement] || PIN_TRANSFORMS.above}`,
+		`transform:${pinTransform(placement, offsetPx)}`,
 		'padding:6px 10px',
 		'background:rgba(20,18,16,0.92)',
 		'border:1px solid rgba(255,255,255,0.08)',
@@ -210,17 +295,32 @@ export function createLabeledMarker(map, marker, { type, name, placement = 'abov
 		'-webkit-backdrop-filter:blur(8px)',
 		'box-shadow:0 4px 14px rgba(0,0,0,0.4)',
 	].join(';');
-	const typeEl = document.createElement('div');
+
+	// Row 1 — glyph + type eyebrow. Flex so the glyph centers to the cap
+	// height instead of floating above baseline.
+	const typeRow = document.createElement('div');
+	typeRow.style.cssText = 'display:flex;align-items:center';
+	typeRow.appendChild(buildGlyph(glyphShapeFor(type)));
+	const typeEl = document.createElement('span');
 	typeEl.style.cssText =
 		"font-family:'JetBrains Mono',monospace;font-size:9px;color:#be573b;text-transform:uppercase;letter-spacing:0.12em";
 	typeEl.textContent = type;
-	card.appendChild(typeEl);
+	typeRow.appendChild(typeEl);
+	card.appendChild(typeRow);
+
 	if (name) {
 		const nameEl = document.createElement('div');
 		nameEl.style.cssText =
 			"font-family:Newsreader,serif;font-size:12px;color:#e8dfcc;margin-top:1px";
 		nameEl.textContent = name;
 		card.appendChild(nameEl);
+	}
+	if (subtitle) {
+		const subEl = document.createElement('div');
+		subEl.style.cssText =
+			"font-family:'JetBrains Mono',monospace;font-size:9px;color:#a89e92;margin-top:2px;letter-spacing:0.04em";
+		subEl.textContent = subtitle;
+		card.appendChild(subEl);
 	}
 
 	class PinCardOverlay extends google.maps.OverlayView {
