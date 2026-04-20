@@ -446,6 +446,27 @@ def mine_for_me(req: MineForMeRequest):
     )
 
 
+def _summarize_analyst_rows(question: str, results: list[dict]) -> tuple[str | None, bool]:
+    """Run Cortex Complete against Analyst rows; return ``(summary, degraded)``.
+
+    ``degraded=True`` covers two indistinguishable user-facing failure modes:
+    an exception from Cortex Complete, or a successful call that returned an
+    empty string. Both leave rows on screen with no prose, and both require
+    the frontend to hide the "Cortex, reading the record" byline so template
+    silence isn't attributed to the model. Extracted from ``ask`` so the
+    endpoint keeps its cognitive complexity under the project lint threshold.
+    """
+    try:
+        summary = summarize_analyst_results(question, results)
+    except Exception:
+        logger.warning("Analyst summary generation failed", exc_info=True)
+        return None, True
+    if summary:
+        return summary, False
+    logger.warning("Analyst summary returned empty text")
+    return None, True
+
+
 @app.post("/ask", response_model=AskResponse)
 def ask(req: AskRequest):
     """Pass a natural-language question through Cortex Analyst.
@@ -510,22 +531,9 @@ def ask(req: AskRequest):
 
     summary_degraded = False
     if results and not result.get("answer"):
-        try:
-            summary = summarize_analyst_results(req.question, results)
-        except Exception:
-            logger.warning("Analyst summary generation failed", exc_info=True)
-            # Flag the degradation so the frontend can hide the Cortex byline
-            # and surface the table without attributing silence to the model.
-            summary_degraded = True
-        else:
-            # Cortex Complete can also "succeed" with an empty string — same
-            # user-visible outcome (rows shown, no prose) and same contract
-            # need (hide the byline), so treat it as degraded too.
-            if summary:
-                answer = summary
-            else:
-                logger.warning("Analyst summary returned empty text")
-                summary_degraded = True
+        summary, summary_degraded = _summarize_analyst_rows(req.question, results)
+        if summary:
+            answer = summary
 
     suggestions = result.get("suggestions") or _suggestions_for(req.subregion_id)
 
