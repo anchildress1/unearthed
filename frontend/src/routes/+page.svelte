@@ -108,10 +108,10 @@
 			<MapSection data={mineData} />
 			<!--
 				N° 04 "The seam": a single hex-cluster heatmap framed tight
-				on "the shape of extraction." The eGRID subregion polygon
-				framing lives upstream on MapSection (N° 03) — keeping the
-				two framings in separate sections stopped the header, copy,
-				legend, and tallies from having to hedge between them.
+				on "the shape of extraction." No eGRID polygon here — the
+				user's subregion is surfaced only as text on their pin in
+				the upstream route map (MapSection, N° 03), so the two
+				sections don't compete for the same framing.
 			-->
 			<H3Density
 				userCoords={mineData.user_coords}
@@ -120,7 +120,6 @@
 				mineId={mineData.mine_id}
 				mineCounty={mineData.mine_county}
 				mineState={mineData.mine_state}
-				subregionId={mineData.subregion_id}
 			/>
 			<CortexChat subregionId={mineData.subregion_id} mineName={mineData.mine} plantName={mineData.plant} />
 			<Ticker data={mineData} />

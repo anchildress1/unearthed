@@ -10,9 +10,9 @@ test.describe('editorial chrome', () => {
 		// The hero owns N° 01 via its own `.hero-chrome`; every post-hero
 		// section owns a `.section-rail > .rail-chrome`. Post-trace the page
 		// should render five section rails: PlantReveal (02), MapSection
-		// (03 — the route map, now also carrying the user's eGRID subregion
-		// polygon), H3Density (04 — hex-cluster heatmap), CortexChat (05),
-		// Ticker (06).
+		// (03 — the route map; the user's eGRID subregion is labeled as
+		// text on their pin here, never drawn as a polygon), H3Density
+		// (04 — hex-cluster heatmap), CortexChat (05), Ticker (06).
 		const rails = page.locator('.section-rail .rail-chrome');
 		const count = await rails.count();
 		expect(count).toBe(5);
@@ -41,10 +41,10 @@ test.describe('editorial chrome', () => {
 
 		// N° 04 "The seam" is one editorial section with a single
 		// `.map-wrap` — the hex-cluster heatmap framed tight on the
-		// "shape of extraction." The eGRID subregion polygon framing
-		// now lives upstream on MapSection (N° 03), so this section
-		// must not regress to a second `.map-wrap` that would duplicate
-		// the polygon rendering or split focus between two framings.
+		// "shape of extraction." No eGRID polygon is rendered on either
+		// map; the user's subregion surfaces only as text on their pin
+		// in the upstream route map. This section must not regress to a
+		// second `.map-wrap` that would split focus between two framings.
 		const h3Section = page.locator('.section-rail.h3-section');
 		await expect(h3Section).toHaveCount(1);
 		await expect(h3Section.locator('.map-wrap')).toHaveCount(1);

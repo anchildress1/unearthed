@@ -1,7 +1,6 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
 	import { fetchH3Density } from '$lib/api.js';
-	import { loadSubregionGeoJSON } from '$lib/geo.js';
 	import {
 		loadGoogleMaps,
 		createDarkMap,
@@ -12,9 +11,9 @@
 	import SectionRail from '$lib/components/SectionRail.svelte';
 
 	// Single hex density map framed tight on the hex cluster — "the shape
-	// of extraction." The eGRID subregion polygon is rendered by the
-	// upstream MapSection (N° 03), so there's no need to duplicate that
-	// framing here. This section is only the heatmap.
+	// of extraction." The eGRID subregion is labeled on the user's pin in
+	// the upstream route map (N° 03, MapSection) — it never renders as a
+	// polygon on either map. This section is only the heatmap.
 	let {
 		userCoords = null,
 		mineCoords = null,
@@ -22,14 +21,12 @@
 		mineId = '',
 		mineCounty = '',
 		mineState = '',
-		subregionId = '',
 	} = $props();
 
 	let mapEl;
 	let map = null;
 	let infoWindow = null;
 	let hexMarkers = [];
-	let subregionPolygons = [];
 	// Mine + user pins. Tracked separately from hexMarkers so the cleanup
 	// pass doesn't have to reason about which dots are data vs. which are
 	// anchors, and so HMR teardown fully detaches them from the map.
@@ -40,7 +37,6 @@
 
 	let cells = $state([]);
 	let registryTotals = $state({ mines: 0, active: 0, abandoned: 0 });
-	let geojson = $state(null);
 	let loaded = $state(false);
 	let errored = $state(false);
 	let summary = $state('');
@@ -92,30 +88,20 @@
 
 	onMount(async () => {
 		// Fetch phase: "unavailable" here is the only honest reason to show
-		// the user a generic failure message. We log the GeoJSON failure
-		// separately so a missing asset doesn't disappear into the outer
-		// catch (eGRID overlays degrade to unadorned hexes instead of
-		// collapsing the whole section).
+		// the user a generic failure message.
 		let density;
-		let geo = null;
 		try {
-			[density, geo] = await Promise.all([
+			[density] = await Promise.all([
 				fetchH3Density(5, mineState || null),
-				loadSubregionGeoJSON().catch((err) => {
-					console.warn('[unearthed] eGRID overlay unavailable:', err.message);
-					return null;
-				}),
 				// Bootstrap first, then pull in just the `maps` library we
-				// use here (Map, Marker, Polygon, InfoWindow, LatLngBounds,
+				// use here (Map, Marker, InfoWindow, LatLngBounds,
 				// SymbolPath). Dynamic import means unused libraries — like
 				// `places` or `geometry` — never hit the wire.
 				loadGoogleMaps().then(() => google.maps.importLibrary('maps')),
 			]);
 		} catch (e) {
 			// `console.error` (not warn): a data/SDK failure here is a hard
-			// outage, not a graceful degradation. The GeoJSON inner `.catch`
-			// above is the only warn-worthy case — it has a known fallback
-			// (unadorned hexes). This outer path means no density data at all.
+			// outage, not a graceful degradation — no density data at all.
 			console.error('[unearthed] h3-density fetch failed:', e);
 			errored = true;
 			loaded = true;
@@ -133,7 +119,6 @@
 		};
 		summary = density.summary || '';
 		summaryDegraded = Boolean(density.summary_degraded);
-		if (geo) geojson = geo;
 
 		// Render phase: failures here are code bugs, not API outages. We let
 		// them surface in the console with a full stack so they're fixable
@@ -150,7 +135,6 @@
 				disableAutoPan: true,
 				headerDisabled: true,
 			});
-			renderSubregions();
 			renderHexes();
 			renderAnchors();
 			fitToData();
@@ -167,49 +151,16 @@
 		for (const m of hexMarkers) m.setMap(null);
 		for (const m of anchorMarkers) m.setMap(null);
 		for (const o of anchorOverlays) o.setMap(null);
-		for (const p of subregionPolygons) p.setMap(null);
 		infoWindow?.close();
 		hexMarkers = [];
 		anchorMarkers = [];
 		anchorOverlays = [];
-		subregionPolygons = [];
 		infoWindow = null;
 		// Null the Map instance itself: Google's Map holds strong refs to
 		// its container element and listeners, so HMR and SPA navigation
 		// leak without this.
 		map = null;
 	});
-
-	function renderSubregions() {
-		if (!geojson || !map) return;
-		for (const feature of geojson.features) {
-			const sub = feature.properties?.Subregion || '';
-			const type = feature.geometry.type;
-			const coords = feature.geometry.coordinates;
-			const polygons = type === 'MultiPolygon' ? coords : [coords];
-			const paths = [];
-			for (const polygon of polygons) {
-				for (const ring of polygon) {
-					if (!ring.length) continue;
-					paths.push(ring.map(([lng, lat]) => ({ lat, lng })));
-				}
-			}
-			if (!paths.length) continue;
-			const isUserRegion = sub === subregionId;
-			const poly = new google.maps.Polygon({
-				map,
-				paths,
-				fillColor: isUserRegion ? MAP_COLORS.rust : MAP_COLORS.white,
-				fillOpacity: isUserRegion ? 0.08 : 0.015,
-				strokeColor: isUserRegion ? MAP_COLORS.rust : MAP_COLORS.white,
-				strokeOpacity: isUserRegion ? 0.55 : 0.12,
-				strokeWeight: isUserRegion ? 1 : 0.6,
-				clickable: false,
-				zIndex: 1,
-			});
-			subregionPolygons.push(poly);
-		}
-	}
 
 	function renderHexes() {
 		if (!map) return;
@@ -314,9 +265,8 @@
 		const bounds = new google.maps.LatLngBounds();
 		let any = false;
 		// Fit tight on the hex cluster + anchors — "the shape of
-		// extraction." The eGRID polygon framing lives on the route map
-		// upstream (MapSection), so this section doesn't need to hedge
-		// between the two framings.
+		// extraction." No eGRID polygon is drawn here or upstream; the
+		// user's subregion is surfaced as text on their pin in MapSection.
 		for (const c of filteredCells) {
 			const lat = Number(c.LAT ?? c.lat);
 			const lng = Number(c.LNG ?? c.lng);
@@ -440,11 +390,6 @@
 			<span class="swatch rust"></span> still cutting
 			<span class="swatch ash"></span> abandoned
 		</span>
-		{#if subregionId}
-			<span class="legend-item">
-				<span class="swatch region"></span> your grid subregion ({subregionId})
-			</span>
-		{/if}
 	</div>
 
 	{#if loaded && !errored && totals.mines > 0}
@@ -523,11 +468,6 @@
 	}
 	.swatch.rust { background: var(--rust); }
 	.swatch.ash { background: #a89e92; }
-	.swatch.region {
-		background: oklch(58% 0.14 36 / 0.22);
-		border: 1px solid oklch(58% 0.14 36 / 0.55);
-		border-radius: 2px;
-	}
 
 	.tallies {
 		display: grid;
