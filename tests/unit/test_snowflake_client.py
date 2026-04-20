@@ -444,7 +444,25 @@ class TestAuthPolicy:
         mock_settings.snowflake_private_key_passphrase = ""
         mock_settings.allow_password_auth = False
 
-        with pytest.raises(FileNotFoundError):
+        with pytest.raises(RuntimeError, match="private key not found"):
+            _get_connection()
+
+    @patch("app.snowflake_client.settings")
+    def test_private_key_file_empty_raises(self, mock_settings, tmp_path):
+        """Zero-byte key file (failed Secret Manager mount) must raise clearly."""
+        empty_key = tmp_path / "empty.p8"
+        empty_key.write_bytes(b"")
+
+        mock_settings.snowflake_account = "test"
+        mock_settings.snowflake_user = "user"
+        mock_settings.snowflake_role = "ROLE"
+        mock_settings.snowflake_warehouse = "WH"
+        mock_settings.snowflake_database = "DB"
+        mock_settings.snowflake_private_key_path = str(empty_key)
+        mock_settings.snowflake_private_key_passphrase = ""
+        mock_settings.allow_password_auth = False
+
+        with pytest.raises(RuntimeError, match="empty"):
             _get_connection()
 
     @patch("app.snowflake_client.snowflake.connector.connect")
