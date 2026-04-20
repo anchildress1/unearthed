@@ -240,9 +240,17 @@ WHERE FACILITY_NAME LIKE %(plant_prefix)s
 LIMIT 1
 """
 
-# EIA plant names carry parenthetical state suffixes — "Cumberland (TN)" —
-# that EPA's FACILITY_NAME never includes.  Strip before matching.
-_PAREN_SUFFIX = re.compile(r"\s*\([^)]*\)\s*$")
+
+def _strip_paren_suffix(name: str) -> str:
+    """Strip trailing parenthetical state suffix — 'Cumberland (TN)' → 'Cumberland'.
+
+    EIA plant names carry these; EPA's FACILITY_NAME never does.
+    """
+    idx = name.rfind("(")
+    if idx > 0 and name.rstrip().endswith(")"):
+        return name[:idx].rstrip()
+    return name
+
 
 _CACHE_MAXSIZE = 256
 
@@ -256,7 +264,7 @@ _emissions_lock = threading.Lock()
 )
 def plant_emissions(plant_name: str):
     """EPA emissions data for a plant — pre-aggregated from Snowflake Marketplace."""
-    cache_key = _PAREN_SUFFIX.sub("", plant_name).strip().upper()
+    cache_key = _strip_paren_suffix(plant_name).upper()
     with _emissions_lock:
         if cache_key in _emissions_cache:
             _emissions_cache.move_to_end(cache_key)
