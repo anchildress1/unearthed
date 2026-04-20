@@ -1,6 +1,7 @@
 <script>
 	import { onMount, tick } from 'svelte';
 	import { browser } from '$app/environment';
+	import { pushState } from '$app/navigation';
 	import Hero from '$lib/sections/Hero.svelte';
 	import PlantReveal from '$lib/sections/PlantReveal.svelte';
 	import MapSection from '$lib/sections/MapSection.svelte';
@@ -38,11 +39,16 @@
 			// replays the trace from ?m=XYZ, and the user lands back on the
 			// same results page instead of on empty space below the hero.
 			// pushUrl=false when we're *handling* the share URL on mount so
-			// we don't stack a duplicate history entry.
+			// we don't stack a duplicate history entry. `pushState` from
+			// $app/navigation is SvelteKit's shallow-routing helper — it
+			// updates the URL without re-running load functions or
+			// desyncing the router's internal history state (bare
+			// `window.history.pushState` can cause odd back/forward
+			// behavior and full reloads in a SvelteKit app).
 			if (browser && pushUrl) {
 				const url = new URL(window.location.href);
 				url.searchParams.set('m', subregionId);
-				window.history.pushState({}, '', url);
+				pushState(url, {});
 			}
 			// tick() waits for Svelte to commit the {#if mineData} block so the
 			// results container is in the DOM and `resultsEl` is bound before

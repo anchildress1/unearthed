@@ -3,6 +3,11 @@
 // frontend's downstream logic (paragraph dedup, formatters, anchors) has
 // enough data to exercise.
 
+// Fields mirror MineForMeResponse in app/models.py — including the four
+// MSHA safety stats surfaced in PlantReveal's cost block. Keep this in
+// sync when the backend payload changes; an out-of-date fixture masks
+// regressions in subtitle rendering (mine_id → MSHA card) and the
+// people-subsection layout (fatalities / injuries / days-lost rows).
 export const mineForMeJimBridger = {
 	plant: 'Jim Bridger',
 	plant_operator: 'PacifiCorp',
@@ -13,10 +18,14 @@ export const mineForMeJimBridger = {
 	mine_county: 'Campbell',
 	mine_coords: [43.7247, -105.246],
 	mine_type: 'Surface',
-	mine_msha_id: '48-00977',
+	mine_id: '4800977',
 	tons: 3_850_000,
 	tons_year: 2024,
 	subregion_id: 'NWPP',
+	fatalities: 0,
+	injuries_lost_time: 0,
+	days_lost: 0,
+	incidents: 0,
 	prose: 'Black Thunder, a surface mine in Campbell County Wyoming, is the largest coal mine in the United States by annual tonnage.\n\nIt ships coal via BNSF to the Jim Bridger plant outside Rock Springs, where it is burned to meet electricity demand across the Pacific Northwest grid.\n\nBlack Thunder, a surface mine in Campbell County Wyoming, is the largest coal mine in the United States by annual tonnage.',
 };
 
@@ -63,6 +72,28 @@ export async function mockBackend(page, {
 	// Autocomplete RPC. The share-URL path doesn't need Places, but Hero
 	// always tries to load it on mount and an unmocked 3rd-party request
 	// slows every test down to its timeout.
+	//
+	// The shim matches maps.js's `installImportLibraryShim` contract: the
+	// first importLibrary() call triggers a script fetch that, on load,
+	// invokes `google.maps.__ib__` (the callback baked into the URL) to
+	// resolve the pending promise. We mirror that here so awaited
+	// importLibrary() calls in Hero/MapSection/H3Density don't hang — the
+	// returned stub script, when executed as a tag, re-installs a trivial
+	// importLibrary that resolves to an empty module and fires __ib__.
+	await page.route(/maps\.googleapis\.com\/maps\/api\/js/, (route) =>
+		route.fulfill({
+			status: 200,
+			contentType: 'application/javascript',
+			body: `
+				(function () {
+					const g = window.google = window.google || {};
+					const m = g.maps = g.maps || {};
+					m.importLibrary = () => Promise.resolve({});
+					if (typeof m.__ib__ === 'function') m.__ib__();
+				})();
+			`,
+		}),
+	);
 	await page.route(/maps\.googleapis\.com|maps\.gstatic\.com/, (route) =>
 		route.fulfill({ status: 200, contentType: 'application/javascript', body: '/* mocked */' }),
 	);

@@ -33,7 +33,7 @@
 		try {
 			console.log('[unearthed] loading Google Maps…');
 			await loadGoogleMaps();
-			console.log('[unearthed] Maps script loaded, importing places…');
+			console.log('[unearthed] Maps bootstrap installed, importing places…');
 			placesLib = await google.maps.importLibrary('places');
 			console.log('[unearthed] Places library ready:', Object.keys(placesLib));
 			placesReady = true;

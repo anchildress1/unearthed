@@ -4,10 +4,13 @@
 
 <svelte:head>
 	<!--
-		Inline SVG favicon: a single rust disc over the page background tone.
-		Avoids a /favicon.ico 404 — which Lighthouse flags as a console error
-		and tanks best-practices below the 0.98 gate — without shipping a
-		binary asset.
+		Inline SVG favicon (primary) + `static/favicon.ico` (legacy fallback
+		for older browsers and crawlers that still request `/favicon.ico`
+		by convention). The SVG is a single rust disc over the page
+		background tone; the .ico mirrors the same mark so the site never
+		surfaces a default-browser favicon. Both together close the
+		`errors-in-console` Lighthouse check that a missing /favicon.ico
+		would trip and tank best-practices below the 0.98 gate.
 	-->
 	<link
 		rel="icon"
