@@ -15,6 +15,13 @@ const PROPS = {
 	subregionId: 'SRVC',
 };
 
+async function askQuestion(container, question = 'test') {
+	const input = container.querySelector('input[name="question"]');
+	const form = container.querySelector('form');
+	await fireEvent.input(input, { target: { value: question } });
+	await fireEvent.submit(form);
+}
+
 describe('CortexChat — initial render', () => {
 	it('renders the section heading and pipeline', () => {
 		const { container } = render(CortexChat, { props: PROPS });
@@ -61,12 +68,7 @@ describe('CortexChat — asking a question', () => {
 		});
 
 		const { container } = render(CortexChat, { props: PROPS });
-		const input = container.querySelector('input[name="question"]');
-		const form = container.querySelector('form');
-
-		await fireEvent.input(input, { target: { value: 'How much coal?' } });
-		await fireEvent.submit(form);
-		// Wait for the async response
+		await askQuestion(container, 'How much coal?');
 		await vi.waitFor(() => {
 			expect(container.querySelector('.answer')).toBeTruthy();
 		});
@@ -85,10 +87,7 @@ describe('CortexChat — asking a question', () => {
 		});
 
 		const { container } = render(CortexChat, { props: PROPS });
-		const input = container.querySelector('input[name="question"]');
-		const form = container.querySelector('form');
-		await fireEvent.input(input, { target: { value: 'How much coal?' } });
-		await fireEvent.submit(form);
+		await askQuestion(container, 'How much coal?');
 
 		await vi.waitFor(() => {
 			expect(container.querySelector('.answer').textContent).toContain('Five million tons.');
@@ -99,10 +98,7 @@ describe('CortexChat — asking a question', () => {
 		mockFetchAsk.mockRejectedValueOnce(new Error('Network error'));
 
 		const { container } = render(CortexChat, { props: PROPS });
-		const input = container.querySelector('input[name="question"]');
-		const form = container.querySelector('form');
-		await fireEvent.input(input, { target: { value: 'test' } });
-		await fireEvent.submit(form);
+		await askQuestion(container);
 
 		await vi.waitFor(() => {
 			expect(container.querySelector('.error').textContent).toContain('Could not reach');
@@ -120,10 +116,7 @@ describe('CortexChat — asking a question', () => {
 		});
 
 		const { container } = render(CortexChat, { props: PROPS });
-		const input = container.querySelector('input[name="question"]');
-		const form = container.querySelector('form');
-		await fireEvent.input(input, { target: { value: 'test' } });
-		await fireEvent.submit(form);
+		await askQuestion(container);
 
 		await vi.waitFor(() => {
 			expect(container.querySelector('.error').textContent).toContain('Cortex is down');
@@ -141,10 +134,7 @@ describe('CortexChat — asking a question', () => {
 		});
 
 		const { container } = render(CortexChat, { props: PROPS });
-		const input = container.querySelector('input[name="question"]');
-		const form = container.querySelector('form');
-		await fireEvent.input(input, { target: { value: 'test' } });
-		await fireEvent.submit(form);
+		await askQuestion(container);
 
 		await vi.waitFor(() => {
 			expect(container.querySelector('.no-results').textContent).toContain('no rows');
@@ -165,10 +155,7 @@ describe('CortexChat — asking a question', () => {
 		});
 
 		const { container } = render(CortexChat, { props: PROPS });
-		const input = container.querySelector('input[name="question"]');
-		const form = container.querySelector('form');
-		await fireEvent.input(input, { target: { value: 'test' } });
-		await fireEvent.submit(form);
+		await askQuestion(container);
 
 		await vi.waitFor(() => {
 			const ths = container.querySelectorAll('th');
@@ -199,10 +186,7 @@ describe('CortexChat — formatCell', () => {
 		});
 
 		const { container } = render(CortexChat, { props: PROPS });
-		const input = container.querySelector('input[name="question"]');
-		const form = container.querySelector('form');
-		await fireEvent.input(input, { target: { value: 'test' } });
-		await fireEvent.submit(form);
+		await askQuestion(container);
 
 		await vi.waitFor(() => {
 			const tds = container.querySelectorAll('td');
@@ -225,10 +209,7 @@ describe('CortexChat — proof toggle', () => {
 		});
 
 		const { container } = render(CortexChat, { props: PROPS });
-		const input = container.querySelector('input[name="question"]');
-		const form = container.querySelector('form');
-		await fireEvent.input(input, { target: { value: 'test' } });
-		await fireEvent.submit(form);
+		await askQuestion(container);
 
 		await vi.waitFor(() => {
 			expect(container.querySelector('.proof-toggle')).toBeTruthy();
@@ -261,10 +242,7 @@ describe('CortexChat — suggestion follow-ups', () => {
 		});
 
 		const { container } = render(CortexChat, { props: PROPS });
-		const input = container.querySelector('input[name="question"]');
-		const form = container.querySelector('form');
-		await fireEvent.input(input, { target: { value: 'weather?' } });
-		await fireEvent.submit(form);
+		await askQuestion(container, 'weather?');
 
 		await vi.waitFor(() => {
 			const followUps = container.querySelectorAll('.follow-ups .chip');
@@ -284,10 +262,7 @@ describe('CortexChat — suggestion follow-ups', () => {
 		});
 
 		const { container } = render(CortexChat, { props: PROPS });
-		const input = container.querySelector('input[name="question"]');
-		const form = container.querySelector('form');
-		await fireEvent.input(input, { target: { value: 'test' } });
-		await fireEvent.submit(form);
+		await askQuestion(container);
 
 		await vi.waitFor(() => {
 			// With SQL present, suggestions are cleared
@@ -308,10 +283,7 @@ describe('CortexChat — no-SQL hint', () => {
 		});
 
 		const { container } = render(CortexChat, { props: PROPS });
-		const input = container.querySelector('input[name="question"]');
-		const form = container.querySelector('form');
-		await fireEvent.input(input, { target: { value: 'weather?' } });
-		await fireEvent.submit(form);
+		await askQuestion(container, 'weather?');
 
 		await vi.waitFor(() => {
 			expect(container.querySelector('.hint')).toBeTruthy();
