@@ -70,16 +70,9 @@
 		· AI:
 		<a href="https://www.snowflake.com/en/data-cloud/cortex/" target="_blank" rel="noopener">Snowflake Cortex</a>
 	</p>
-	<!--
-		Two donate affordances side-by-side. Both `href`s are placeholders —
-		swap once accounts are claimed. Buy Me a Coffee covers tip-style
-		one-offs; GitHub Sponsors covers recurring dev-support. Same chrome
-		(hairline rust pill, mono caps) so they read as one row of options
-		instead of competing CTAs.
-	-->
 	<p class="donate">
 		<a
-			href="https://buymeacoffee.com/REPLACE-ME"
+			href="https://buymeacoffee.com/anchildress1"
 			target="_blank"
 			rel="noopener"
 			aria-label="Buy me a coffee"
@@ -87,7 +80,7 @@
 			Buy me a coffee
 		</a>
 		<a
-			href="https://github.com/sponsors/REPLACE-ME"
+			href="https://github.com/sponsors/anchildress1"
 			target="_blank"
 			rel="noopener"
 			aria-label="Sponsor on GitHub"
