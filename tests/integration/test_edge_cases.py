@@ -125,15 +125,18 @@ class TestHttpMethods:
 
     def test_put_mine_for_me_returns_405(self, client):
         resp = client.put("/mine-for-me", json={"subregion_id": "SRVC"})
-        assert resp.status_code in (404, 405)
+        assert resp.status_code == 405
+        assert "Allow" in resp.headers
 
     def test_delete_ask_returns_405(self, client):
         resp = client.delete("/ask")
-        assert resp.status_code in (404, 405)
+        assert resp.status_code == 405
+        assert "Allow" in resp.headers
 
     def test_patch_mine_for_me_returns_405(self, client):
         resp = client.patch("/mine-for-me", json={"subregion_id": "SRVC"})
-        assert resp.status_code in (404, 405)
+        assert resp.status_code == 405
+        assert "Allow" in resp.headers
 
 
 class TestResponseHeaders:

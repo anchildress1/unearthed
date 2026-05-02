@@ -7,17 +7,9 @@ import '@testing-library/jest-dom/vitest';
 // trigger intersections manually.
 if (globalThis.IntersectionObserver === undefined) {
 	globalThis.IntersectionObserver = class {
-		observe() {
-			// No-op stub: tests don't rely on real intersection events.
-		}
-		unobserve() {
-			// No-op stub: tests don't rely on real intersection events.
-		}
-		disconnect() {
-			// No-op stub: tests don't rely on real intersection events.
-		}
-		takeRecords() {
-			return [];
-		}
+		observe() { /* jsdom stub */ }
+		unobserve() { /* jsdom stub */ }
+		disconnect() { /* jsdom stub */ }
+		takeRecords() { return []; }
 	};
 }

@@ -382,9 +382,8 @@
 		white-space: nowrap;
 		/* Rotate so the label reads vertically alongside the headline,
 		   classic magazine-rail typography. `writing-mode: vertical-rl`
-		   gives real sideways text (not a transform rotation) so it stays
-		   accessible to screen readers even though the parent is
-		   aria-hidden. */
+		   gives real sideways text rather than a CSS transform.
+		   The parent is aria-hidden — this is purely decorative. */
 		writing-mode: vertical-rl;
 		transform: rotate(180deg);
 	}
