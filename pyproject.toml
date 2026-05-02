@@ -11,6 +11,9 @@ dependencies = [
     "pydantic-settings>=2,<3",
     "cryptography>=46.0.6,<47",
     "requests>=2.31,<3",
+    "duckdb>=1.5,<2",
+    "pyarrow>=24,<25",
+    "boto3>=1.40,<2",
 ]
 
 [dependency-groups]
