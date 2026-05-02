@@ -51,9 +51,8 @@ COPY --from=frontend /build/build frontend/build/
 # an outbound download. HOME=/app puts extensions under /app/.duckdb (covered
 # by the chown below); at runtime LOAD httpfs reads from that path, no network.
 ENV HOME=/app
-RUN /app/.venv/bin/python -c "import duckdb; con=duckdb.connect(); con.execute('INSTALL httpfs')"
-
-RUN chown -R app:app /app
+RUN /app/.venv/bin/python -c "import duckdb; con=duckdb.connect(); con.execute('INSTALL httpfs')" \
+    && chown -R app:app /app
 
 USER app
 

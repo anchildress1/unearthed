@@ -8,7 +8,7 @@ async function parseErrorBody(resp) {
 	try {
 		return JSON.parse(raw);
 	} catch {
-		console.warn(`[unearthed] non-JSON error body (${resp.status}):`, raw.slice(0, 500));
+		console.warn('[unearthed] non-JSON error body', resp.status, raw.slice(0, 500));
 		return {};
 	}
 }

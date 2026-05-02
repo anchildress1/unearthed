@@ -11,6 +11,7 @@ Required env::
     R2_SECRET_ACCESS_KEY
     R2_ENDPOINT            — https://<account>.r2.cloudflarestorage.com
     R2_BUCKET              — defaults to "unearthed-data"
+    R2_REGION              — defaults to "auto" (R2 has no real regions)
 
 Usage::
 
@@ -54,7 +55,7 @@ def _build_client():
         endpoint_url=os.environ["R2_ENDPOINT"],
         aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
         aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
-        region_name="auto",
+        region_name=os.environ.get("R2_REGION", "auto"),
         config=Config(signature_version="s3v4", s3={"addressing_style": "path"}),
     )
 
@@ -110,13 +111,17 @@ def main(argv: list[str] | None = None) -> int:
     client = _build_client()
     for path, key in files:
         logger.info("PUT %s → s3://%s/%s", path, args.bucket, key)
-        with path.open("rb") as fp:
-            client.put_object(
-                Bucket=args.bucket,
-                Key=key,
-                Body=fp,
-                ContentType="application/vnd.apache.parquet",
-            )
+        try:
+            with path.open("rb") as fp:
+                client.put_object(
+                    Bucket=args.bucket,
+                    Key=key,
+                    Body=fp,
+                    ContentType="application/vnd.apache.parquet",
+                )
+        except Exception:
+            logger.exception("Upload failed for %s", key)
+            return 1
     logger.info("Uploaded %d file(s) to s3://%s/", len(files), args.bucket)
     return 0
 

@@ -108,8 +108,8 @@ echo "  Uploaded new version"
 # with placeholder values via `gcloud secrets create <name> --data-file=-` if missing.
 for secret in "${SECRET_NAME}" "${SECRET_R2_KEY_ID}" "${SECRET_R2_SECRET}" "${SECRET_ANTHROPIC}"; do
   if ! gcloud secrets describe "${secret}" --project="${PROJECT_ID}" &>/dev/null; then
-    echo "  ERROR: secret '${secret}' does not exist in project '${PROJECT_ID}'."
-    echo "         Create it first: gcloud secrets create ${secret} --project=${PROJECT_ID}"
+    echo "  ERROR: secret '${secret}' does not exist in project '${PROJECT_ID}'." >&2
+    echo "         Create it first: gcloud secrets create ${secret} --project=${PROJECT_ID}" >&2
     exit 1
   fi
   echo "  Binding secretAccessor to ${secret}..."
