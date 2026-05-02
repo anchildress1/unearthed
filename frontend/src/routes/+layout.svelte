@@ -4,13 +4,10 @@
 
 <svelte:head>
 	<!--
-		Inline SVG favicon (primary) + `static/favicon.ico` (legacy fallback
-		for older browsers and crawlers that still request `/favicon.ico`
-		by convention). The SVG is a single rust disc over the page
-		background tone; the .ico mirrors the same mark so the site never
-		surfaces a default-browser favicon. Both together close the
-		`errors-in-console` Lighthouse check that a missing /favicon.ico
-		would trip and tank best-practices below the 0.98 gate.
+		SVG favicon (primary) + .ico fallback for older clients.
+		The inline SVG data-URL keeps Lighthouse best-practices green by
+		avoiding a separate /favicon.ico 404. The .ico link gives IE/Edge
+		legacy and some OS icon pickers a raster fallback.
 	-->
 	<link
 		rel="icon"
