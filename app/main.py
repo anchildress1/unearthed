@@ -15,6 +15,7 @@ from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
 from starlette.routing import Match
 
+from app.data_client import normalize_plant_name, query_emissions_for_plant
 from app.models import AskRequest, AskResponse, MineForMeRequest, MineForMeResponse
 from app.prose_client import generate_h3_summary, generate_prose
 from app.snowflake_client import (
@@ -276,25 +277,6 @@ def h3_density(resolution: int = 4, state: str | None = None):
     }
 
 
-_EMISSIONS_SQL = """
-SELECT CO2_TONS, SO2_TONS, NOX_TONS
-FROM UNEARTHED_DB.MRT.EMISSIONS_BY_PLANT
-WHERE FACILITY_NAME LIKE %(plant_prefix)s
-LIMIT 1
-"""
-
-
-def _strip_paren_suffix(name: str) -> str:
-    """Strip trailing parenthetical state suffix — 'Cumberland (TN)' → 'Cumberland'.
-
-    EIA plant names carry these; EPA's FACILITY_NAME never does.
-    """
-    idx = name.rfind("(")
-    if idx > 0 and name.rstrip().endswith(")"):
-        return name[:idx].rstrip()
-    return name
-
-
 _CACHE_MAXSIZE = 256
 
 _emissions_cache: OrderedDict[str, dict] = OrderedDict()
@@ -303,37 +285,35 @@ _emissions_lock = threading.Lock()
 
 @app.get(
     "/emissions/{plant_name}",
-    responses={503: {"description": "Snowflake unavailable"}},
+    responses={503: {"description": "Data layer unavailable"}},
 )
 def plant_emissions(plant_name: str):
-    """EPA emissions data for a plant — pre-aggregated from Snowflake Marketplace."""
-    cache_key = _strip_paren_suffix(plant_name).upper()
+    """EPA emissions data for a plant — pre-aggregated from EPA Clean Air Markets.
+
+    Reads from a parquet file in Cloudflare R2 via DuckDB ``httpfs`` (or a
+    local fixture parquet during tests, controlled by ``DATA_BASE_URL``).
+    """
+    cache_key = normalize_plant_name(plant_name)
     with _emissions_lock:
         if cache_key in _emissions_cache:
             _emissions_cache.move_to_end(cache_key)
             return _emissions_cache[cache_key]
 
-    from app.config import settings
-
     try:
-        conn = _get_connection(role=settings.snowflake_readonly_role)
-        cur = conn.cursor(snowflake.connector.DictCursor)
-        try:
-            cur.execute(_EMISSIONS_SQL, {"plant_prefix": cache_key + "%"})
-            row = cur.fetchone()
-        finally:
-            cur.close()
+        emissions = query_emissions_for_plant(plant_name)
     except Exception:
         logger.warning("Emissions query failed", exc_info=True)
-        raise HTTPException(status_code=503, detail="Snowflake unavailable")
-    if not row or row.get("CO2_TONS") is None:
+        raise HTTPException(status_code=503, detail="Data layer unavailable")
+
+    if emissions is None:
         return {"plant": plant_name, "co2_tons": None, "so2_tons": None, "nox_tons": None}
+
     result = {
         "plant": plant_name,
-        "co2_tons": float(row["CO2_TONS"] or 0),
-        "so2_tons": float(row["SO2_TONS"] or 0),
-        "nox_tons": float(row["NOX_TONS"] or 0),
-        "source": "EPA Clean Air Markets via Snowflake Marketplace",
+        "co2_tons": emissions["co2_tons"],
+        "so2_tons": emissions["so2_tons"],
+        "nox_tons": emissions["nox_tons"],
+        "source": "EPA Clean Air Markets",
     }
     with _emissions_lock:
         _emissions_cache[cache_key] = result

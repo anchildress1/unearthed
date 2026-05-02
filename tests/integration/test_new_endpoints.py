@@ -5,6 +5,17 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _reset_emissions_cache():
+    """The endpoint cache is module-scoped; clear it between tests so a
+    cached row from one test never satisfies another test's request."""
+    from app.main import _emissions_cache
+
+    _emissions_cache.clear()
+    yield
+    _emissions_cache.clear()
+
+
 class TestHealth:
     def test_health_returns_ok(self, client):
         resp = client.get("/health")
@@ -304,11 +315,14 @@ class TestH3Density:
 
 
 class TestEmissions:
-    @patch("app.main._get_connection")
-    def test_emissions_returns_data(self, mock_conn, client):
-        mock_cursor = MagicMock()
-        mock_cursor.fetchone.return_value = {"CO2_TONS": 1000.0, "SO2_TONS": 50.0, "NOX_TONS": 30.0}
-        mock_conn.return_value.cursor.return_value = mock_cursor
+    """The endpoint now reads through ``app.data_client.query_emissions_for_plant``;
+    Snowflake is no longer in the path. Patch the import the endpoint uses
+    (``app.main.query_emissions_for_plant``) so the stub stands in for the
+    DuckDB read against the parquet file."""
+
+    @patch("app.main.query_emissions_for_plant")
+    def test_emissions_returns_data(self, mock_query, client):
+        mock_query.return_value = {"co2_tons": 1000.0, "so2_tons": 50.0, "nox_tons": 30.0}
 
         resp = client.get("/emissions/Cross")
         assert resp.status_code == 200
@@ -316,25 +330,29 @@ class TestEmissions:
         assert data["plant"] == "Cross"
         assert data["co2_tons"] == pytest.approx(1000.0)
 
-    @patch("app.main._get_connection")
-    def test_emissions_no_data_returns_nulls(self, mock_conn, client):
-        mock_cursor = MagicMock()
-        mock_cursor.fetchone.return_value = None
-        mock_conn.return_value.cursor.return_value = mock_cursor
+    @patch("app.main.query_emissions_for_plant")
+    def test_emissions_no_data_returns_nulls(self, mock_query, client):
+        mock_query.return_value = None
 
         resp = client.get("/emissions/NonexistentPlant")
         assert resp.status_code == 200
         data = resp.json()
         assert data["co2_tons"] is None
 
-    def test_emissions_get_method(self, client):
+    @patch("app.main.query_emissions_for_plant")
+    def test_emissions_get_method(self, mock_query, client):
         """Emissions endpoint accepts GET."""
-        with patch("app.main._get_connection") as mock_conn:
-            mock_cursor = MagicMock()
-            mock_cursor.fetchone.return_value = None
-            mock_conn.return_value.cursor.return_value = mock_cursor
-            resp = client.get("/emissions/Test")
+        mock_query.return_value = None
+        resp = client.get("/emissions/Test")
         assert resp.status_code == 200
+
+    @patch("app.main.query_emissions_for_plant")
+    def test_data_layer_exception_returns_503(self, mock_query, client):
+        """A DuckDB / R2 failure surfaces as 503 — same contract as the old
+        Snowflake-down branch, just a different upstream."""
+        mock_query.side_effect = RuntimeError("R2 unreachable")
+        resp = client.get("/emissions/Cross")
+        assert resp.status_code == 503
 
 
 class TestEmissionsCache:
@@ -347,12 +365,14 @@ class TestEmissionsCache:
             "so2_tons": 1.0,
             "nox_tons": 2.0,
         }
-        try:
+        # The data layer must not be called on a hit. Patching with a
+        # side_effect that fails the test if invoked is the strongest
+        # assertion here — beats checking call_count after the fact.
+        with patch("app.main.query_emissions_for_plant") as mock_query:
+            mock_query.side_effect = AssertionError("data layer hit on cached request")
             resp = client.get("/emissions/Cross")
-            assert resp.status_code == 200
-            assert resp.json()["co2_tons"] == pytest.approx(999.0)
-        finally:
-            _emissions_cache.pop("CROSS", None)
+        assert resp.status_code == 200
+        assert resp.json()["co2_tons"] == pytest.approx(999.0)
 
     def test_cache_key_case_insensitive(self, client):
         from app.main import _emissions_cache
@@ -363,64 +383,59 @@ class TestEmissionsCache:
             "so2_tons": 10.0,
             "nox_tons": 5.0,
         }
-        try:
+        with patch("app.main.query_emissions_for_plant") as mock_query:
+            mock_query.side_effect = AssertionError("data layer hit on cached request")
             resp = client.get("/emissions/mitchell")
-            assert resp.status_code == 200
-            assert resp.json()["co2_tons"] == pytest.approx(500.0)
-        finally:
-            _emissions_cache.pop("MITCHELL", None)
+        assert resp.status_code == 200
+        assert resp.json()["co2_tons"] == pytest.approx(500.0)
 
-    @patch("app.main._get_connection")
-    def test_cache_populated_on_miss(self, mock_conn, client):
+    @patch("app.main.query_emissions_for_plant")
+    def test_cache_populated_on_miss(self, mock_query, client):
         from app.main import _emissions_cache
 
-        _emissions_cache.pop("NEWPLANT", None)
-        mock_cursor = MagicMock()
-        mock_cursor.fetchone.return_value = {"CO2_TONS": 42.0, "SO2_TONS": 1.0, "NOX_TONS": 1.0}
-        mock_conn.return_value.cursor.return_value = mock_cursor
+        mock_query.return_value = {"co2_tons": 42.0, "so2_tons": 1.0, "nox_tons": 1.0}
 
         client.get("/emissions/NewPlant")
         assert "NEWPLANT" in _emissions_cache
         assert _emissions_cache["NEWPLANT"]["co2_tons"] == pytest.approx(42.0)
-        _emissions_cache.pop("NEWPLANT", None)
 
-    @patch("app.main._get_connection")
-    def test_bind_param_prefix_uppercased(self, mock_conn, client):
-        """Plant name is uppercased and used as a LIKE prefix to match EPA FACILITY_NAME."""
-        mock_cursor = MagicMock()
-        mock_cursor.fetchone.return_value = None
-        mock_conn.return_value.cursor.return_value = mock_cursor
-
-        client.get("/emissions/Mitchell")
-        bind = mock_cursor.execute.call_args[0][1]
-        assert bind["plant_prefix"] == "MITCHELL%"
-
-    @patch("app.main._get_connection")
-    def test_parenthetical_suffix_stripped(self, mock_conn, client):
-        """EIA state suffixes like '(TN)' are stripped before matching EPA names."""
-        mock_cursor = MagicMock()
-        mock_cursor.fetchone.return_value = None
-        mock_conn.return_value.cursor.return_value = mock_cursor
+    @patch("app.main.query_emissions_for_plant")
+    def test_data_client_receives_raw_plant_name(self, mock_query, client):
+        """Normalization (parenthetical strip, upper) is the data client's job —
+        the endpoint passes through the user-facing plant string. The endpoint
+        cache key still derives from the normalized form so cache hits and
+        DB hits land at the same row."""
+        mock_query.return_value = None
 
         client.get("/emissions/Cumberland (TN)")
-        bind = mock_cursor.execute.call_args[0][1]
-        assert bind["plant_prefix"] == "CUMBERLAND%"
+        assert mock_query.call_args[0][0] == "Cumberland (TN)"
 
-    @patch("app.main._get_connection")
-    def test_cache_bounded(self, mock_conn, client):
+        from app.main import _emissions_cache
+
+        # Cache key collapses to the normalized form even on a miss-with-null
+        # so subsequent lowercase variants still hit cache.
+        # (Cache only populates on success, so we just verify the request landed
+        # on the expected normalized cache lookup path by sending a cached entry.)
+        _emissions_cache["CUMBERLAND"] = {
+            "plant": "Cumberland",
+            "co2_tons": 1.0,
+            "so2_tons": 0.0,
+            "nox_tons": 0.0,
+        }
+        with patch("app.main.query_emissions_for_plant") as inner:
+            inner.side_effect = AssertionError("normalized cache key did not match")
+            resp = client.get("/emissions/cumberland (tn)")
+        assert resp.status_code == 200
+
+    @patch("app.main.query_emissions_for_plant")
+    def test_cache_bounded(self, mock_query, client):
         """Cache evicts the oldest entry when it exceeds _CACHE_MAXSIZE."""
         from app.main import _CACHE_MAXSIZE, _emissions_cache
 
-        _emissions_cache.clear()
-        mock_cursor = MagicMock()
-        mock_cursor.fetchone.return_value = {"CO2_TONS": 1.0, "SO2_TONS": 0, "NOX_TONS": 0}
-        mock_conn.return_value.cursor.return_value = mock_cursor
+        mock_query.return_value = {"co2_tons": 1.0, "so2_tons": 0.0, "nox_tons": 0.0}
 
-        try:
-            for i in range(_CACHE_MAXSIZE + 1):
-                client.get(f"/emissions/PLANT{i}")
-            assert len(_emissions_cache) == _CACHE_MAXSIZE
-            assert "PLANT0" not in _emissions_cache
-            assert f"PLANT{_CACHE_MAXSIZE}" in _emissions_cache
-        finally:
-            _emissions_cache.clear()
+        for i in range(_CACHE_MAXSIZE + 1):
+            client.get(f"/emissions/PLANT{i}")
+        assert len(_emissions_cache) == _CACHE_MAXSIZE
+        assert "PLANT0" not in _emissions_cache
+        assert f"PLANT{_CACHE_MAXSIZE}" in _emissions_cache

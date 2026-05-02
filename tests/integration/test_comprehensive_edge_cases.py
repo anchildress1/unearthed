@@ -356,40 +356,40 @@ class TestH3DensityTotalsNone:
 
 
 class TestEmissionsParentheticalOnly:
-    """Plant name is parenthetical only — strips to empty."""
+    """Plant name normalization edge cases at the endpoint boundary.
 
-    @patch("app.main._get_connection")
-    def test_paren_only_name_executes_with_percent_prefix(self, mock_conn, client):
-        """'(TN)' strips to '' → cache key is '' → LIKE '%'."""
-        cursor = MagicMock()
-        cursor.fetchone.return_value = None
-        mock_conn.return_value.cursor.return_value = cursor
+    The data layer enforces "empty input returns None" — a stripped-to-empty
+    name must not collapse into a wildcard ``LIKE '%'`` that fabricates data.
+    """
+
+    @patch("app.main.query_emissions_for_plant")
+    def test_paren_only_name_returns_null_payload(self, mock_query, client):
+        """``(TN)`` normalizes to empty — data client returns ``None`` —
+        endpoint surfaces a null-emissions payload (not a 503, not a
+        randomly-matched row)."""
+        mock_query.return_value = None
 
         resp = client.get("/emissions/(TN)")
         assert resp.status_code == 200
-        # Still returns a valid null-emissions response
         data = resp.json()
         assert data["co2_tons"] is None
 
-    @patch("app.main._get_connection")
-    def test_name_with_no_parens_preserved(self, mock_conn, client):
-        cursor = MagicMock()
-        cursor.fetchone.return_value = None
-        mock_conn.return_value.cursor.return_value = cursor
+    @patch("app.main.query_emissions_for_plant")
+    def test_name_with_no_parens_passed_through_unchanged(self, mock_query, client):
+        """Name without parens reaches the data client verbatim — the data
+        client does the upper/strip itself."""
+        mock_query.return_value = None
 
         client.get("/emissions/CrossStation")
-        bind = cursor.execute.call_args[0][1]
-        assert bind["plant_prefix"] == "CROSSSTATION%"
+        assert mock_query.call_args[0][0] == "CrossStation"
 
 
 class TestEmissionsAllZero:
     """All emission values are 0.0 — row exists but zeroed."""
 
-    @patch("app.main._get_connection")
-    def test_all_zero_emissions_returned(self, mock_conn, client):
-        cursor = MagicMock()
-        cursor.fetchone.return_value = {"CO2_TONS": 0.0, "SO2_TONS": 0.0, "NOX_TONS": 0.0}
-        mock_conn.return_value.cursor.return_value = cursor
+    @patch("app.main.query_emissions_for_plant")
+    def test_all_zero_emissions_returned(self, mock_query, client):
+        mock_query.return_value = {"co2_tons": 0.0, "so2_tons": 0.0, "nox_tons": 0.0}
 
         resp = client.get("/emissions/ZeroPlant")
         assert resp.status_code == 200
@@ -400,19 +400,17 @@ class TestEmissionsAllZero:
 
 
 class TestEmissionsPartialNull:
-    """Row exists with CO2 but SO2/NOx are NULL."""
+    """Row exists with CO2 but SO2/NOx coerced to zero by the data client."""
 
-    @patch("app.main._get_connection")
-    def test_partial_null_emissions_use_zero(self, mock_conn, client):
-        cursor = MagicMock()
-        cursor.fetchone.return_value = {"CO2_TONS": 1000.0, "SO2_TONS": None, "NOX_TONS": None}
-        mock_conn.return_value.cursor.return_value = cursor
+    @patch("app.main.query_emissions_for_plant")
+    def test_partial_null_emissions_use_zero(self, mock_query, client):
+        # Data client owns the None→0 coercion; the endpoint just relays.
+        mock_query.return_value = {"co2_tons": 1000.0, "so2_tons": 0.0, "nox_tons": 0.0}
 
         resp = client.get("/emissions/PartialPlant")
         assert resp.status_code == 200
         data = resp.json()
         assert data["co2_tons"] == pytest.approx(1000.0)
-        # None values coerced to 0 via float(None or 0)
         assert data["so2_tons"] == pytest.approx(0.0)
         assert data["nox_tons"] == pytest.approx(0.0)
 
@@ -420,22 +418,20 @@ class TestEmissionsPartialNull:
 class TestEmissionsSource:
     """Emissions response includes a source attribution."""
 
-    @patch("app.main._get_connection")
-    def test_source_present_when_data_exists(self, mock_conn, client):
-        cursor = MagicMock()
-        cursor.fetchone.return_value = {"CO2_TONS": 100.0, "SO2_TONS": 10.0, "NOX_TONS": 5.0}
-        mock_conn.return_value.cursor.return_value = cursor
+    @patch("app.main.query_emissions_for_plant")
+    def test_source_present_when_data_exists(self, mock_query, client):
+        mock_query.return_value = {"co2_tons": 100.0, "so2_tons": 10.0, "nox_tons": 5.0}
 
         resp = client.get("/emissions/SourcePlant")
         data = resp.json()
+        # EPA Clean Air Markets is the upstream regardless of how the bytes
+        # reach us — Snowflake Marketplace was a transport detail that no
+        # longer applies once we've baked the data into R2 parquet.
         assert "EPA" in data.get("source", "")
-        assert "Marketplace" in data.get("source", "")
 
-    @patch("app.main._get_connection")
-    def test_no_source_when_no_data(self, mock_conn, client):
-        cursor = MagicMock()
-        cursor.fetchone.return_value = None
-        mock_conn.return_value.cursor.return_value = cursor
+    @patch("app.main.query_emissions_for_plant")
+    def test_no_source_when_no_data(self, mock_query, client):
+        mock_query.return_value = None
 
         resp = client.get("/emissions/Missing")
         data = resp.json()
