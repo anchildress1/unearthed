@@ -5,9 +5,8 @@
 **Repo name:** `unearthed`
 **Description (for repo settings):** A live data product that shows any US resident which specific coal mine supplies their local power plant, using joined federal data from MSHA and EIA. Snowflake Cortex Analyst answers factual questions about the data in natural language. Built for the DEV Weekend Challenge: Earth Day Edition.
 
-**Status:** Draft — for submission by Monday 2026-04-20 06:59 UTC
+**Status:** Shipped (DEV Weekend Challenge 2026, Earth Day Edition). Migrating off Snowflake — see [MIGRATION.md](./MIGRATION.md).
 **Author:** Ashley
-**Sponsor categories targeted:** Snowflake Cortex (primary — genuine AI use, not bare warehouse)
 
 ---
 

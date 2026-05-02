@@ -197,7 +197,7 @@ unearthed-data/
 ## Open questions for the user (ask before Phase 3)
 
 1. **`/ask` `subregion_id?` — RESOLVED.** Stay explicit.
-2. **Donate platforms — RESOLVED.** Buy Me a Coffee + GitHub Sponsors. Both placeholder URLs in the footer; user supplies actual handles.
+2. **Donate platforms — RESOLVED.** Buy Me a Coffee (`buymeacoffee.com/anchildress1`) + GitHub Sponsors (`github.com/sponsors/anchildress1`). Both wired in the footer.
 3. **Data expansion — see new section below.** Confirm subset before Phase 3 starts.
 
 ---
