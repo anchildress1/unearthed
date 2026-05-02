@@ -237,24 +237,16 @@ class TestMineForMeStatsAlwaysPresent:
 class TestH3DensityResolutionBoundaries:
     """Resolution parameter boundary testing."""
 
-    @patch("app.main._get_connection")
-    def test_resolution_2_accepted(self, mock_conn, client):
-        cursor = MagicMock()
-        cursor.fetchall.return_value = []
-        cursor.fetchone.return_value = {"TOTAL": 0, "ACTIVE": 0, "ABANDONED": 0}
-        mock_conn.return_value.cursor.return_value = cursor
-
+    @patch("app.main.query_h3_registry_totals", return_value={"total": 0, "active": 0, "abandoned": 0})
+    @patch("app.main.query_h3_density", return_value=[])
+    def test_resolution_2_accepted(self, mock_density, mock_totals, client):
         resp = client.get("/h3-density?resolution=2")
         assert resp.status_code == 200
         assert resp.json()["resolution"] == 2
 
-    @patch("app.main._get_connection")
-    def test_resolution_7_accepted(self, mock_conn, client):
-        cursor = MagicMock()
-        cursor.fetchall.return_value = []
-        cursor.fetchone.return_value = {"TOTAL": 0, "ACTIVE": 0, "ABANDONED": 0}
-        mock_conn.return_value.cursor.return_value = cursor
-
+    @patch("app.main.query_h3_registry_totals", return_value={"total": 0, "active": 0, "abandoned": 0})
+    @patch("app.main.query_h3_density", return_value=[])
+    def test_resolution_7_accepted(self, mock_density, mock_totals, client):
         resp = client.get("/h3-density?resolution=7")
         assert resp.status_code == 200
         assert resp.json()["resolution"] == 7
@@ -291,41 +283,24 @@ class TestH3DensityStateValidation:
         resp = client.get("/h3-density?state=W")
         assert resp.status_code == 400
 
-    def test_empty_state_treated_as_national(self, client):
-        """Empty string state param should be treated as no state."""
-        with patch("app.main._get_connection") as mock_conn:
-            cursor = MagicMock()
-            cursor.fetchall.return_value = []
-            cursor.fetchone.return_value = {"TOTAL": 0, "ACTIVE": 0, "ABANDONED": 0}
-            mock_conn.return_value.cursor.return_value = cursor
-
-            resp = client.get("/h3-density?state=")
+    @patch("app.main.query_h3_registry_totals", return_value={"total": 0, "active": 0, "abandoned": 0})
+    @patch("app.main.query_h3_density", return_value=[])
+    def test_empty_state_treated_as_national(self, mock_density, mock_totals, client):
+        """Empty string state param is falsy — endpoint treats it as no-state filter."""
+        resp = client.get("/h3-density?state=")
         assert resp.status_code == 200
-        # Empty string is falsy → no state filtering
         assert resp.json()["state"] == ""
 
 
 class TestH3DensitySingleMine:
     """Single-mine scenario: total=1, active=1, abandoned=0."""
 
-    @patch("app.main.generate_h3_summary")
-    @patch("app.main._get_connection")
-    def test_single_active_mine(self, mock_conn, mock_summary, client):
-        cursor = MagicMock()
-        cursor.fetchall.return_value = [
-            {
-                "H3": "852a981ffffffff",
-                "LAT": 37.5,
-                "LNG": -82.6,
-                "TOTAL": 1,
-                "ACTIVE": 1,
-                "ABANDONED": 0,
-            }
-        ]
-        cursor.fetchone.return_value = {"TOTAL": 1, "ACTIVE": 1, "ABANDONED": 0}
-        mock_conn.return_value.cursor.return_value = cursor
-        mock_summary.return_value = ("One mine remains.", False)
-
+    @patch("app.main.generate_h3_summary", return_value=("One mine remains.", False))
+    @patch("app.main.query_h3_registry_totals", return_value={"total": 1, "active": 1, "abandoned": 0})
+    @patch("app.main.query_h3_density", return_value=[
+        {"H3": "852a981ffffffff", "LAT": 37.5, "LNG": -82.6, "TOTAL": 1, "ACTIVE": 1, "ABANDONED": 0}
+    ])
+    def test_single_active_mine(self, mock_density, mock_totals, mock_summary, client):
         resp = client.get("/h3-density?resolution=5&state=AK")
         assert resp.status_code == 200
         data = resp.json()
@@ -334,16 +309,14 @@ class TestH3DensitySingleMine:
         assert data["totals"]["abandoned"] == 0
 
 
-class TestH3DensityTotalsNone:
-    """Registry totals query returns None (unexpected but defensive)."""
+class TestH3DensityTotalsZero:
+    """Zero-mine scenario: registry returns empty counts."""
 
-    @patch("app.main._get_connection")
-    def test_null_totals_row_defaults_to_zero(self, mock_conn, client):
-        cursor = MagicMock()
-        cursor.fetchall.return_value = []
-        cursor.fetchone.return_value = None  # totals_row is None
-        mock_conn.return_value.cursor.return_value = cursor
-
+    @patch("app.main.query_h3_registry_totals", return_value={"total": 0, "active": 0, "abandoned": 0})
+    @patch("app.main.query_h3_density", return_value=[])
+    def test_zero_totals_returns_zero_dict(self, mock_density, mock_totals, client):
+        """When the registry is empty, response totals must be all-zero and
+        summary must be skipped."""
         resp = client.get("/h3-density")
         assert resp.status_code == 200
         data = resp.json()
@@ -487,8 +460,8 @@ class TestSecurityHeadersOnErrors:
         assert resp.status_code == 404
         assert resp.headers.get("X-Content-Type-Options") == "nosniff"
 
-    @patch("app.main._get_connection", side_effect=Exception("down"))
-    def test_headers_on_503(self, mock_conn, client):
+    @patch("app.main.query_h3_density", side_effect=Exception("R2 down"))
+    def test_headers_on_503(self, mock_density, client):
         resp = client.get("/h3-density?resolution=4")
         assert resp.status_code == 503
         assert resp.headers.get("X-Content-Type-Options") == "nosniff"

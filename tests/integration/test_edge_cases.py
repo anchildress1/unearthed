@@ -252,16 +252,16 @@ class TestSummaryFailurePath:
         assert data["summary_degraded"] is True
 
 
-class TestSnowflakeUnavailable:
-    """GET endpoints return 503 when Snowflake is unreachable."""
+class TestDataLayerUnavailable:
+    """GET endpoints return 503 when the DuckDB/R2 data layer is unreachable."""
 
-    @patch("app.main._get_connection", side_effect=Exception("Snowflake down"))
-    def test_h3_density_returns_503(self, mock_conn, client):
+    @patch("app.main.query_h3_density", side_effect=Exception("R2 down"))
+    def test_h3_density_returns_503(self, mock_density, client):
         resp = client.get("/h3-density?resolution=4")
         assert resp.status_code == 503
 
-    @patch("app.main._get_connection", side_effect=Exception("Snowflake down"))
-    def test_emissions_returns_503(self, mock_conn, client):
+    @patch("app.main.query_emissions_for_plant", side_effect=Exception("R2 down"))
+    def test_emissions_returns_503(self, mock_query, client):
         resp = client.get("/emissions/TestPlant")
         assert resp.status_code == 503
 
