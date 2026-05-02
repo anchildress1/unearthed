@@ -70,6 +70,31 @@
 		· AI:
 		<a href="https://www.snowflake.com/en/data-cloud/cortex/" target="_blank" rel="noopener">Snowflake Cortex</a>
 	</p>
+	<!--
+		Two donate affordances side-by-side. Both `href`s are placeholders —
+		swap once accounts are claimed. Buy Me a Coffee covers tip-style
+		one-offs; GitHub Sponsors covers recurring dev-support. Same chrome
+		(hairline rust pill, mono caps) so they read as one row of options
+		instead of competing CTAs.
+	-->
+	<p class="donate">
+		<a
+			href="https://buymeacoffee.com/REPLACE-ME"
+			target="_blank"
+			rel="noopener"
+			aria-label="Buy me a coffee"
+		>
+			Buy me a coffee
+		</a>
+		<a
+			href="https://github.com/sponsors/REPLACE-ME"
+			target="_blank"
+			rel="noopener"
+			aria-label="Sponsor on GitHub"
+		>
+			Sponsor on GitHub
+		</a>
+	</p>
 </footer>
 
 <style>
@@ -301,6 +326,39 @@
 	.site-footer .data-credit a:focus-visible {
 		color: var(--rust);
 		text-decoration-color: var(--rust);
+	}
+
+	/* Donate row sits below the data credit. Hairline rust border + mono
+	   caps so each affordance reads as a quiet option, not a CTA shouting
+	   at the reader. Hover fills to the bright tier — same gesture-
+	   feedback convention as ::selection elsewhere on the site. The row
+	   uses inline-flex with a small gap so the two buttons sit on one line
+	   on desktop and wrap cleanly on mobile. */
+	.site-footer .donate {
+		margin-top: 1.25rem;
+		display: flex;
+		justify-content: center;
+		gap: 0.6rem;
+		flex-wrap: wrap;
+	}
+	.site-footer .donate a {
+		display: inline-block;
+		padding: 0.5rem 1.1rem;
+		font-family: var(--mono);
+		font-size: 0.6rem;
+		letter-spacing: 0.18em;
+		text-transform: uppercase;
+		color: var(--rust);
+		border: 1px solid var(--rust);
+		border-radius: 999px;
+		text-decoration: none;
+		transition: color 0.2s, background 0.2s, border-color 0.2s;
+	}
+	.site-footer .donate a:hover,
+	.site-footer .donate a:focus-visible {
+		color: var(--bg);
+		background: var(--rust-bright);
+		border-color: var(--rust-bright);
 	}
 
 	/* ---- Glass utility ---- */
