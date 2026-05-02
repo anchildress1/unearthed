@@ -104,7 +104,14 @@ gcloud secrets versions add "${SECRET_NAME}" \
 echo "  Uploaded new version"
 
 # Per-secret IAM bindings — SA can only read these specific secrets, not all of them.
+# Pre-existing secrets (R2, Anthropic) must exist before this loop; create them
+# with placeholder values via `gcloud secrets create <name> --data-file=-` if missing.
 for secret in "${SECRET_NAME}" "${SECRET_R2_KEY_ID}" "${SECRET_R2_SECRET}" "${SECRET_ANTHROPIC}"; do
+  if ! gcloud secrets describe "${secret}" --project="${PROJECT_ID}" &>/dev/null; then
+    echo "  ERROR: secret '${secret}' does not exist in project '${PROJECT_ID}'."
+    echo "         Create it first: gcloud secrets create ${secret} --project=${PROJECT_ID}"
+    exit 1
+  fi
   echo "  Binding secretAccessor to ${secret}..."
   gcloud secrets add-iam-policy-binding "${secret}" \
     --member="serviceAccount:${SA_EMAIL}" \

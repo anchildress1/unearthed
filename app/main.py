@@ -41,10 +41,10 @@ _enable_docs = os.getenv("ENABLE_DOCS", "").lower() in ("1", "true")
 def _prewarm_prose_cache() -> None:
     """Pre-warm the prose cache for all fallback subregions in a background thread.
 
-    Each subregion fires a Snowflake query + Cortex Complete call, so the first
+    Each subregion fires a DuckDB query + Cortex Complete call, so the first
     visitor to any subregion gets a cached response instead of a 4-27s wait.
-    Bails out entirely after the first failure — if Snowflake is unreachable
-    there is no point hammering it 19 times.
+    Bails out entirely after the first failure — if the data layer is
+    unreachable there is no point hammering it 19 times.
     """
     from app.snowflake_client import _VALID_FALLBACK_IDS
 
@@ -293,7 +293,7 @@ def _suggestions_for(subregion_id: str | None) -> list[str]:
         404: {
             "description": (
                 "No mine-to-plant shipment is on record for the given subregion. "
-                "Returned when both the Snowflake query and the bundled fallback "
+                "Returned when both the DuckDB/R2 query and the bundled fallback "
                 "JSON have no row for this eGRID subregion_id."
             ),
         },
@@ -302,7 +302,7 @@ def _suggestions_for(subregion_id: str | None) -> list[str]:
 def mine_for_me(req: MineForMeRequest):
     """Return the top mine→plant shipment for an eGRID subregion.
 
-    Falls back to bundled per-subregion JSON when Snowflake is unreachable;
+    Falls back to bundled per-subregion JSON when DuckDB/R2 is unreachable;
     returns 404 only when both sources miss. Response schema is stable across
     the Cortex, fallback, and error paths — ``stats`` counts are always
     populated (0 means "none on file"), and ``degraded`` flips true when
@@ -315,7 +315,7 @@ def mine_for_me(req: MineForMeRequest):
     try:
         mine_data = query_mine_for_subregion(subregion)
     except Exception:
-        logger.warning("Snowflake query failed, trying fallback", exc_info=True)
+        logger.warning("DuckDB query failed, trying fallback", exc_info=True)
         degraded = True
 
     if not mine_data:

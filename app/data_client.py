@@ -74,7 +74,14 @@ def _connection() -> duckdb.DuckDBPyConnection:
             return _con
         con = duckdb.connect(":memory:")
         if os.environ.get("R2_ACCESS_KEY_ID"):
-            con.execute("INSTALL httpfs")
+            _R2_VARS = ("R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_ENDPOINT")
+            missing = [k for k in _R2_VARS if not os.environ.get(k)]
+            if missing:
+                raise RuntimeError(
+                    f"R2 mode requires all three env vars; missing: {', '.join(missing)}"
+                )
+            # httpfs is pre-installed in the Docker image (INSTALL httpfs in the build
+            # stage); LOAD is a local-only operation with no network dependency.
             con.execute("LOAD httpfs")
             con.execute(
                 """
@@ -112,11 +119,13 @@ def _reset_connection() -> None:
 def normalize_plant_name(plant_name: str) -> str:
     """Bridge EIA → EPA plant-name conventions before the LIKE prefix match.
 
-    EIA's 2024 receipts ship plant names with trailing parenthetical state
-    suffixes — ``Cumberland (TN)``. EPA's ``FACILITY_NAME`` never does.
-    Strip the suffix when present, then uppercase to match the EPA casing.
-    Cache keys are derived from this same function so a hit on the cache
-    and a hit on the parquet land at the same row.
+    Strips any trailing parenthetical — ``Cumberland (TN)`` and
+    ``Bowen (OLD)`` both become the bare name. The match is intentionally
+    broad; if it must narrow to two-letter state codes only, update the
+    rfind logic here and the corresponding tests. Uppercases the result to
+    match EPA's ``FACILITY_NAME`` casing. Cache keys are derived from this
+    same function so a hit on the cache and a hit on the parquet land at
+    the same row.
     """
     if not plant_name:
         return ""
