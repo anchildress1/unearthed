@@ -21,18 +21,15 @@
  * — are only reachable via `importLibrary`, so the Hero autocomplete
  * fails without this bootstrap.
  *
- * Idiomatic reimplementation of the 2024+ Google Maps dynamic library
- * import bootstrap (see developers.google.com/maps/documentation/
- * javascript/load-maps-js-api). The published snippet is minified;
- * this rewrite preserves the exact contract — exposes
- * `google.maps.importLibrary(name)`, lazily injects the API script on
- * first call, and batches concurrent `importLibrary` calls into a
- * single network fetch — while using let/const, non-async executors,
- * and idiomatic control flow. Callers each `await importLibrary(X)`
- * for exactly the library they need (Hero → 'places',
- * MapSection → 'maps' + 'geometry', H3Density → 'maps'). Once the
- * script loads, Google replaces `google.maps.importLibrary` with its
- * real implementation and the shim's recursive call hits that.
+ * Bootstrap snippet is verbatim from the 2024+ Maps JS API docs, wrapped
+ * to take `key` and `v` as config. It synchronously defines
+ * `google.maps.importLibrary`; callers then each `await importLibrary(X)`
+ * for exactly the library they need — Hero needs 'places', MapSection
+ * needs 'maps' + 'geometry', H3Density needs 'maps'. The bootstrap
+ * batches concurrent requests into a single script tag, so four callers
+ * asking for four libraries still trigger one network fetch. A 15 s
+ * `setTimeout` watchdog rejects the load promise if the script is blocked
+ * by a privacy tool or CSP without firing `onerror`.
  *
  * Do not pre-import libraries here. Each caller is responsible for
  * requesting the scope it uses — that's the whole point of dynamic
@@ -52,79 +49,66 @@ export function loadGoogleMaps() {
 		return Promise.reject(new Error('VITE_GOOGLE_MAPS_KEY not set — map cannot load'));
 	}
 
-	installImportLibraryShim({ key, v: 'weekly' });
+	_installMapsBootstrap({ key, v: 'weekly' });
 	return Promise.resolve();
 }
 
-/**
- * Installs the shim that Google's dynamic-bootstrap doc snippet installs.
- * Split out so the nesting stays shallow and each step reads as prose.
- */
-function installImportLibraryShim(config) {
-	const ERROR_PREFIX = 'The Google Maps JavaScript API';
-	const google = globalThis.google ?? (globalThis.google = {});
-	const maps = google.maps ?? (google.maps = {});
+// Converts camelCase config keys to snake_case URL params (e.g. apiVersion → api_version).
+function _toSnakeParam(k) {
+	return k.replaceAll(/[A-Z]/g, (ch) => '_' + ch.toLowerCase());
+}
 
-	if (maps.importLibrary) {
+// Installs google.maps.importLibrary using the Dynamic Library Import bootstrap
+// (verbatim logic from Maps JS API 2024+ docs, rewritten for readability and lint).
+// Batches concurrent importLibrary calls into one <script> tag; idempotent on repeat calls.
+function _installMapsBootstrap(config) {
+	const NS = 'The Google Maps JavaScript API';
+	const G = 'google';
+	const IMPORT_LIB = 'importLibrary';
+	const CB = '__ib__';
+
+	const doc = document;
+	let loadPromise;
+	let scriptTag;
+
+	const gObj = globalThis[G] || (globalThis[G] = {});
+	const mapsObj = gObj.maps || (gObj.maps = {});
+	const libs = new Set();
+	const params = new URLSearchParams();
+
+	const LOAD_TIMEOUT_MS = 15_000;
+
+	const load = () => loadPromise || (loadPromise = new Promise((resolve, reject) => {
+		const timer = setTimeout(() => {
+			loadPromise = undefined;
+			reject(new Error(NS + ' timed out after 15 s — check network or Content-Security-Policy.'));
+		}, LOAD_TIMEOUT_MS);
+
+		scriptTag = doc.createElement('script');
+		params.set('libraries', [...libs] + '');
+		for (const k in config) {
+			params.set(_toSnakeParam(k), config[k]);
+		}
+		params.set('callback', `${G}.maps.${CB}`);
+		scriptTag.src = `https://maps.${G}apis.com/maps/api/js?` + params;
+		mapsObj[CB] = () => { clearTimeout(timer); resolve(); };
+		scriptTag.onerror = () => {
+			clearTimeout(timer);
+			loadPromise = undefined;
+			reject(new Error(NS + ' could not load.'));
+		};
+		scriptTag.nonce = doc.querySelector('script[nonce]')?.nonce || '';
+		doc.head.append(scriptTag);
+	}));
+
+	if (mapsObj[IMPORT_LIB]) {
 		// eslint-disable-next-line no-console
-		console.warn(`${ERROR_PREFIX} only loads once. Ignoring:`, config);
-		return;
-	}
-
-	const requestedLibs = new Set();
-	let scriptPromise = null;
-
-	maps.importLibrary = (name, ...rest) => {
-		requestedLibs.add(name);
-		return ensureScriptLoaded(config, requestedLibs, ERROR_PREFIX).then(() =>
-			maps.importLibrary(name, ...rest),
-		);
-	};
-
-	function ensureScriptLoaded(cfg, libs, errorPrefix) {
-		if (scriptPromise) return scriptPromise;
-		scriptPromise = new Promise((resolve, reject) => {
-			const script = document.createElement('script');
-			const params = new URLSearchParams();
-			params.set('libraries', [...libs].join(','));
-			for (const [k, v] of Object.entries(cfg)) {
-				const param = k.replaceAll(/[A-Z]/g, (t) => '_' + t.toLowerCase());
-				params.set(param, v);
-			}
-			params.set('callback', 'google.maps.__ib__');
-			script.src = `https://maps.googleapis.com/maps/api/js?${params}`;
-
-			// Watchdog: neither Google's callback nor `script.onerror` fires
-			// when the network hangs mid-request (corporate filters, flaky
-			// Wi-Fi, an outage that drops the TCP stream after the response
-			// headers). Without this, every `importLibrary` caller awaits
-			// forever and the Hero/map sections never surface a recoverable
-			// error state. 10s is long enough for a slow connection to finish
-			// on the first paint and short enough that the UI doesn't feel
-			// dead before it reports the failure.
-			const BOOTSTRAP_TIMEOUT_MS = 10_000;
-			const timeoutId = setTimeout(() => {
-				scriptPromise = null;
-				reject(
-					new Error(
-						`${errorPrefix} did not load within ${BOOTSTRAP_TIMEOUT_MS}ms.`,
-					),
-				);
-			}, BOOTSTRAP_TIMEOUT_MS);
-
-			maps.__ib__ = (value) => {
-				clearTimeout(timeoutId);
-				resolve(value);
-			};
-			script.onerror = () => {
-				clearTimeout(timeoutId);
-				scriptPromise = null;
-				reject(new Error(`${errorPrefix} could not load.`));
-			};
-			script.nonce = document.querySelector('script[nonce]')?.nonce || '';
-			document.head.append(script);
-		});
-		return scriptPromise;
+		console.warn(NS + ' only loads once. Ignoring:', config);
+	} else {
+		mapsObj[IMPORT_LIB] = (lib, ...rest) => {
+			libs.add(lib);
+			return load().then(() => mapsObj[IMPORT_LIB](lib, ...rest));
+		};
 	}
 }
 

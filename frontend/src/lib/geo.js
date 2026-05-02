@@ -58,6 +58,11 @@ export function hasCoalData(subregionId) {
 	return COAL_SUBREGIONS.has(subregionId);
 }
 
+export function subregionForState(stateCode) {
+	return STATE_TO_SUBREGION[stateCode.toUpperCase()] || null;
+}
+
+
 export function requestLocation(timeout = 10000) {
 	return new Promise((resolve) => {
 		if (!navigator.geolocation) { resolve(null); return; }

@@ -104,9 +104,9 @@
 		text-transform: uppercase;
 		color: var(--text-dim);
 		white-space: nowrap;
-		/* Real sideways text (not a transform rotation) so the label stays
-		   accessible to screen readers even though the parent is aria-hidden.
-		   `rotate(180deg)` flips the glyph-order so the label reads bottom-
+		/* Real sideways text (not a CSS transform). The parent is aria-hidden
+		   so this label is purely decorative — screen readers skip it.
+		   `rotate(180deg)` flips glyph-order so the label reads bottom-
 		   to-top, aligning with the rail's visual spine. */
 		writing-mode: vertical-rl;
 		transform: rotate(180deg);

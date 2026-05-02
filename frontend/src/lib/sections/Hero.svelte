@@ -1,12 +1,11 @@
 <script>
-	import { onMount } from 'svelte';
 	import {
+		geocodeAddress,
 		loadSubregionGeoJSON,
 		findSubregion,
 		hasCoalData,
 		requestLocation,
 	} from '$lib/geo.js';
-	import { loadGoogleMaps } from '$lib/maps.js';
 
 	let { loading, error, onTrace } = $props();
 	let address = $state('');
@@ -190,6 +189,7 @@
 		localError = null;
 		await resolveCurrentAddress();
 	}
+
 
 	async function handleGeolocate() {
 		localError = null;
@@ -382,9 +382,8 @@
 		white-space: nowrap;
 		/* Rotate so the label reads vertically alongside the headline,
 		   classic magazine-rail typography. `writing-mode: vertical-rl`
-		   gives real sideways text (not a transform rotation) so it stays
-		   accessible to screen readers even though the parent is
-		   aria-hidden. */
+		   gives real sideways text rather than a CSS transform.
+		   The parent is aria-hidden — this is purely decorative. */
 		writing-mode: vertical-rl;
 		transform: rotate(180deg);
 	}
@@ -521,6 +520,7 @@
 		line-height: 1.3;
 		margin-top: 0.1rem;
 	}
+
 
 	input[type="text"] {
 		flex: 1;
