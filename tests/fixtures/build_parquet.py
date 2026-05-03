@@ -12,6 +12,33 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+# Schema mirrors scripts.msha_build_fatality_parquet.SCHEMA_COLUMNS so the
+# fixture exercises the same column names and types DuckDB sees in production.
+_FATALITY_NARRATIVE_COLUMNS: tuple[str, ...] = (
+    "MINE_ID",
+    "INCIDENT_DATE",
+    "MINE_NAME",
+    "MINE_OPERATOR",
+    "MINE_STATE",
+    "MINE_COUNTY",
+    "MINE_CITY",
+    "MINE_TYPE",
+    "ACCIDENT_CLASSIFICATION",
+    "ACCIDENT_TYPE_LABEL",
+    "PRIMARY_SIC",
+    "FATALITY_URL",
+    "REPORT_STATUS",
+    "REPORT_SOURCE",
+    "FINAL_REPORT_URL",
+    "PDF_URL",
+    "PDF_FILENAME",
+    "SECTION_OVERVIEW",
+    "SECTION_ROOT_CAUSE_ANALYSIS",
+    "SECTION_CONCLUSION",
+    "SECTION_ENFORCEMENT_ACTIONS",
+    "PII_WARNING",
+)
+
 
 def write_emissions_fixture(target_dir: Path) -> Path:
     """Write the EMISSIONS_BY_PLANT fixture parquet under ``target_dir/mrt/``.
@@ -93,10 +120,48 @@ def write_msha_mines_fixture(target_dir: Path) -> Path:
     Row 10:   XX coal mine in UK — outside bbox (lng > -65)
     Row 11:   WV metal mine in bbox — excluded by COAL_METAL_IND='M'
     """
-    lats = [37.501, 37.502, 37.499, 37.500, 37.503, 37.498, 40.001, 40.002, 39.999, 0.0, 51.5, 37.501]
-    lngs = [-81.001, -81.002, -80.999, -81.000, -81.003, -80.998, -79.001, -79.002, -78.999, 0.0, -0.1, -81.001]
-    statuses = ["Active", "Active", "Active", "Active", "Abandoned", "Abandoned",
-                "Active", "Active", "Active", "Active", "Active", "Active"]
+    lats = [
+        37.501,
+        37.502,
+        37.499,
+        37.500,
+        37.503,
+        37.498,
+        40.001,
+        40.002,
+        39.999,
+        0.0,
+        51.5,
+        37.501,
+    ]
+    lngs = [
+        -81.001,
+        -81.002,
+        -80.999,
+        -81.000,
+        -81.003,
+        -80.998,
+        -79.001,
+        -79.002,
+        -78.999,
+        0.0,
+        -0.1,
+        -81.001,
+    ]
+    statuses = [
+        "Active",
+        "Active",
+        "Active",
+        "Active",
+        "Abandoned",
+        "Abandoned",
+        "Active",
+        "Active",
+        "Active",
+        "Active",
+        "Active",
+        "Active",
+    ]
     coal_ind = ["C", "C", "C", "C", "C", "C", "C", "C", "C", "C", "C", "M"]
     states = ["WV", "WV", "WV", "WV", "WV", "WV", "PA", "PA", "PA", "PA", "XX", "WV"]
 
@@ -110,6 +175,136 @@ def write_msha_mines_fixture(target_dir: Path) -> Path:
         }
     )
     out = target_dir / "raw" / "msha_mines.parquet"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    pq.write_table(table, out)
+    return out
+
+
+def write_fatality_narratives_fixture(target_dir: Path) -> Path:
+    """Write the FATALITY_NARRATIVES fixture under ``target_dir/mrt/``.
+
+    Mirrors the parquet that ``scripts.msha_build_fatality_parquet`` writes
+    in production. Layout enables testing of:
+
+    - Multiple fatalities at the same mine_id (count semantics)
+    - Mix of REPORT_STATUS values (final / preliminary / none)
+    - Section text presence vs. absence (final-report rows have prose;
+      preliminary and none rows have empty section strings)
+    - State filtering for recent-fatality queries
+    - PII_WARNING boolean round-trip
+    """
+    rows: list[dict] = [
+        # Mine 46-09192 — two fatalities, both with final reports
+        {
+            "MINE_ID": "46-09192",
+            "INCIDENT_DATE": "2024-09-28",
+            "MINE_NAME": "Leer Mine",
+            "MINE_OPERATOR": "Arch Resources Inc",
+            "MINE_STATE": "WV",
+            "MINE_COUNTY": "Taylor",
+            "MINE_CITY": "Thornton",
+            "MINE_TYPE": "Underground",
+            "ACCIDENT_CLASSIFICATION": "Machinery",
+            "ACCIDENT_TYPE_LABEL": "Underground (Coal) Fatal Machinery Accident",
+            "PRIMARY_SIC": "Coal (Bituminous)",
+            "FATALITY_URL": "https://www.msha.gov/.../september-28-2024-fatality",
+            "REPORT_STATUS": "final",
+            "REPORT_SOURCE": "msha_final",
+            "FINAL_REPORT_URL": "https://www.msha.gov/.../final-report",
+            "PDF_URL": "https://www.msha.gov/.../leer.pdf",
+            "PDF_FILENAME": "Final Report - Leer Mine.pdf",
+            "SECTION_OVERVIEW": "On September 28, ... the electrician was injured.",
+            "SECTION_ROOT_CAUSE_ANALYSIS": "The mine operator did not have a written policy.",
+            "SECTION_CONCLUSION": "The accident occurred because ...",
+            "SECTION_ENFORCEMENT_ACTIONS": "1. A 103(k) order was issued.",
+            "PII_WARNING": False,
+        },
+        {
+            "MINE_ID": "46-09192",
+            "INCIDENT_DATE": "2024-08-05",
+            "MINE_NAME": "Leer Mine",
+            "MINE_OPERATOR": "Arch Resources Inc",
+            "MINE_STATE": "WV",
+            "MINE_COUNTY": "Taylor",
+            "MINE_CITY": "Thornton",
+            "MINE_TYPE": "Underground",
+            "ACCIDENT_CLASSIFICATION": "Powered Haulage",
+            "ACCIDENT_TYPE_LABEL": "Underground (Coal) Fatal Powered Haulage Accident",
+            "PRIMARY_SIC": "Coal (Bituminous)",
+            "FATALITY_URL": "https://www.msha.gov/.../august-5-2024-fatality",
+            "REPORT_STATUS": "final",
+            "REPORT_SOURCE": "msha_final",
+            "FINAL_REPORT_URL": "https://www.msha.gov/.../final-report",
+            "PDF_URL": "https://www.msha.gov/.../leer-aug.pdf",
+            "PDF_FILENAME": "Final Report - Leer Mine August.pdf",
+            "SECTION_OVERVIEW": "On August 5, ... the miner was struck.",
+            "SECTION_ROOT_CAUSE_ANALYSIS": "Pre-shift examination was inadequate.",
+            "SECTION_CONCLUSION": "The accident resulted from ...",
+            "SECTION_ENFORCEMENT_ACTIONS": "Citations 9876543 and 9876544 issued.",
+            "PII_WARNING": False,
+        },
+        # PA mine — one fatality, preliminary only (no final report yet)
+        {
+            "MINE_ID": "36-12345",
+            "INCIDENT_DATE": "2026-04-03",
+            "MINE_NAME": "Ohio County Mine",
+            "MINE_OPERATOR": "ACNR Holdings Inc",
+            "MINE_STATE": "PA",
+            "MINE_COUNTY": "",
+            "MINE_CITY": "",
+            "MINE_TYPE": "Underground",
+            "ACCIDENT_CLASSIFICATION": "Powered Haulage",
+            "ACCIDENT_TYPE_LABEL": "",
+            "PRIMARY_SIC": "Coal (Bituminous)",
+            "FATALITY_URL": "https://www.msha.gov/.../april-3-2026-fatality",
+            "REPORT_STATUS": "preliminary",
+            "REPORT_SOURCE": "msha_preliminary",
+            "FINAL_REPORT_URL": "",
+            "PDF_URL": "",
+            "PDF_FILENAME": "",
+            "SECTION_OVERVIEW": "",
+            "SECTION_ROOT_CAUSE_ANALYSIS": "",
+            "SECTION_CONCLUSION": "",
+            "SECTION_ENFORCEMENT_ACTIONS": "",
+            "PII_WARNING": False,
+        },
+        # KY mine — one fatality, edge case with PII warning set
+        {
+            "MINE_ID": "15-99999",
+            "INCIDENT_DATE": "2023-06-15",
+            "MINE_NAME": "Edge Case Mine",
+            "MINE_OPERATOR": "EdgeCo",
+            "MINE_STATE": "KY",
+            "MINE_COUNTY": "Pike",
+            "MINE_CITY": "Pikeville",
+            "MINE_TYPE": "Surface",
+            "ACCIDENT_CLASSIFICATION": "Slip or Fall of Person",
+            "ACCIDENT_TYPE_LABEL": "Surface (Coal) Fatal Slip or Fall Accident",
+            "PRIMARY_SIC": "Coal (Bituminous)",
+            "FATALITY_URL": "https://www.msha.gov/.../june-15-2023-fatality",
+            "REPORT_STATUS": "final",
+            "REPORT_SOURCE": "msha_final",
+            "FINAL_REPORT_URL": "https://www.msha.gov/.../final-report",
+            "PDF_URL": "https://www.msha.gov/.../edge.pdf",
+            "PDF_FILENAME": "Final Report - Edge.pdf",
+            "SECTION_OVERVIEW": "On June 15, the miner fell from a height.",
+            "SECTION_ROOT_CAUSE_ANALYSIS": "Working surface lacked guardrails.",
+            "SECTION_CONCLUSION": "The accident resulted from inadequate fall protection.",
+            "SECTION_ENFORCEMENT_ACTIONS": "Citations issued under 30 CFR 77.",
+            "PII_WARNING": True,
+        },
+    ]
+    arrays = []
+    schema_fields = []
+    for col in _FATALITY_NARRATIVE_COLUMNS:
+        if col == "PII_WARNING":
+            arrays.append(pa.array([r[col] for r in rows], type=pa.bool_()))
+            schema_fields.append((col, pa.bool_()))
+        else:
+            arrays.append(pa.array([r[col] for r in rows], type=pa.string()))
+            schema_fields.append((col, pa.string()))
+    table = pa.Table.from_arrays(arrays, schema=pa.schema(schema_fields))
+    out = target_dir / "mrt" / "fatality_narratives.parquet"
     out.parent.mkdir(parents=True, exist_ok=True)
     pq.write_table(table, out)
     return out

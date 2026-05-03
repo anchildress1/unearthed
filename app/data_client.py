@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import threading
 
 import duckdb
@@ -361,3 +362,152 @@ def query_emissions_for_plant(plant_name: str) -> dict | None:
         "so2_tons": float(row[1] or 0),
         "nox_tons": float(row[2] or 0),
     }
+
+
+# Validation guard for MSHA mine IDs. Accepts the canonical ``NN-NNNNN`` form
+# plus a few variants the corpus exposes (3-letter prefix from older datasets,
+# 6-digit suffix from operator IDs). Anything outside this shape is rejected
+# before reaching the parameterized query so a bad caller can't smuggle a
+# wildcard through the LIKE-style match.
+_MINE_ID_PATTERN = re.compile(r"^[A-Z0-9]{2,3}-[0-9]{4,6}$")
+
+# 2-letter US state abbreviation; tracks the same allowlist the rest of the
+# pipeline uses so a stray "All" or numeric input can't widen the WHERE clause.
+_STATE_ABBR_PATTERN = re.compile(r"^[A-Z]{2}$")
+
+# SQL is hand-written with the SELECT list inlined (rather than f-string
+# composed from a tuple constant) so static analyzers do not flag the SQL
+# strings as potentially-concatenated user input. Every value the runtime
+# binds is parameterized via ``?``; the column list is the same across
+# all three queries so a column rename has to touch all three.
+_FATALITIES_FOR_MINE_SQL = """
+SELECT MINE_ID, INCIDENT_DATE, MINE_NAME, MINE_OPERATOR,
+       MINE_STATE, MINE_COUNTY, MINE_CITY, MINE_TYPE,
+       ACCIDENT_CLASSIFICATION, ACCIDENT_TYPE_LABEL,
+       REPORT_STATUS, REPORT_SOURCE, FINAL_REPORT_URL,
+       PDF_URL, PDF_FILENAME,
+       SECTION_OVERVIEW, SECTION_ROOT_CAUSE_ANALYSIS,
+       SECTION_CONCLUSION, SECTION_ENFORCEMENT_ACTIONS,
+       PII_WARNING
+FROM read_parquet(?)
+WHERE MINE_ID = ?
+ORDER BY INCIDENT_DATE DESC
+LIMIT ?
+"""
+
+_RECENT_FATALITIES_SQL = """
+SELECT MINE_ID, INCIDENT_DATE, MINE_NAME, MINE_OPERATOR,
+       MINE_STATE, MINE_COUNTY, MINE_CITY, MINE_TYPE,
+       ACCIDENT_CLASSIFICATION, ACCIDENT_TYPE_LABEL,
+       REPORT_STATUS, REPORT_SOURCE, FINAL_REPORT_URL,
+       PDF_URL, PDF_FILENAME,
+       SECTION_OVERVIEW, SECTION_ROOT_CAUSE_ANALYSIS,
+       SECTION_CONCLUSION, SECTION_ENFORCEMENT_ACTIONS,
+       PII_WARNING
+FROM read_parquet(?)
+ORDER BY INCIDENT_DATE DESC
+LIMIT ?
+"""
+
+_RECENT_FATALITIES_BY_STATE_SQL = """
+SELECT MINE_ID, INCIDENT_DATE, MINE_NAME, MINE_OPERATOR,
+       MINE_STATE, MINE_COUNTY, MINE_CITY, MINE_TYPE,
+       ACCIDENT_CLASSIFICATION, ACCIDENT_TYPE_LABEL,
+       REPORT_STATUS, REPORT_SOURCE, FINAL_REPORT_URL,
+       PDF_URL, PDF_FILENAME,
+       SECTION_OVERVIEW, SECTION_ROOT_CAUSE_ANALYSIS,
+       SECTION_CONCLUSION, SECTION_ENFORCEMENT_ACTIONS,
+       PII_WARNING
+FROM read_parquet(?)
+WHERE MINE_STATE = ?
+ORDER BY INCIDENT_DATE DESC
+LIMIT ?
+"""
+
+
+def _row_to_fatality_dict(row: tuple) -> dict:
+    """Map a fatality row from SQL ordering to the lower-case API shape.
+
+    Keep the surface flat (no nested ``sections`` dict) so the runtime
+    agent's tool wrapper receives a single record per fatality and renders
+    a citation chip per row without recursing into nested structures.
+    """
+    return {
+        "mine_id": row[0] or "",
+        "incident_date": row[1] or "",
+        "mine_name": row[2] or "",
+        "mine_operator": row[3] or "",
+        "mine_state": row[4] or "",
+        "mine_county": row[5] or "",
+        "mine_city": row[6] or "",
+        "mine_type": row[7] or "",
+        "accident_classification": row[8] or "",
+        "accident_type_label": row[9] or "",
+        "report_status": row[10] or "",
+        "report_source": row[11] or "",
+        "final_report_url": row[12] or "",
+        "pdf_url": row[13] or "",
+        "pdf_filename": row[14] or "",
+        "section_overview": row[15] or "",
+        "section_root_cause_analysis": row[16] or "",
+        "section_conclusion": row[17] or "",
+        "section_enforcement_actions": row[18] or "",
+        "pii_warning": bool(row[19]),
+    }
+
+
+def query_fatalities_for_mine(mine_id: str, *, limit: int = 50) -> list[dict]:
+    """Return every fatality on file at ``mine_id``, newest first.
+
+    The runtime agent calls this when the user asks about a specific mine's
+    safety history. ``mine_id`` is the canonical MSHA identifier
+    (``NN-NNNNN``). The strict regex guard rejects anything outside the
+    expected shape before the parameterized SQL — no SQL injection
+    surface, but also no "let me see what the wildcard returns" footgun
+    if a caller passes ``%``. Returns an empty list when no rows match.
+
+    The ``limit`` ceiling matches the existing 500-row guardrail on the
+    rest of the data layer; capping at 50 here is plenty for a per-mine
+    history (no single mine on file has more than ~30 recorded
+    fatalities) and keeps the agent's per-call token spend predictable.
+    """
+    if not mine_id or not _MINE_ID_PATTERN.fullmatch(mine_id.strip().upper()):
+        return []
+    bounded_limit = max(1, min(int(limit), 500))
+    con = _connection()
+    rows = con.execute(
+        _FATALITIES_FOR_MINE_SQL,
+        [_data_url("mrt/fatality_narratives"), mine_id.strip().upper(), bounded_limit],
+    ).fetchall()
+    return [_row_to_fatality_dict(r) for r in rows]
+
+
+def query_recent_fatalities(state: str | None = None, *, limit: int = 10) -> list[dict]:
+    """Return the most recent fatalities, optionally scoped to a state.
+
+    Used by the agent for "what were the most recent coal mining
+    fatalities" questions and the state-scoped variant. ``state`` is the
+    2-letter US abbreviation; non-matching inputs collapse to ``None`` so
+    a typo gets the national list rather than an empty result, which
+    matches the agent's "answer with what you have" guidance.
+
+    The ``limit`` argument is bounded the same way as
+    :func:`query_fatalities_for_mine`.
+    """
+    bounded_limit = max(1, min(int(limit), 500))
+    con = _connection()
+    if state and _STATE_ABBR_PATTERN.fullmatch(state.strip().upper()):
+        rows = con.execute(
+            _RECENT_FATALITIES_BY_STATE_SQL,
+            [
+                _data_url("mrt/fatality_narratives"),
+                state.strip().upper(),
+                bounded_limit,
+            ],
+        ).fetchall()
+    else:
+        rows = con.execute(
+            _RECENT_FATALITIES_SQL,
+            [_data_url("mrt/fatality_narratives"), bounded_limit],
+        ).fetchall()
+    return [_row_to_fatality_dict(r) for r in rows]
