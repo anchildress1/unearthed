@@ -9,6 +9,11 @@ DOMAIN="unearthed.anchildress1.dev"
 SECRET_NAME="unearthed-snowflake-key"
 SA_NAME="unearthed-run"
 
+# R2 + Anthropic secret names in Secret Manager (UNEARTHED_ prefix chosen by operator).
+SECRET_R2_KEY_ID="UNEARTHED_R2_ACCESS_KEY_ID"
+SECRET_R2_SECRET="UNEARTHED_R2_SECRET_ACCESS_KEY"
+SECRET_ANTHROPIC="UNEARTHED_ANTHROPIC_API_KEY"
+
 # Snowflake identity is overridable via env so a teammate, judge, or
 # forked deploy can target a different account/user without touching
 # this script. Defaults match the submission deployment.
@@ -35,6 +40,18 @@ fi
 [[ -n "${VITE_GOOGLE_MAPS_KEY:-}" ]] || {
   echo "ERROR: VITE_GOOGLE_MAPS_KEY not set and frontend/.env not found" >&2; exit 1;
 }
+
+# Read R2 non-secret config from .env when not already exported.
+# R2_ENDPOINT and DATA_BASE_URL are not secrets — they identify the bucket,
+# not the credentials. The actual key pair is pulled from Secret Manager.
+if [[ -f .env ]]; then
+  [[ -z "${R2_ENDPOINT:-}" ]]    && R2_ENDPOINT=$(grep    '^R2_ENDPOINT='    .env | cut -d= -f2-)
+  [[ -z "${DATA_BASE_URL:-}" ]]  && DATA_BASE_URL=$(grep  '^DATA_BASE_URL='  .env | cut -d= -f2-)
+fi
+[[ -n "${R2_ENDPOINT:-}" ]] || {
+  echo "ERROR: R2_ENDPOINT not set. Add it to .env or export it." >&2; exit 1;
+}
+DATA_BASE_URL="${DATA_BASE_URL:-s3://unearthed-data}"
 
 PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null)}"
 [[ -n "$PROJECT_ID" ]] || { echo "ERROR: No GCP project. Run: gcloud config set project <ID>" >&2; exit 1; }
@@ -86,13 +103,22 @@ gcloud secrets versions add "${SECRET_NAME}" \
   --quiet
 echo "  Uploaded new version"
 
-# Per-secret IAM binding (not project-wide) — SA can only read this one secret
-echo "  Binding secretAccessor to ${SECRET_NAME}..."
-gcloud secrets add-iam-policy-binding "${SECRET_NAME}" \
-  --member="serviceAccount:${SA_EMAIL}" \
-  --role="roles/secretmanager.secretAccessor" \
-  --project="${PROJECT_ID}" \
-  --quiet
+# Per-secret IAM bindings — SA can only read these specific secrets, not all of them.
+# Pre-existing secrets (R2, Anthropic) must exist before this loop; create them
+# with placeholder values via `gcloud secrets create <name> --data-file=-` if missing.
+for secret in "${SECRET_NAME}" "${SECRET_R2_KEY_ID}" "${SECRET_R2_SECRET}" "${SECRET_ANTHROPIC}"; do
+  if ! gcloud secrets describe "${secret}" --project="${PROJECT_ID}" &>/dev/null; then
+    echo "  ERROR: secret '${secret}' does not exist in project '${PROJECT_ID}'." >&2
+    echo "         Create it first: gcloud secrets create ${secret} --project=${PROJECT_ID}" >&2
+    exit 1
+  fi
+  echo "  Binding secretAccessor to ${secret}..."
+  gcloud secrets add-iam-policy-binding "${secret}" \
+    --member="serviceAccount:${SA_EMAIL}" \
+    --role="roles/secretmanager.secretAccessor" \
+    --project="${PROJECT_ID}" \
+    --quiet
+done
 
 # ─── Artifact Registry ──────────────────────────────────────────────────────────
 REPO_NAME="${SERVICE_NAME}"
@@ -134,7 +160,11 @@ gcloud run deploy "${SERVICE_NAME}" \
   --concurrency 80 \
   --timeout 60 \
   --cpu-boost \
-  --set-secrets="/secrets/snowflake_key.p8=${SECRET_NAME}:latest" \
+  --set-secrets="\
+/secrets/snowflake_key.p8=${SECRET_NAME}:latest,\
+R2_ACCESS_KEY_ID=${SECRET_R2_KEY_ID}:latest,\
+R2_SECRET_ACCESS_KEY=${SECRET_R2_SECRET}:latest,\
+ANTHROPIC_API_KEY=${SECRET_ANTHROPIC}:latest" \
   --set-env-vars="\
 SNOWFLAKE_ACCOUNT=${SNOWFLAKE_ACCOUNT},\
 SNOWFLAKE_USER=${SNOWFLAKE_USER},\
@@ -142,6 +172,8 @@ SNOWFLAKE_PRIVATE_KEY_PATH=/secrets/snowflake_key.p8,\
 SNOWFLAKE_ROLE=UNEARTHED_APP_ROLE,\
 SNOWFLAKE_WAREHOUSE=UNEARTHED_APP_WH,\
 SNOWFLAKE_DATABASE=UNEARTHED_DB,\
+DATA_BASE_URL=${DATA_BASE_URL},\
+R2_ENDPOINT=${R2_ENDPOINT},\
 CORS_ORIGINS=https://${DOMAIN},\
 PREWARM_PROSE=${PREWARM_PROSE}" \
   --quiet

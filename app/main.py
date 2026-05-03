@@ -7,7 +7,6 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-import snowflake.connector
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -15,14 +14,19 @@ from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
 from starlette.routing import Match
 
+from app.data_client import (
+    normalize_plant_name,
+    query_emissions_for_plant,
+    query_h3_density,
+    query_h3_registry_totals,
+    query_mine_for_subregion,
+)
 from app.models import AskRequest, AskResponse, MineForMeRequest, MineForMeResponse
 from app.prose_client import generate_h3_summary, generate_prose
 from app.snowflake_client import (
-    _get_connection,
     execute_analyst_sql,
     load_fallback_data,
     query_cortex_analyst,
-    query_mine_for_subregion,
     summarize_analyst_results,
 )
 
@@ -37,10 +41,10 @@ _enable_docs = os.getenv("ENABLE_DOCS", "").lower() in ("1", "true")
 def _prewarm_prose_cache() -> None:
     """Pre-warm the prose cache for all fallback subregions in a background thread.
 
-    Each subregion fires a Snowflake query + Cortex Complete call, so the first
+    Each subregion fires a DuckDB query + Cortex Complete call, so the first
     visitor to any subregion gets a cached response instead of a 4-27s wait.
-    Bails out entirely after the first failure — if Snowflake is unreachable
-    there is no point hammering it 19 times.
+    Bails out entirely after the first failure — if the data layer is
+    unreachable there is no point hammering it 19 times.
     """
     from app.snowflake_client import _VALID_FALLBACK_IDS
 
@@ -107,11 +111,14 @@ def health():
     return {"status": "ok"}
 
 
+# Wildcard is intentional when CORS_ORIGINS is unset — this is a public
+# read-only API and the wildcard is the safe default for unauthenticated
+# endpoints. Production deploys set CORS_ORIGINS to the actual domain.
 _cors_origins = os.getenv("CORS_ORIGINS", "").split(",") if os.getenv("CORS_ORIGINS") else ["*"]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_cors_origins,
+    allow_origins=_cors_origins,  # nosemgrep
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
@@ -132,130 +139,56 @@ if _STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
 
-_H3_DENSITY_SQL = """
-SELECT
-    H3_LATLNG_TO_CELL_STRING(LATITUDE, LONGITUDE, %(resolution)s) AS h3,
-    AVG(LATITUDE) AS lat,
-    AVG(LONGITUDE) AS lng,
-    COUNT(*) AS total,
-    SUM(CASE WHEN TRIM(CURRENT_MINE_STATUS) = 'Active'
-        THEN 1 ELSE 0 END) AS active,
-    SUM(CASE WHEN TRIM(CURRENT_MINE_STATUS) != 'Active'
-        THEN 1 ELSE 0 END) AS abandoned
-FROM UNEARTHED_DB.RAW.MSHA_MINES
--- Bounding box: continental US + mainland Alaska. Rejects (0,0) null-island
--- entries and stray ocean coordinates MSHA's registry occasionally ships when
--- a mine's address was never geocoded cleanly — without this, resolution-5
--- hexes land in the Atlantic and drag the viewport off the mainland.
--- Aleutian Islands west of the antimeridian (positive longitudes) are outside
--- this box on purpose: MSHA has no recorded coal mines there, and widening the
--- filter to wrap the dateline would re-admit the very ocean outliers we're
--- trying to drop.
-WHERE COAL_METAL_IND = 'C'
-    AND LATITUDE IS NOT NULL
-    AND LONGITUDE IS NOT NULL
-    AND LATITUDE BETWEEN 24 AND 72
-    AND LONGITUDE BETWEEN -180 AND -65
-    {state_clause}
-GROUP BY h3
-HAVING total >= {min_mines}
-ORDER BY total DESC
-"""
-
-# Registry totals are computed independently of the hex-density query so the
-# Cortex summary reads from "MSHA's full registry" rather than "the hexes the
-# map happens to render at this resolution." The density query drops
-# null-coord rows, ocean outliers, and small clusters (HAVING total >= 5 on
-# the national view) — all sensible for rendering hexes, all wrong for a
-# sentence that claims "MSHA has X coal mines on record." Sharing a state
-# filter with the density query is fine because that IS a scoping choice the
-# reader asked for; the bounding-box and clustering filters are not.
-_H3_REGISTRY_TOTALS_SQL = """
-SELECT
-    COUNT(*) AS total,
-    SUM(CASE WHEN TRIM(CURRENT_MINE_STATUS) = 'Active' THEN 1 ELSE 0 END) AS active,
-    SUM(CASE WHEN TRIM(CURRENT_MINE_STATUS) != 'Active' THEN 1 ELSE 0 END) AS abandoned
-FROM UNEARTHED_DB.RAW.MSHA_MINES
-WHERE COAL_METAL_IND = 'C'
-    {state_clause}
-"""
-
 _STATE_CODE_PATTERN = re.compile(r"^[A-Za-z]{2}$")
 
 
 @app.get(
     "/h3-density",
     responses={
-        400: {"description": "Invalid resolution (must be 2-7)"},
-        503: {"description": "Snowflake unavailable"},
+        400: {"description": "Invalid resolution (must be 2-7) or invalid state code"},
+        503: {"description": "Data layer unavailable"},
     },
 )
 def h3_density(resolution: int = 4, state: str | None = None):
     """H3 hexbin mine density — active vs abandoned extraction footprint.
 
-    When ``state`` is a 2-letter US state code, only mines in that state are
-    returned and the small-cluster HAVING threshold is dropped to 1 so a
-    single-mine hex still shows up on the focused view.
+    Reads from ``raw/msha_mines.parquet`` via DuckDB. H3 cell IDs are computed
+    at query time. When ``state`` is a 2-letter US state code, only mines in
+    that state are returned and the small-cluster threshold drops to 1 so
+    single-mine hexes still appear on the focused view.
+
+    The Cortex Complete H3 summary still routes through Snowflake in Phase 2
+    and will be replaced with a Claude-baked prose in Phase 3.
     """
     if resolution < 2 or resolution > 7:
         raise HTTPException(status_code=400, detail="Resolution must be 2-7")
+    if state and not _STATE_CODE_PATTERN.match(state):
+        raise HTTPException(status_code=400, detail="State must be a 2-letter code")
 
-    from app.config import settings
-
-    state_clause = ""
-    bind: dict[str, object] = {"resolution": int(resolution)}
-    min_mines = 5
-    if state:
-        if not _STATE_CODE_PATTERN.match(state):
-            raise HTTPException(status_code=400, detail="State must be a 2-letter code")
-        state_clause = "AND STATE = %(state)s"
-        bind["state"] = state.upper()
-        min_mines = 1
-
-    sql = _H3_DENSITY_SQL.format(
-        state_clause=state_clause,
-        min_mines=min_mines,
-    )
-
-    totals_sql = _H3_REGISTRY_TOTALS_SQL.format(state_clause=state_clause)
+    normalized_state = state.upper() if state else None
 
     try:
-        conn = _get_connection(role=settings.snowflake_readonly_role)
-        cur = conn.cursor(snowflake.connector.DictCursor)
-        try:
-            cur.execute(sql, bind)
-            rows = [dict(r) for r in cur.fetchall()]
-            cur.execute(totals_sql, bind)
-            totals_row = cur.fetchone() or {}
-        finally:
-            cur.close()
+        cells = query_h3_density(resolution, normalized_state)
+        totals = query_h3_registry_totals(normalized_state)
     except Exception:
         logger.warning("H3 density query failed for resolution %s", resolution, exc_info=True)
-        raise HTTPException(status_code=503, detail="Snowflake unavailable")
+        raise HTTPException(status_code=503, detail="Data layer unavailable")
 
-    # Registry totals come from the unfiltered coal-mine registry (optionally
-    # scoped to the requested state). Hex cells may drop rows — null coords,
-    # ocean outliers, small-cluster HAVING threshold — but the Cortex summary
-    # and the frontend legend must both report "MSHA has X mines on record"
-    # honestly, not "X mines visible at this zoom."
-    total = int(totals_row.get("TOTAL") or 0)
-    active = int(totals_row.get("ACTIVE") or 0)
-    abandoned = int(totals_row.get("ABANDONED") or 0)
+    total = totals["total"]
+    active = totals["active"]
+    abandoned = totals["abandoned"]
 
-    # Cortex-generated explanation of the density map. The whole point of this
-    # site is that Cortex explains the data, so we always return a summary. The
-    # generator returns a ``degraded`` flag when the template fallback fires
-    # (Cortex unavailable or empty response); the endpoint surfaces that flag
-    # so the frontend can hide the "Cortex, on this map" byline — showing
-    # fallback prose under a model byline would misattribute the template to
-    # Cortex. An unexpected ImportError/AttributeError here also counts as
-    # degraded so the caller never sees the fallback masquerading as model output.
+    # Prose summary still routes through Snowflake Cortex Complete in Phase 2.
+    # The degraded flag hides the "Cortex, on this map" byline when the
+    # generator falls back to a template so the byline is never misattributed.
     summary = ""
     summary_degraded = False
     if total > 0:
+        from app.config import settings
+
         try:
             summary, summary_degraded = generate_h3_summary(
-                state=(state.upper() if state else None),
+                state=normalized_state,
                 total=total,
                 active=active,
                 abandoned=abandoned,
@@ -269,30 +202,11 @@ def h3_density(resolution: int = 4, state: str | None = None):
     return {
         "resolution": resolution,
         "state": state,
-        "cells": rows,
+        "cells": cells,
         "totals": {"total": total, "active": active, "abandoned": abandoned},
         "summary": summary,
         "summary_degraded": summary_degraded,
     }
-
-
-_EMISSIONS_SQL = """
-SELECT CO2_TONS, SO2_TONS, NOX_TONS
-FROM UNEARTHED_DB.MRT.EMISSIONS_BY_PLANT
-WHERE FACILITY_NAME LIKE %(plant_prefix)s
-LIMIT 1
-"""
-
-
-def _strip_paren_suffix(name: str) -> str:
-    """Strip trailing parenthetical state suffix — 'Cumberland (TN)' → 'Cumberland'.
-
-    EIA plant names carry these; EPA's FACILITY_NAME never does.
-    """
-    idx = name.rfind("(")
-    if idx > 0 and name.rstrip().endswith(")"):
-        return name[:idx].rstrip()
-    return name
 
 
 _CACHE_MAXSIZE = 256
@@ -303,37 +217,35 @@ _emissions_lock = threading.Lock()
 
 @app.get(
     "/emissions/{plant_name}",
-    responses={503: {"description": "Snowflake unavailable"}},
+    responses={503: {"description": "Data layer unavailable"}},
 )
 def plant_emissions(plant_name: str):
-    """EPA emissions data for a plant — pre-aggregated from Snowflake Marketplace."""
-    cache_key = _strip_paren_suffix(plant_name).upper()
+    """EPA emissions data for a plant — pre-aggregated from EPA Clean Air Markets.
+
+    Reads from a parquet file in Cloudflare R2 via DuckDB ``httpfs`` (or a
+    local fixture parquet during tests, controlled by ``DATA_BASE_URL``).
+    """
+    cache_key = normalize_plant_name(plant_name)
     with _emissions_lock:
         if cache_key in _emissions_cache:
             _emissions_cache.move_to_end(cache_key)
             return _emissions_cache[cache_key]
 
-    from app.config import settings
-
     try:
-        conn = _get_connection(role=settings.snowflake_readonly_role)
-        cur = conn.cursor(snowflake.connector.DictCursor)
-        try:
-            cur.execute(_EMISSIONS_SQL, {"plant_prefix": cache_key + "%"})
-            row = cur.fetchone()
-        finally:
-            cur.close()
+        emissions = query_emissions_for_plant(plant_name)
     except Exception:
         logger.warning("Emissions query failed", exc_info=True)
-        raise HTTPException(status_code=503, detail="Snowflake unavailable")
-    if not row or row.get("CO2_TONS") is None:
+        raise HTTPException(status_code=503, detail="Data layer unavailable")
+
+    if emissions is None:
         return {"plant": plant_name, "co2_tons": None, "so2_tons": None, "nox_tons": None}
+
     result = {
         "plant": plant_name,
-        "co2_tons": float(row["CO2_TONS"] or 0),
-        "so2_tons": float(row["SO2_TONS"] or 0),
-        "nox_tons": float(row["NOX_TONS"] or 0),
-        "source": "EPA Clean Air Markets via Snowflake Marketplace",
+        "co2_tons": emissions["co2_tons"],
+        "so2_tons": emissions["so2_tons"],
+        "nox_tons": emissions["nox_tons"],
+        "source": "EPA Clean Air Markets",
     }
     with _emissions_lock:
         _emissions_cache[cache_key] = result
@@ -381,7 +293,7 @@ def _suggestions_for(subregion_id: str | None) -> list[str]:
         404: {
             "description": (
                 "No mine-to-plant shipment is on record for the given subregion. "
-                "Returned when both the Snowflake query and the bundled fallback "
+                "Returned when both the DuckDB/R2 query and the bundled fallback "
                 "JSON have no row for this eGRID subregion_id."
             ),
         },
@@ -390,7 +302,7 @@ def _suggestions_for(subregion_id: str | None) -> list[str]:
 def mine_for_me(req: MineForMeRequest):
     """Return the top mine→plant shipment for an eGRID subregion.
 
-    Falls back to bundled per-subregion JSON when Snowflake is unreachable;
+    Falls back to bundled per-subregion JSON when DuckDB/R2 is unreachable;
     returns 404 only when both sources miss. Response schema is stable across
     the Cortex, fallback, and error paths — ``stats`` counts are always
     populated (0 means "none on file"), and ``degraded`` flips true when
@@ -403,7 +315,7 @@ def mine_for_me(req: MineForMeRequest):
     try:
         mine_data = query_mine_for_subregion(subregion)
     except Exception:
-        logger.warning("Snowflake query failed, trying fallback", exc_info=True)
+        logger.warning("DuckDB query failed, trying fallback", exc_info=True)
         degraded = True
 
     if not mine_data:

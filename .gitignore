@@ -37,3 +37,6 @@ frontend/.lighthouseci
 frontend/playwright-report
 frontend/test-results
 frontend/coverage
+
+# Local Parquet exports (uploaded to R2, never committed)
+/data/
