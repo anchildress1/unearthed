@@ -25,6 +25,11 @@ dev = [
     # scripts/ and fixture builders only — not used by the FastAPI runtime
     "pyarrow>=24,<25",
     "boto3>=1.40,<2",
+    # MSHA ingestion pipeline (scripts/msha_*): HTML scrape + PDF section extract.
+    # lxml is the parser for the search index and interstitial pages; pdfplumber
+    # handles the Fatal Investigation Report PDFs (text + heading detection).
+    "lxml>=6.0,<7",
+    "pdfplumber>=0.11,<1",
 ]
 
 [tool.pytest.ini_options]
