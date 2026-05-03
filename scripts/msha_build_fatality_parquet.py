@@ -143,40 +143,54 @@ def _resolve_report_status(*, has_final: bool, has_prelim: bool) -> tuple[str, s
     return ("none", "")
 
 
+def _first_str(*values) -> str:
+    """Return the first non-empty value coerced to ``str``, else ``""``.
+
+    Centralizing this fallback chain keeps :func:`_build_record` readable
+    and below the cognitive-complexity ceiling — ``or`` chains inside an
+    assignment expression count toward the surrounding function's score.
+    """
+    for value in values:
+        if value not in (None, ""):
+            return str(value)
+    return ""
+
+
 def _build_record(row: dict, inter: dict) -> FatalityRecord:
     """Build one :class:`FatalityRecord` by joining a manifest row with its
     (possibly empty) interstitial dict.
 
     Interstitial values win where they exist — they are the more
     authoritative source — and fall back to manifest values otherwise.
+    The manifest's ``location_raw`` carries no county; interstitial fills
+    it.
     """
     sections = inter.get("sections") or {}
     has_final = _truthy(row.get("has_final_report", "False"))
     has_prelim = _truthy(row.get("has_preliminary_report", "False"))
     status, source = _resolve_report_status(has_final=has_final, has_prelim=has_prelim)
     return FatalityRecord(
-        MINE_ID=str(inter.get("mine_id") or ""),
-        INCIDENT_DATE=str(inter.get("incident_date") or row.get("incident_date") or ""),
-        MINE_NAME=str(row.get("mine_name") or ""),
-        MINE_OPERATOR=str(row.get("mine_controller") or ""),
-        MINE_STATE=str(inter.get("state") or row.get("mine_state") or ""),
-        # The manifest's `location_raw` carries no county; interstitial fills it.
-        MINE_COUNTY=str(inter.get("county") or ""),
-        MINE_CITY=str(inter.get("city") or ""),
-        MINE_TYPE=str(row.get("mine_type") or ""),
-        ACCIDENT_CLASSIFICATION=str(row.get("accident_classification") or ""),
-        ACCIDENT_TYPE_LABEL=str(inter.get("accident_type_label") or ""),
-        PRIMARY_SIC=str(row.get("primary_sic") or ""),
+        MINE_ID=_first_str(inter.get("mine_id")),
+        INCIDENT_DATE=_first_str(inter.get("incident_date"), row.get("incident_date")),
+        MINE_NAME=_first_str(row.get("mine_name")),
+        MINE_OPERATOR=_first_str(row.get("mine_controller")),
+        MINE_STATE=_first_str(inter.get("state"), row.get("mine_state")),
+        MINE_COUNTY=_first_str(inter.get("county")),
+        MINE_CITY=_first_str(inter.get("city")),
+        MINE_TYPE=_first_str(row.get("mine_type")),
+        ACCIDENT_CLASSIFICATION=_first_str(row.get("accident_classification")),
+        ACCIDENT_TYPE_LABEL=_first_str(inter.get("accident_type_label")),
+        PRIMARY_SIC=_first_str(row.get("primary_sic")),
         FATALITY_URL=row.get("fatality_url", ""),
         REPORT_STATUS=status,
         REPORT_SOURCE=source,
-        FINAL_REPORT_URL=str(row.get("final_report_interstitial_url") or ""),
-        PDF_URL=str(inter.get("pdf_url") or ""),
-        PDF_FILENAME=str(inter.get("pdf_filename") or ""),
-        SECTION_OVERVIEW=str(sections.get("OVERVIEW") or ""),
-        SECTION_ROOT_CAUSE_ANALYSIS=str(sections.get("ROOT CAUSE ANALYSIS") or ""),
-        SECTION_CONCLUSION=str(sections.get("CONCLUSION") or ""),
-        SECTION_ENFORCEMENT_ACTIONS=str(sections.get("ENFORCEMENT ACTIONS") or ""),
+        FINAL_REPORT_URL=_first_str(row.get("final_report_interstitial_url")),
+        PDF_URL=_first_str(inter.get("pdf_url")),
+        PDF_FILENAME=_first_str(inter.get("pdf_filename")),
+        SECTION_OVERVIEW=_first_str(sections.get("OVERVIEW")),
+        SECTION_ROOT_CAUSE_ANALYSIS=_first_str(sections.get("ROOT CAUSE ANALYSIS")),
+        SECTION_CONCLUSION=_first_str(sections.get("CONCLUSION")),
+        SECTION_ENFORCEMENT_ACTIONS=_first_str(sections.get("ENFORCEMENT ACTIONS")),
         PII_WARNING=bool(inter.get("pii_warning", False)),
     )
 

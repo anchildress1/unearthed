@@ -429,35 +429,41 @@ LIMIT ?
 """
 
 
-def _row_to_fatality_dict(row: tuple) -> dict:
-    """Map a fatality row from SQL ordering to the lower-case API shape.
+# Lower-case API keys, ordered to match the SELECT lists above. The runtime
+# agent's tool wrapper expects this flat shape — one citation chip per row,
+# no nested ``sections`` dict to recurse into.
+_FATALITY_DICT_KEYS: tuple[str, ...] = (
+    "mine_id",
+    "incident_date",
+    "mine_name",
+    "mine_operator",
+    "mine_state",
+    "mine_county",
+    "mine_city",
+    "mine_type",
+    "accident_classification",
+    "accident_type_label",
+    "report_status",
+    "report_source",
+    "final_report_url",
+    "pdf_url",
+    "pdf_filename",
+    "section_overview",
+    "section_root_cause_analysis",
+    "section_conclusion",
+    "section_enforcement_actions",
+)
 
-    Keep the surface flat (no nested ``sections`` dict) so the runtime
-    agent's tool wrapper receives a single record per fatality and renders
-    a citation chip per row without recursing into nested structures.
+
+def _row_to_fatality_dict(row: tuple) -> dict:
+    """Map a fatality SQL row to the lower-case API shape via a key list.
+
+    The trailing ``PII_WARNING`` column is the only non-string field, so it
+    is hoisted out of the comprehension and cast explicitly.
     """
-    return {
-        "mine_id": row[0] or "",
-        "incident_date": row[1] or "",
-        "mine_name": row[2] or "",
-        "mine_operator": row[3] or "",
-        "mine_state": row[4] or "",
-        "mine_county": row[5] or "",
-        "mine_city": row[6] or "",
-        "mine_type": row[7] or "",
-        "accident_classification": row[8] or "",
-        "accident_type_label": row[9] or "",
-        "report_status": row[10] or "",
-        "report_source": row[11] or "",
-        "final_report_url": row[12] or "",
-        "pdf_url": row[13] or "",
-        "pdf_filename": row[14] or "",
-        "section_overview": row[15] or "",
-        "section_root_cause_analysis": row[16] or "",
-        "section_conclusion": row[17] or "",
-        "section_enforcement_actions": row[18] or "",
-        "pii_warning": bool(row[19]),
-    }
+    out: dict = {key: row[i] or "" for i, key in enumerate(_FATALITY_DICT_KEYS)}
+    out["pii_warning"] = bool(row[len(_FATALITY_DICT_KEYS)])
+    return out
 
 
 def _bound_limit(limit: int) -> int:
