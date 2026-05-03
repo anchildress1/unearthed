@@ -364,12 +364,16 @@ def query_emissions_for_plant(plant_name: str) -> dict | None:
     }
 
 
+# Path to the fatality narratives parquet — used by both query helpers.
+# Centralized so a relocation only changes one line.
+_FATALITY_PARQUET = "mrt/fatality_narratives"
+
 # Validation guard for MSHA mine IDs. Accepts the canonical ``NN-NNNNN`` form
 # plus a few variants the corpus exposes (3-letter prefix from older datasets,
 # 6-digit suffix from operator IDs). Anything outside this shape is rejected
 # before reaching the parameterized query so a bad caller can't smuggle a
 # wildcard through the LIKE-style match.
-_MINE_ID_PATTERN = re.compile(r"^[A-Z0-9]{2,3}-[0-9]{4,6}$")
+_MINE_ID_PATTERN = re.compile(r"^[A-Z0-9]{2,3}-\d{4,6}$")
 
 # 2-letter US state abbreviation; tracks the same allowlist the rest of the
 # pipeline uses so a stray "All" or numeric input can't widen the WHERE clause.
@@ -456,6 +460,24 @@ def _row_to_fatality_dict(row: tuple) -> dict:
     }
 
 
+def _bound_limit(limit: int) -> int:
+    """Clamp a caller-supplied limit to the safe ``[1, 500]`` range.
+
+    500 matches the existing Snowflake session-level ``ROWS_PER_RESULTSET``
+    guardrail on the rest of the data layer; the floor of 1 keeps a
+    negative input from collapsing the query to zero rows.
+    """
+    return max(1, min(int(limit), 500))
+
+
+def _normalize_state(state: str | None) -> str | None:
+    """Return the upper-cased 2-letter state if it conforms, else ``None``."""
+    if not state:
+        return None
+    candidate = state.strip().upper()
+    return candidate if _STATE_ABBR_PATTERN.fullmatch(candidate) else None
+
+
 def query_fatalities_for_mine(mine_id: str, *, limit: int = 50) -> list[dict]:
     """Return every fatality on file at ``mine_id``, newest first.
 
@@ -466,19 +488,20 @@ def query_fatalities_for_mine(mine_id: str, *, limit: int = 50) -> list[dict]:
     surface, but also no "let me see what the wildcard returns" footgun
     if a caller passes ``%``. Returns an empty list when no rows match.
 
-    The ``limit`` ceiling matches the existing 500-row guardrail on the
-    rest of the data layer; capping at 50 here is plenty for a per-mine
-    history (no single mine on file has more than ~30 recorded
-    fatalities) and keeps the agent's per-call token spend predictable.
+    The ``limit`` argument is clamped to the ``[1, 500]`` range that the
+    rest of the data layer uses. Coal mines on record max out around 30
+    fatalities apiece, so the default of 50 is a comfortable headroom.
     """
     if not mine_id or not _MINE_ID_PATTERN.fullmatch(mine_id.strip().upper()):
         return []
-    bounded_limit = max(1, min(int(limit), 500))
-    con = _connection()
-    rows = con.execute(
-        _FATALITIES_FOR_MINE_SQL,
-        [_data_url("mrt/fatality_narratives"), mine_id.strip().upper(), bounded_limit],
-    ).fetchall()
+    rows = (
+        _connection()
+        .execute(
+            _FATALITIES_FOR_MINE_SQL,
+            [_data_url(_FATALITY_PARQUET), mine_id.strip().upper(), _bound_limit(limit)],
+        )
+        .fetchall()
+    )
     return [_row_to_fatality_dict(r) for r in rows]
 
 
@@ -494,20 +517,18 @@ def query_recent_fatalities(state: str | None = None, *, limit: int = 10) -> lis
     The ``limit`` argument is bounded the same way as
     :func:`query_fatalities_for_mine`.
     """
-    bounded_limit = max(1, min(int(limit), 500))
+    bounded_limit = _bound_limit(limit)
+    parquet_url = _data_url(_FATALITY_PARQUET)
+    normalized_state = _normalize_state(state)
     con = _connection()
-    if state and _STATE_ABBR_PATTERN.fullmatch(state.strip().upper()):
+    if normalized_state:
         rows = con.execute(
             _RECENT_FATALITIES_BY_STATE_SQL,
-            [
-                _data_url("mrt/fatality_narratives"),
-                state.strip().upper(),
-                bounded_limit,
-            ],
+            [parquet_url, normalized_state, bounded_limit],
         ).fetchall()
     else:
         rows = con.execute(
             _RECENT_FATALITIES_SQL,
-            [_data_url("mrt/fatality_narratives"), bounded_limit],
+            [parquet_url, bounded_limit],
         ).fetchall()
     return [_row_to_fatality_dict(r) for r in rows]

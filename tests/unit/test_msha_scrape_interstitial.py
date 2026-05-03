@@ -107,7 +107,7 @@ class TestRedactVictim:
             "Mr. Smith died at the scene.",
             "CONCLUSION": "Smith was checking the longwall when the accident occurred.",
         }
-        out, warning = parser._redact_victim(sections)
+        out, _ = parser._redact_victim(sections)
         assert "John Smith" not in out["OVERVIEW"]
         assert "Mr. Smith" not in out["OVERVIEW"]
         assert "Smith was checking" not in out["CONCLUSION"]
@@ -133,6 +133,20 @@ class TestRedactVictim:
         _, warning = parser._redact_victim(sections)
         # "Bob Roberts" is two consecutive capitalized words — heuristic flag.
         assert warning is True
+
+    def test_escapes_regex_metachars_in_victim_name(self):
+        """Names with periods or other regex metacharacters (middle initials,
+        suffixes) must be escaped before being substituted in — otherwise the
+        period acts as a wildcard and the redaction could either over-match
+        unrelated text or miss the literal name."""
+        sections = {
+            "OVERVIEW": "John A. Smith Jr., a 42-year-old foreman, was injured.",
+            "CONCLUSION": "John A. Smith Jr. was last seen entering the section.",
+        }
+        out, _ = parser._redact_victim(sections)
+        assert "John A. Smith Jr." not in out["OVERVIEW"]
+        assert "John A. Smith Jr." not in out["CONCLUSION"]
+        assert "the foreman" in out["OVERVIEW"]
 
 
 class TestExtractMetadataIsolated:
@@ -273,17 +287,20 @@ class TestFetchInterstitial:
             content = b"<html></html>"
 
             def raise_for_status(self):
-                pass
+                # Test double: every fake response is a 200 OK.
+                return None
 
         class FakeClient:
             def __init__(self, *a, **kw):
-                pass
+                # Test double: ignores constructor args.
+                return None
 
             def __enter__(self):
                 return self
 
             def __exit__(self, *a):
-                pass
+                # Test double: nothing to clean up.
+                return None
 
             def get(self, url, headers=None):
                 captured["url"] = url

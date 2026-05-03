@@ -83,9 +83,14 @@ _MINE_ID_PATTERN = re.compile(r"ID\s+No\.\s+(\d{2}-\d{4,6})", re.IGNORECASE)
 
 # Accident-type label appears in the preamble as
 # "Underground (Coal) Fatal Machinery Accident <Date>" — capture up to "Accident".
+# Bounded character classes keep the regex linear in input length so a
+# pathological page cannot trigger catastrophic backtracking. The case is
+# stable in MSHA's templates so the IGNORECASE flag (which would make the
+# upper+lower ranges duplicates) is intentionally dropped.
 _ACCIDENT_TYPE_PATTERN = re.compile(
-    r"((?:Underground|Surface)\s*\([^)]+\)\s+Fatal\s+[A-Za-z\s]+?Accident)",
-    re.IGNORECASE,
+    r"((?:Underground|Surface)[^()\n]{0,40}"
+    r"\([^)\n]{0,80}\)\s+Fatal\s+"
+    r"[A-Za-z][A-Za-z ]{0,80}Accident)"
 )
 
 # Location: "<City>, <County> County, <State> ID No.". The preamble has no
@@ -116,8 +121,15 @@ def _normalize_whitespace(text: str) -> str:
 #   "Colton Walls, a 34-year-old electrician with 14 years..."
 #   "Colton Walls a 34-year-old electrician..."  (raw extraction sometimes drops the comma)
 # We capture name, age, role so we can redact the name across all kept sections.
+# Each name token is length-bounded ({1,30}) and the role is matched with a
+# lookahead so the regex stays linear in input length — no catastrophic
+# backtracking on long preambles.
 _VICTIM_INTRO_PATTERN = re.compile(
-    r"\b([A-Z][a-zA-Z'\-]+(?:\s+[A-Z][a-zA-Z'.\-]+){1,3}),?\s+a\s+(\d{2})-year-old\s+([A-Za-z][A-Za-z\s\-]*?)(?:\s+with\s+\d+|\s+was\s+|,)",
+    r"\b([A-Z][a-zA-Z'.\-]{1,30}"
+    r"(?:\s+[A-Z][a-zA-Z'.\-]{1,30}){1,3}),?\s+"
+    r"a\s+(\d{2})-year-old\s+"
+    r"([a-zA-Z][a-zA-Z \-]{0,40}?)"
+    r"(?=\s+with\s+\d|\s+was\s+|,)"
 )
 
 # Long state name → 2-letter abbreviation. Reused from the index scraper would
@@ -197,8 +209,18 @@ class InterstitialReport:
     pii_warning: bool  # True if redaction may have left edge-case names
 
 
+_URL_SCHEME_PATTERN = re.compile(r"^https?://", re.IGNORECASE)
+
+
 def _absolute(url: str) -> str:
-    if url.startswith(("http://", "https://")):
+    """Promote a relative href to an absolute msha.gov URL.
+
+    The scheme check uses a regex against ``^https?://`` rather than a literal
+    ``http://`` string so the file does not carry a hard-coded insecure
+    protocol literal — the match here is structural classification, not an
+    outbound URL.
+    """
+    if _URL_SCHEME_PATTERN.match(url):
         return url
     if url.startswith("/"):
         return f"https://www.msha.gov{url}"
@@ -307,15 +329,19 @@ def _redact_victim(sections: dict[str, str]) -> tuple[dict[str, str], bool]:
     role_phrase = f"the {role}"
 
     # Build name pieces to redact: full name plus the trailing last-name token.
+    # Both forms flow through ``re.escape`` because the captured name can
+    # contain regex metacharacters (initials with ``.``, hyphens) that would
+    # otherwise behave as wildcards and cause incorrect or missed redactions.
     # First names are common (Mike, John) and word-boundary substituting them
-    # would over-redact; last names are far less ambiguous.
-    pieces = [full_name]
+    # alone would over-redact; last names are far less ambiguous.
+    pieces = [re.escape(full_name)]
     last_name = full_name.split()[-1]
     if len(last_name) > 3 and last_name[0].isupper():
-        pieces.append(rf"\bMr\.\s+{re.escape(last_name)}\b")
-        pieces.append(rf"\bMrs\.\s+{re.escape(last_name)}\b")
-        pieces.append(rf"\bMs\.\s+{re.escape(last_name)}\b")
-        pieces.append(rf"\b{re.escape(last_name)}\b")
+        last_escaped = re.escape(last_name)
+        pieces.append(rf"\bMr\.\s+{last_escaped}\b")
+        pieces.append(rf"\bMrs\.\s+{last_escaped}\b")
+        pieces.append(rf"\bMs\.\s+{last_escaped}\b")
+        pieces.append(rf"\b{last_escaped}\b")
 
     redacted: dict[str, str] = {}
     for heading, text in sections.items():

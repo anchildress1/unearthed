@@ -230,7 +230,7 @@ class TestBuildArrowTable:
 
 class TestWriteParquet:
     def test_writes_atomic_parquet_readable_by_pyarrow(self, fixtures):
-        manifest_path, _, out_path = fixtures
+        _, _, out_path = fixtures
         manifest = [
             {
                 "fatality_url": "https://x.test/foo",

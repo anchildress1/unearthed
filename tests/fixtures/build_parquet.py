@@ -180,6 +180,10 @@ def write_msha_mines_fixture(target_dir: Path) -> Path:
     return out
 
 
+_FIXTURE_SIC_COAL = "Coal (Bituminous)"
+_FIXTURE_FINAL_REPORT_URL = "https://www.msha.gov/.../final-report"
+
+
 def write_fatality_narratives_fixture(target_dir: Path) -> Path:
     """Write the FATALITY_NARRATIVES fixture under ``target_dir/mrt/``.
 
@@ -206,11 +210,11 @@ def write_fatality_narratives_fixture(target_dir: Path) -> Path:
             "MINE_TYPE": "Underground",
             "ACCIDENT_CLASSIFICATION": "Machinery",
             "ACCIDENT_TYPE_LABEL": "Underground (Coal) Fatal Machinery Accident",
-            "PRIMARY_SIC": "Coal (Bituminous)",
+            "PRIMARY_SIC": _FIXTURE_SIC_COAL,
             "FATALITY_URL": "https://www.msha.gov/.../september-28-2024-fatality",
             "REPORT_STATUS": "final",
             "REPORT_SOURCE": "msha_final",
-            "FINAL_REPORT_URL": "https://www.msha.gov/.../final-report",
+            "FINAL_REPORT_URL": _FIXTURE_FINAL_REPORT_URL,
             "PDF_URL": "https://www.msha.gov/.../leer.pdf",
             "PDF_FILENAME": "Final Report - Leer Mine.pdf",
             "SECTION_OVERVIEW": "On September 28, ... the electrician was injured.",
@@ -230,11 +234,11 @@ def write_fatality_narratives_fixture(target_dir: Path) -> Path:
             "MINE_TYPE": "Underground",
             "ACCIDENT_CLASSIFICATION": "Powered Haulage",
             "ACCIDENT_TYPE_LABEL": "Underground (Coal) Fatal Powered Haulage Accident",
-            "PRIMARY_SIC": "Coal (Bituminous)",
+            "PRIMARY_SIC": _FIXTURE_SIC_COAL,
             "FATALITY_URL": "https://www.msha.gov/.../august-5-2024-fatality",
             "REPORT_STATUS": "final",
             "REPORT_SOURCE": "msha_final",
-            "FINAL_REPORT_URL": "https://www.msha.gov/.../final-report",
+            "FINAL_REPORT_URL": _FIXTURE_FINAL_REPORT_URL,
             "PDF_URL": "https://www.msha.gov/.../leer-aug.pdf",
             "PDF_FILENAME": "Final Report - Leer Mine August.pdf",
             "SECTION_OVERVIEW": "On August 5, ... the miner was struck.",
@@ -255,7 +259,7 @@ def write_fatality_narratives_fixture(target_dir: Path) -> Path:
             "MINE_TYPE": "Underground",
             "ACCIDENT_CLASSIFICATION": "Powered Haulage",
             "ACCIDENT_TYPE_LABEL": "",
-            "PRIMARY_SIC": "Coal (Bituminous)",
+            "PRIMARY_SIC": _FIXTURE_SIC_COAL,
             "FATALITY_URL": "https://www.msha.gov/.../april-3-2026-fatality",
             "REPORT_STATUS": "preliminary",
             "REPORT_SOURCE": "msha_preliminary",
@@ -280,11 +284,11 @@ def write_fatality_narratives_fixture(target_dir: Path) -> Path:
             "MINE_TYPE": "Surface",
             "ACCIDENT_CLASSIFICATION": "Slip or Fall of Person",
             "ACCIDENT_TYPE_LABEL": "Surface (Coal) Fatal Slip or Fall Accident",
-            "PRIMARY_SIC": "Coal (Bituminous)",
+            "PRIMARY_SIC": _FIXTURE_SIC_COAL,
             "FATALITY_URL": "https://www.msha.gov/.../june-15-2023-fatality",
             "REPORT_STATUS": "final",
             "REPORT_SOURCE": "msha_final",
-            "FINAL_REPORT_URL": "https://www.msha.gov/.../final-report",
+            "FINAL_REPORT_URL": _FIXTURE_FINAL_REPORT_URL,
             "PDF_URL": "https://www.msha.gov/.../edge.pdf",
             "PDF_FILENAME": "Final Report - Edge.pdf",
             "SECTION_OVERVIEW": "On June 15, the miner fell from a height.",

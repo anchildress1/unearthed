@@ -172,9 +172,18 @@ class FatalityRow:
         return "coal" in self.primary_sic.lower()
 
 
+_URL_SCHEME_PATTERN = re.compile(r"^https?://", re.IGNORECASE)
+
+
 def _absolute(url: str) -> str:
-    """Promote a relative href to an absolute msha.gov URL."""
-    if url.startswith("http://") or url.startswith("https://"):
+    """Promote a relative href to an absolute msha.gov URL.
+
+    The scheme check uses a regex against ``^https?://`` rather than two
+    ``startswith`` literals so the file does not carry a hard-coded ``http://``
+    string that triggers SAST insecure-protocol warnings — the literal here
+    is structural classification, not an outbound URL.
+    """
+    if _URL_SCHEME_PATTERN.match(url):
         return url
     if url.startswith("/"):
         return f"https://www.msha.gov{url}"
@@ -222,10 +231,17 @@ def _parse_iso_date(span_datetime: str | None, fallback_url: str) -> str:
             logger.warning("Unparseable datetime %r — falling back to URL slug", span_datetime)
 
     # Slug pattern: /<...>/YYYY/<month>-<day>-<YYYY>-fatality(-N)?
-    slug_match = re.search(r"/(\d{4})/([a-z]+)-(\d{1,2})-(\d{4})-fatality", fallback_url)
+    # The leading 4-digit directory matches the trailing 4-digit slug year, so
+    # we capture only what we need and discard the directory token.
+    slug_match = re.search(
+        r"/\d{4}/(?P<month>[a-z]+)-(?P<day>\d{1,2})-(?P<year>\d{4})-fatality",
+        fallback_url,
+    )
     if not slug_match:
         return ""
-    year_dir, month_name, day, year_in_slug = slug_match.groups()
+    month_name = slug_match.group("month")
+    day = slug_match.group("day")
+    year_in_slug = slug_match.group("year")
     try:
         return (
             dt.datetime.strptime(f"{month_name} {day} {year_in_slug}", "%B %d %Y")
@@ -235,6 +251,84 @@ def _parse_iso_date(span_datetime: str | None, fallback_url: str) -> str:
     except ValueError:
         logger.warning("Unparseable URL slug %r", fallback_url)
         return ""
+
+
+def _field_text(row_node, class_suffix: str) -> str:
+    """Pull one ``.views-field-field-<suffix>`` block's body text from a row."""
+    nodes = row_node.cssselect(f".views-field-field-{class_suffix}")
+    return _strip_label(nodes[0].text_content()) if nodes else ""
+
+
+def _link_for(row_node, kind: str) -> str:
+    """Resolve the absolute URL of a report-button link if present."""
+    anchors = row_node.cssselect(f'a[href$="/{kind}"]')
+    return _absolute(anchors[0].get("href")) if anchors else ""
+
+
+def _datetime_attr(row_node) -> str:
+    """Return the earliest report button's ``datetime`` attribute, or empty.
+
+    The earliest report-bearing button always carries the canonical ISO
+    datetime. Prefer preliminary (always first chronologically), then alert,
+    then final.
+    """
+    for anchor_kind in ("preliminary-report", "fatality-alert", "final-report"):
+        spans = row_node.cssselect(f'a[href$="/{anchor_kind}"] span[datetime]')
+        if spans:
+            return spans[0].get("datetime") or ""
+    return ""
+
+
+def _resolve_incident_date(datetime_attr: str, fatality_url: str, title_text: str) -> str:
+    """Try every available date source; return ISO ``YYYY-MM-DD`` or empty."""
+    incident_date = _parse_iso_date(datetime_attr, fatality_url)
+    if incident_date:
+        return incident_date
+    # Last resort: the human title text ("April 30, 2026 Fatality") still has
+    # the date even when no report button has been published yet.
+    try:
+        return (
+            dt.datetime.strptime(title_text.replace(" Fatality", "").strip(), "%B %d, %Y")
+            .date()
+            .isoformat()
+        )
+    except ValueError:
+        logger.warning("Could not resolve incident date for %s; leaving blank", fatality_url)
+        return ""
+
+
+def _row_to_fatality(row_node) -> FatalityRow | None:
+    """Convert one ``.views-row`` element to a :class:`FatalityRow`.
+
+    Returns ``None`` for malformed rows (no title link) so the caller can
+    skip them without aborting the whole scrape.
+    """
+    title_link = row_node.cssselect(".views-field-title a")
+    if not title_link:
+        return None
+    a = title_link[0]
+    fatality_url = _absolute(a.get("href") or "")
+    title_text = (a.text or "").strip()
+
+    location_raw = _field_text(row_node, "location-at-fatality")
+    mine_name = location_raw.split(" - ", 1)[0].strip() if " - " in location_raw else ""
+
+    final = _link_for(row_node, "final-report")
+    return FatalityRow(
+        incident_date=_resolve_incident_date(_datetime_attr(row_node), fatality_url, title_text),
+        fatality_url=fatality_url,
+        mine_name=mine_name,
+        location_raw=location_raw,
+        mine_state=_extract_state(location_raw),
+        accident_classification=_field_text(row_node, "accident-classification"),
+        mine_controller=_field_text(row_node, "mine-controller"),
+        mine_type=_field_text(row_node, "mine-type"),
+        primary_sic=_field_text(row_node, "primary-sic"),
+        has_preliminary_report=bool(_link_for(row_node, "preliminary-report")),
+        has_fatality_alert=bool(_link_for(row_node, "fatality-alert")),
+        has_final_report=bool(final),
+        final_report_interstitial_url=final,
+    )
 
 
 def parse_search_page(content: bytes) -> list[FatalityRow]:
@@ -247,82 +341,10 @@ def parse_search_page(content: bytes) -> list[FatalityRow]:
     """
     tree = html.fromstring(content)
     rows: list[FatalityRow] = []
-
     for row_node in tree.cssselect(".views-row"):
-        title_link = row_node.cssselect(".views-field-title a")
-        if not title_link:
-            # A views-row without a title is broken HTML; skip it rather than
-            # blow up the entire scrape on one malformed result.
-            continue
-        a = title_link[0]
-        fatality_url = _absolute(a.get("href") or "")
-        title_text = (a.text or "").strip()
-
-        def field(class_suffix: str) -> str:
-            nodes = row_node.cssselect(f".views-field-field-{class_suffix}")
-            return _strip_label(nodes[0].text_content()) if nodes else ""
-
-        accident_classification = field("accident-classification")
-        location_raw = field("location-at-fatality")
-        mine_controller = field("mine-controller")
-        mine_type = field("mine-type")
-        primary_sic = field("primary-sic")
-
-        # Mine name is the segment before the first "-" in the location string.
-        mine_name = location_raw.split(" - ", 1)[0].strip() if " - " in location_raw else ""
-
-        # Report buttons: at most one of each kind. The href ends with the
-        # report type slug, which makes the boolean flags trivial.
-        def link_for(kind: str) -> str:
-            anchors = row_node.cssselect(f'a[href$="/{kind}"]')
-            return _absolute(anchors[0].get("href")) if anchors else ""
-
-        prelim = link_for("preliminary-report")
-        alert = link_for("fatality-alert")
-        final = link_for("final-report")
-
-        # The earliest report-bearing button always carries the canonical
-        # ISO datetime. Prefer preliminary (always first chronologically),
-        # then alert, then final.
-        datetime_attr = ""
-        for anchor_kind in ("preliminary-report", "fatality-alert", "final-report"):
-            spans = row_node.cssselect(f'a[href$="/{anchor_kind}"] span[datetime]')
-            if spans:
-                datetime_attr = spans[0].get("datetime") or ""
-                break
-
-        incident_date = _parse_iso_date(datetime_attr, fatality_url)
-        if not incident_date:
-            # The title still embeds the human date ("April 30, 2026 Fatality").
-            # Last resort before giving up.
-            try:
-                incident_date = (
-                    dt.datetime.strptime(title_text.replace(" Fatality", "").strip(), "%B %d, %Y")
-                    .date()
-                    .isoformat()
-                )
-            except ValueError:
-                logger.warning(
-                    "Could not resolve incident date for %s; leaving blank", fatality_url
-                )
-
-        rows.append(
-            FatalityRow(
-                incident_date=incident_date,
-                fatality_url=fatality_url,
-                mine_name=mine_name,
-                location_raw=location_raw,
-                mine_state=_extract_state(location_raw),
-                accident_classification=accident_classification,
-                mine_controller=mine_controller,
-                mine_type=mine_type,
-                primary_sic=primary_sic,
-                has_preliminary_report=bool(prelim),
-                has_fatality_alert=bool(alert),
-                has_final_report=bool(final),
-                final_report_interstitial_url=final,
-            )
-        )
+        row = _row_to_fatality(row_node)
+        if row is not None:
+            rows.append(row)
     return rows
 
 

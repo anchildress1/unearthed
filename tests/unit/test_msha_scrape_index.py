@@ -264,17 +264,20 @@ class TestFetchSearchPage:
             content = b"<html></html>"
 
             def raise_for_status(self):
-                pass
+                # Test double: every fake response is a 200 OK.
+                return None
 
         class FakeClient:
             def __init__(self, *args, **kwargs):
-                pass
+                # Test double: ignores constructor args.
+                return None
 
             def __enter__(self):
                 return self
 
             def __exit__(self, *args):
-                pass
+                # Test double: nothing to clean up.
+                return None
 
             def get(self, url, headers=None):
                 captured["url"] = url

@@ -126,72 +126,66 @@ def _truthy(value: str) -> bool:
     return str(value).strip().lower() == "true"
 
 
-def _resolve_county_from_manifest(location_raw: str) -> str:
-    """Best-effort county extraction from the manifest's ``location`` field.
+def _resolve_report_status(*, has_final: bool, has_prelim: bool) -> tuple[str, str]:
+    """Return ``(REPORT_STATUS, REPORT_SOURCE)`` from manifest flags alone.
 
-    Format: ``<Mine Name> - <City>, <State>``. The manifest does not carry
-    county at all — so we return empty and let the interstitial fill it.
+    Status reflects what MSHA has *published*, not whether the build pipeline
+    successfully fetched the interstitial — keying off ``has_final`` only
+    keeps the two signals consistent: a row with ``has_final=True`` always
+    reads ``REPORT_STATUS='final'`` even if section text is missing because
+    the interstitial fetch failed. The companion ``SECTION_*`` columns and
+    ``MINE_ID`` field tell the runtime whether the deeper extraction landed.
     """
-    return ""
+    if has_final:
+        return ("final", "msha_final")
+    if has_prelim:
+        return ("preliminary", "msha_preliminary")
+    return ("none", "")
+
+
+def _build_record(row: dict, inter: dict) -> FatalityRecord:
+    """Build one :class:`FatalityRecord` by joining a manifest row with its
+    (possibly empty) interstitial dict.
+
+    Interstitial values win where they exist — they are the more
+    authoritative source — and fall back to manifest values otherwise.
+    """
+    sections = inter.get("sections") or {}
+    has_final = _truthy(row.get("has_final_report", "False"))
+    has_prelim = _truthy(row.get("has_preliminary_report", "False"))
+    status, source = _resolve_report_status(has_final=has_final, has_prelim=has_prelim)
+    return FatalityRecord(
+        MINE_ID=str(inter.get("mine_id") or ""),
+        INCIDENT_DATE=str(inter.get("incident_date") or row.get("incident_date") or ""),
+        MINE_NAME=str(row.get("mine_name") or ""),
+        MINE_OPERATOR=str(row.get("mine_controller") or ""),
+        MINE_STATE=str(inter.get("state") or row.get("mine_state") or ""),
+        # The manifest's `location_raw` carries no county; interstitial fills it.
+        MINE_COUNTY=str(inter.get("county") or ""),
+        MINE_CITY=str(inter.get("city") or ""),
+        MINE_TYPE=str(row.get("mine_type") or ""),
+        ACCIDENT_CLASSIFICATION=str(row.get("accident_classification") or ""),
+        ACCIDENT_TYPE_LABEL=str(inter.get("accident_type_label") or ""),
+        PRIMARY_SIC=str(row.get("primary_sic") or ""),
+        FATALITY_URL=row.get("fatality_url", ""),
+        REPORT_STATUS=status,
+        REPORT_SOURCE=source,
+        FINAL_REPORT_URL=str(row.get("final_report_interstitial_url") or ""),
+        PDF_URL=str(inter.get("pdf_url") or ""),
+        PDF_FILENAME=str(inter.get("pdf_filename") or ""),
+        SECTION_OVERVIEW=str(sections.get("OVERVIEW") or ""),
+        SECTION_ROOT_CAUSE_ANALYSIS=str(sections.get("ROOT CAUSE ANALYSIS") or ""),
+        SECTION_CONCLUSION=str(sections.get("CONCLUSION") or ""),
+        SECTION_ENFORCEMENT_ACTIONS=str(sections.get("ENFORCEMENT ACTIONS") or ""),
+        PII_WARNING=bool(inter.get("pii_warning", False)),
+    )
 
 
 def merge_records(manifest: list[dict], interstitials: dict[str, dict]) -> list[FatalityRecord]:
-    """Join one manifest row with at most one interstitial record."""
-    out: list[FatalityRecord] = []
-    for row in manifest:
-        url = row.get("fatality_url", "")
-        inter = interstitials.get(url, {})
-
-        has_final = _truthy(row.get("has_final_report", "False"))
-        has_prelim = _truthy(row.get("has_preliminary_report", "False"))
-        sections = inter.get("sections", {}) or {}
-
-        # Report status / source signal what the agent can quote from. ``final``
-        # outranks ``preliminary`` outranks ``none``. The agent's skill prompt
-        # uses these flags to decide whether to surface section text or fall
-        # back to the search-index metadata only.
-        if has_final and inter:
-            report_status = "final"
-            report_source = "msha_final"
-        elif has_prelim:
-            report_status = "preliminary"
-            report_source = "msha_preliminary"
-        else:
-            report_status = "none"
-            report_source = ""
-
-        # Prefer interstitial values where they exist (richer, more authoritative);
-        # fall back to manifest values where the interstitial lacks the field.
-        out.append(
-            FatalityRecord(
-                MINE_ID=str(inter.get("mine_id") or ""),
-                INCIDENT_DATE=str(inter.get("incident_date") or row.get("incident_date") or ""),
-                MINE_NAME=str(row.get("mine_name") or ""),
-                MINE_OPERATOR=str(row.get("mine_controller") or ""),
-                MINE_STATE=str(inter.get("state") or row.get("mine_state") or ""),
-                MINE_COUNTY=str(
-                    inter.get("county")
-                    or _resolve_county_from_manifest(row.get("location_raw", ""))
-                ),
-                MINE_CITY=str(inter.get("city") or ""),
-                MINE_TYPE=str(row.get("mine_type") or ""),
-                ACCIDENT_CLASSIFICATION=str(row.get("accident_classification") or ""),
-                ACCIDENT_TYPE_LABEL=str(inter.get("accident_type_label") or ""),
-                PRIMARY_SIC=str(row.get("primary_sic") or ""),
-                FATALITY_URL=url,
-                REPORT_STATUS=report_status,
-                REPORT_SOURCE=report_source,
-                FINAL_REPORT_URL=str(row.get("final_report_interstitial_url") or ""),
-                PDF_URL=str(inter.get("pdf_url") or ""),
-                PDF_FILENAME=str(inter.get("pdf_filename") or ""),
-                SECTION_OVERVIEW=str(sections.get("OVERVIEW") or ""),
-                SECTION_ROOT_CAUSE_ANALYSIS=str(sections.get("ROOT CAUSE ANALYSIS") or ""),
-                SECTION_CONCLUSION=str(sections.get("CONCLUSION") or ""),
-                SECTION_ENFORCEMENT_ACTIONS=str(sections.get("ENFORCEMENT ACTIONS") or ""),
-                PII_WARNING=bool(inter.get("pii_warning", False)),
-            )
-        )
-    return out
+    """Join each manifest row with at most one interstitial record."""
+    return [
+        _build_record(row, interstitials.get(row.get("fatality_url", ""), {})) for row in manifest
+    ]
 
 
 def build_arrow_table(records: list[FatalityRecord]) -> pa.Table:
