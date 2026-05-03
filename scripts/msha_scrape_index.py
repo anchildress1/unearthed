@@ -338,7 +338,14 @@ def parse_search_page(content: bytes) -> list[FatalityRow]:
     calls happen elsewhere. The MSHA page is server-rendered Drupal — the
     structure is stable per release and we key off the ``views-field-*``
     classes Drupal generates, not the visual layout.
+
+    Returns ``[]`` for empty/whitespace-only content. ``iter_year_pages``
+    treats that as end-of-year, so a page with no results (legitimate
+    empty year, e.g. 2007 has zero coal fatalities indexed in this view)
+    terminates pagination cleanly instead of raising ``ParserError``.
     """
+    if not content or not content.strip():
+        return []
     tree = html.fromstring(content)
     rows: list[FatalityRow] = []
     for row_node in tree.cssselect(".views-row"):
@@ -348,8 +355,25 @@ def parse_search_page(content: bytes) -> list[FatalityRow]:
     return rows
 
 
+class MshaFetchError(RuntimeError):
+    """Raised when MSHA returns something we cannot parse.
+
+    Carries the URL, status code, and body length so a CI log surfaces
+    enough context to distinguish a WAF block (200 + empty body, or 202
+    Accepted) from a real schema change.
+    """
+
+
 def fetch_search_page(year: int, page: int, *, throttle: float = DEFAULT_THROTTLE_SECONDS) -> bytes:
-    """Fetch one page of search results. Honors the throttle delay."""
+    """Fetch one page of search results. Honors the throttle delay.
+
+    Demands ``200 OK`` and a non-empty body. MSHA's WAF has been observed
+    returning ``202 Accepted`` with an empty body for GHA-runner IPs;
+    httpx treats 2xx as success, so without an explicit check the empty
+    body silently flows into the parser and breaks downstream. Failing
+    loudly here turns that into a diagnosable CI red instead of a stale
+    artifact.
+    """
     params = {
         "field_mine_category_target_id": COAL_CATEGORY_ID,
         "year": str(year),
@@ -360,6 +384,18 @@ def fetch_search_page(year: int, page: int, *, throttle: float = DEFAULT_THROTTL
     with httpx.Client(timeout=30.0, follow_redirects=True) as client:
         response = client.get(url, headers={"User-Agent": USER_AGENT})
         response.raise_for_status()
+    if response.status_code != 200:
+        raise MshaFetchError(
+            f"MSHA returned status {response.status_code} for {url} "
+            f"(body={len(response.content)} bytes). Likely WAF / bot block "
+            f"from this runner IP — re-run from a different network or "
+            f"pin User-Agent."
+        )
+    if not response.content or not response.content.strip():
+        raise MshaFetchError(
+            f"MSHA returned empty body (status={response.status_code}) for {url}. "
+            f"Likely WAF / BigPipe stream truncation from this runner IP."
+        )
     if throttle > 0:
         time.sleep(throttle)
     return response.content

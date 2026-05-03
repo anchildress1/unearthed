@@ -5,13 +5,18 @@ name: Refresh MSHA fatality narratives
 # The runtime FastAPI service reads R2 directly via DuckDB httpfs, so a new
 # upload propagates without a deploy. No PR review loop — the schedule
 # refreshes the data and the website picks it up on the next request.
+#
+# Sharded: each year scrapes in its own matrix shard so a single year
+# blocked by MSHA's WAF / a transient 202 / a parser regression does not
+# kill the rest. fail-fast is disabled; the finish job runs on whatever
+# shards succeeded and aborts only if every shard failed.
 
 on:
   # MSHA Fatal Investigation Reports trail incidents by 6-18 months, so an
   # annual refresh in early January catches every report finalized through
   # the prior calendar year. Manual dispatch is also wired for ad-hoc reruns.
   schedule:
-    - cron: "0 6 1 1 *"  # Jan 1, 06:00 UTC
+    - cron: "0 6 1 1 *" # Jan 1, 06:00 UTC
   workflow_dispatch:
     inputs:
       year:
@@ -23,14 +28,48 @@ concurrency:
   group: refresh-msha-fatalities-${{ github.ref }}
   cancel-in-progress: true
 
-jobs:
-  refresh:
-    name: Scrape MSHA + upload parquet to R2
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
+permissions:
+  contents: read
 
-    permissions:
-      contents: read
+jobs:
+  setup:
+    name: Compute matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      years: ${{ steps.compute.outputs.years }}
+    steps:
+      - name: Compute year list
+        id: compute
+        # Dispatch input flows through env (never interpolated directly into
+        # the run script) and is validated as 4 digits before reaching jq.
+        # Matrix values from setup are committed JSON, not user-controlled.
+        env:
+          REFRESH_YEAR: ${{ inputs.year }}
+        run: |
+          if [ -n "$REFRESH_YEAR" ]; then
+            if ! [[ "$REFRESH_YEAR" =~ ^[0-9]{4}$ ]]; then
+              echo "Invalid year input: $REFRESH_YEAR" >&2
+              exit 1
+            fi
+            years="[\"$REFRESH_YEAR\"]"
+          else
+            years=$(seq 2007 "$(date +%Y)" | jq -R . | jq -sc .)
+          fi
+          echo "years=$years" >> "$GITHUB_OUTPUT"
+          echo "Matrix years: $years"
+
+  scrape-year:
+    name: Scrape ${{ matrix.year }}
+    needs: setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      # One year's failure (WAF block, parser regression, transient 202)
+      # must not cancel the other shards — we want partial successes to land.
+      fail-fast: false
+      matrix:
+        year: ${{ fromJson(needs.setup.outputs.years) }}
 
     steps:
       - name: Checkout repository
@@ -45,23 +84,55 @@ jobs:
       - name: Install Python dependencies
         run: uv sync --frozen
 
-      - name: Scrape MSHA search index
-        # Year input is dispatched-input (user-controlled) so it flows through
-        # an env var before reaching the shell — never interpolated directly
-        # into the run: script body. The validation at the end of the step
-        # rejects anything that isn't a 4-digit year.
+      - name: Scrape index for ${{ matrix.year }}
+        # Matrix value flows through env so the shell never sees raw
+        # interpolation in the run body. Setup validates the year format
+        # upstream; this is defense in depth.
         env:
-          REFRESH_YEAR: ${{ inputs.year }}
+          SHARD_YEAR: ${{ matrix.year }}
         run: |
-          if [ -n "$REFRESH_YEAR" ]; then
-            if ! [[ "$REFRESH_YEAR" =~ ^[0-9]{4}$ ]]; then
-              echo "Invalid year input: $REFRESH_YEAR" >&2
-              exit 1
-            fi
-            uv run python -m scripts.msha_scrape_index --year "$REFRESH_YEAR"
-          else
-            uv run python -m scripts.msha_scrape_index
-          fi
+          uv run python -m scripts.msha_scrape_index \
+            --year "$SHARD_YEAR" \
+            --out "data/msha/manifest_${SHARD_YEAR}.csv"
+
+      - name: Upload per-year manifest
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: manifest-${{ matrix.year }}
+          path: data/msha/manifest_${{ matrix.year }}.csv
+          retention-days: 30
+          if-no-files-found: warn
+
+  finish:
+    name: Aggregate + build parquet + upload
+    needs: scrape-year
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install Python dependencies
+        run: uv sync --frozen
+
+      - name: Download per-year manifests
+        uses: actions/download-artifact@v6
+        with:
+          pattern: manifest-*
+          path: data/msha
+          merge-multiple: true
+
+      - name: Merge into single manifest
+        run: uv run python -m scripts.msha_merge_manifests
 
       - name: Parse interstitial pages
         run: uv run python -m scripts.msha_scrape_interstitial
@@ -77,12 +148,13 @@ jobs:
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
         run: uv run python -m scripts.upload_to_r2 --src data/parquet
 
-      - name: Upload manifest as build artifact
+      - name: Upload merged manifest + interstitials as artifact
         uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: msha-manifest-${{ github.run_id }}
+          name: msha-aggregated-${{ github.run_id }}
           path: |
             data/msha/manifest.csv
             data/msha/interstitials.json
           retention-days: 30
+          if-no-files-found: warn

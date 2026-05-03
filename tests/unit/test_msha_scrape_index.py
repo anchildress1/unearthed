@@ -262,6 +262,7 @@ class TestFetchSearchPage:
 
         class FakeResponse:
             content = b"<html></html>"
+            status_code = 200
 
             def raise_for_status(self):
                 # Test double: every fake response is a 200 OK.
@@ -292,3 +293,60 @@ class TestFetchSearchPage:
         assert "page=1" in captured["url"]
         assert "User-Agent" in captured["headers"]
         assert "unearthed-coal-data" in captured["headers"]["User-Agent"]
+
+    @pytest.mark.parametrize(
+        ("status_code", "body"),
+        [
+            (202, b"<html></html>"),  # WAF "accepted-but-empty" pattern
+            (200, b""),  # honest 200 with truncated body
+            (200, b"   \n  "),  # whitespace-only
+        ],
+    )
+    def test_rejects_non_200_or_empty_body(self, monkeypatch, status_code, body):
+        """200-only and non-empty body required.
+
+        MSHA's WAF was observed returning ``202 + empty body`` for GHA
+        runner IPs. ``raise_for_status`` doesn't trip on 2xx, so without
+        these explicit guards the parser saw ``b""`` and raised an
+        opaque ``lxml.etree.ParserError``. Now the failure is a clean
+        ``MshaFetchError`` naming the URL and status — diagnosable in
+        CI logs.
+        """
+
+        class FakeResponse:
+            def __init__(self, status_code: int, body: bytes) -> None:
+                self.status_code = status_code
+                self.content = body
+
+            def raise_for_status(self):
+                # Test double: 2xx never raises (mirrors httpx semantics).
+                return None
+
+        class FakeClient:
+            def __init__(self, *args, **kwargs):
+                return None
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return None
+
+            def get(self, url, headers=None):
+                return FakeResponse(status_code, body)
+
+        monkeypatch.setattr(scraper.httpx, "Client", FakeClient)
+        with pytest.raises(scraper.MshaFetchError):
+            scraper.fetch_search_page(2024, 0, throttle=0)
+
+
+class TestParseSearchPageEmptyDefenses:
+    """Parser must tolerate empty / whitespace bodies."""
+
+    @pytest.mark.parametrize("content", [b"", b"   ", b"\n\n  \n"])
+    def test_returns_empty_list_for_blank_content(self, content):
+        # iter_year_pages treats [] as end-of-year, so blank bodies must
+        # produce []  rather than raise — that's the contract that makes
+        # legitimately-empty years (e.g. 2007 has zero coal fatalities
+        # indexed in this view) terminate cleanly.
+        assert scraper.parse_search_page(content) == []
