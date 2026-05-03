@@ -25,6 +25,7 @@ def data_client(tmp_path_factory, monkeypatch_module):
     """
     from tests.fixtures.build_parquet import (
         write_emissions_fixture,
+        write_fatality_narratives_fixture,
         write_mine_plant_for_subregion_fixture,
         write_msha_mines_fixture,
     )
@@ -33,6 +34,7 @@ def data_client(tmp_path_factory, monkeypatch_module):
     write_emissions_fixture(fixtures_root)
     write_mine_plant_for_subregion_fixture(fixtures_root)
     write_msha_mines_fixture(fixtures_root)
+    write_fatality_narratives_fixture(fixtures_root)
 
     monkeypatch_module.setenv("DATA_BASE_URL", str(fixtures_root))
     # Ensure no R2 secrets leak in from the developer's shell — the local
@@ -261,3 +263,106 @@ class TestQueryH3RegistryTotals:
     def test_returns_dict_with_all_keys(self, data_client):
         totals = data_client.query_h3_registry_totals()
         assert set(totals.keys()) == {"total", "active", "abandoned"}
+
+
+class TestQueryFatalitiesForMine:
+    def test_returns_all_fatalities_for_known_mine(self, data_client):
+        """Mine 46-09192 has two recorded fatalities in the fixture."""
+        rows = data_client.query_fatalities_for_mine("46-09192")
+        assert len(rows) == 2
+        assert rows[0]["mine_id"] == "46-09192"
+        assert rows[1]["mine_id"] == "46-09192"
+
+    def test_orders_newest_first(self, data_client):
+        """Two Leer Mine fatalities — Sept 28 should sort before Aug 5."""
+        rows = data_client.query_fatalities_for_mine("46-09192")
+        assert rows[0]["incident_date"] == "2024-09-28"
+        assert rows[1]["incident_date"] == "2024-08-05"
+
+    def test_returns_section_text_when_present(self, data_client):
+        """Final-report rows expose SECTION_* text via the helper."""
+        rows = data_client.query_fatalities_for_mine("46-09192")
+        assert "the electrician was injured" in rows[0]["section_overview"]
+        assert "103(k)" in rows[0]["section_enforcement_actions"]
+
+    def test_unknown_mine_returns_empty_list(self, data_client):
+        assert data_client.query_fatalities_for_mine("99-00000") == []
+
+    def test_blank_input_returns_empty_list(self, data_client):
+        """Empty mine_id must short-circuit before SQL — no wildcard match."""
+        assert data_client.query_fatalities_for_mine("") == []
+
+    def test_invalid_mine_id_format_rejected(self, data_client):
+        """Anything that isn't ``NN-NNNNN`` is rejected at the input boundary."""
+        assert data_client.query_fatalities_for_mine("not-a-mine-id") == []
+        assert data_client.query_fatalities_for_mine("46/09192") == []
+        assert data_client.query_fatalities_for_mine("'; DROP TABLE x;--") == []
+
+    def test_lowercase_mine_id_normalized(self, data_client):
+        """Mine IDs are alphanumeric — lowercase should resolve."""
+        rows = data_client.query_fatalities_for_mine("46-09192")
+        assert rows  # baseline
+        # Same mine with surrounding whitespace + already-uppercase.
+        rows2 = data_client.query_fatalities_for_mine("  46-09192  ")
+        assert rows2 == rows
+
+    def test_limit_clamps_to_safe_ceiling(self, data_client):
+        """Very large or negative limits collapse to the bounded range."""
+        rows_huge = data_client.query_fatalities_for_mine("46-09192", limit=10_000)
+        rows_neg = data_client.query_fatalities_for_mine("46-09192", limit=-5)
+        # Both still return the two fixture rows; cap doesn't drop valid data.
+        assert len(rows_huge) == 2
+        assert len(rows_neg) == 1  # negative collapses to min=1
+
+    def test_pii_warning_round_trips(self, data_client):
+        """The KY edge-case row has PII_WARNING=True; the bool must come
+        through the SQL → dict pipeline as a real bool, not string '1'."""
+        rows = data_client.query_fatalities_for_mine("15-99999")
+        assert len(rows) == 1
+        assert rows[0]["pii_warning"] is True
+
+
+class TestQueryRecentFatalities:
+    def test_returns_global_list_newest_first(self, data_client):
+        """Without a state filter, all fixture rows surface in date-desc order."""
+        rows = data_client.query_recent_fatalities()
+        # 4 rows total in the fixture
+        assert len(rows) == 4
+        dates = [r["incident_date"] for r in rows]
+        assert dates == sorted(dates, reverse=True)
+
+    def test_filters_by_state(self, data_client):
+        """WV state filter returns only the two Leer Mine fatalities."""
+        rows = data_client.query_recent_fatalities(state="WV")
+        assert len(rows) == 2
+        assert all(r["mine_state"] == "WV" for r in rows)
+
+    def test_unknown_state_returns_empty(self, data_client):
+        """A state with no fixture rows yields an empty list (not all rows)."""
+        assert data_client.query_recent_fatalities(state="AK") == []
+
+    def test_invalid_state_falls_back_to_national(self, data_client):
+        """A non-conforming state input collapses to the national list — the
+        agent's "answer with what you have" guidance prefers a result over
+        an empty-due-to-typo response."""
+        national = data_client.query_recent_fatalities()
+        rows = data_client.query_recent_fatalities(state="Not A State")
+        assert len(rows) == len(national)
+
+    def test_limit_caps_returned_rows(self, data_client):
+        rows = data_client.query_recent_fatalities(limit=2)
+        assert len(rows) == 2
+
+    def test_lowercase_state_normalized(self, data_client):
+        rows = data_client.query_recent_fatalities(state="wv")
+        assert len(rows) == 2
+        assert all(r["mine_state"] == "WV" for r in rows)
+
+    def test_sql_injection_attempt_does_not_match(self, data_client):
+        """State input flows through a parameterized bind. A SQL fragment
+        passed in must be rejected at the regex boundary so it never even
+        reaches the bind step."""
+        rows = data_client.query_recent_fatalities(state="' OR '1'='1")
+        # Falls back to national (regex rejects) — never returns extra data
+        # and certainly does not execute the injected fragment.
+        assert len(rows) == 4

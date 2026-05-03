@@ -1,0 +1,88 @@
+name: Refresh MSHA fatality narratives
+
+# Pulls the live MSHA fatality search index, walks each Final Report
+# interstitial, and uploads a fresh mrt/fatality_narratives.parquet to R2.
+# The runtime FastAPI service reads R2 directly via DuckDB httpfs, so a new
+# upload propagates without a deploy. No PR review loop — the schedule
+# refreshes the data and the website picks it up on the next request.
+
+on:
+  # MSHA Fatal Investigation Reports trail incidents by 6-18 months, so an
+  # annual refresh in early January catches every report finalized through
+  # the prior calendar year. Manual dispatch is also wired for ad-hoc reruns.
+  schedule:
+    - cron: "0 6 1 1 *"  # Jan 1, 06:00 UTC
+  workflow_dispatch:
+    inputs:
+      year:
+        description: "Single year to refresh (default: full historical scrape from 2007)"
+        required: false
+        type: string
+
+concurrency:
+  group: refresh-msha-fatalities-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    name: Scrape MSHA + upload parquet to R2
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install Python dependencies
+        run: uv sync --frozen
+
+      - name: Scrape MSHA search index
+        # Year input is dispatched-input (user-controlled) so it flows through
+        # an env var before reaching the shell — never interpolated directly
+        # into the run: script body. The validation at the end of the step
+        # rejects anything that isn't a 4-digit year.
+        env:
+          REFRESH_YEAR: ${{ inputs.year }}
+        run: |
+          if [ -n "$REFRESH_YEAR" ]; then
+            if ! [[ "$REFRESH_YEAR" =~ ^[0-9]{4}$ ]]; then
+              echo "Invalid year input: $REFRESH_YEAR" >&2
+              exit 1
+            fi
+            uv run python -m scripts.msha_scrape_index --year "$REFRESH_YEAR"
+          else
+            uv run python -m scripts.msha_scrape_index
+          fi
+
+      - name: Parse interstitial pages
+        run: uv run python -m scripts.msha_scrape_interstitial
+
+      - name: Build fatality narratives parquet
+        run: uv run python -m scripts.msha_build_fatality_parquet
+
+      - name: Upload parquet to R2
+        env:
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: uv run python -m scripts.upload_to_r2 --src data/parquet
+
+      - name: Upload manifest as build artifact
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: msha-manifest-${{ github.run_id }}
+          path: |
+            data/msha/manifest.csv
+            data/msha/interstitials.json
+          retention-days: 30

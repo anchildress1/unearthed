@@ -25,6 +25,12 @@ dev = [
     # scripts/ and fixture builders only — not used by the FastAPI runtime
     "pyarrow>=24,<25",
     "boto3>=1.40,<2",
+    # MSHA ingestion pipeline (scripts/msha_*): HTML scrape only — every Final
+    # Report has an HTML interstitial that mirrors the PDF, so no PDF parser
+    # ships in this branch. lxml is the parser for the search index and the
+    # interstitial pages; cssselect is lxml's CSS-selector backend.
+    "lxml>=6.0,<7",
+    "cssselect>=1.3,<2",
 ]
 
 [tool.pytest.ini_options]
