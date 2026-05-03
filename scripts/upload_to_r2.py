@@ -89,7 +89,25 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Log what would be uploaded without writing to R2.",
     )
+    parser.add_argument(
+        "--list",
+        action="store_true",
+        help="List objects currently in the bucket and exit (skip the upload path).",
+    )
     args = parser.parse_args(argv)
+
+    if args.list:
+        client = _build_client()
+        paginator = client.get_paginator("list_objects_v2")
+        total_bytes = 0
+        total_objects = 0
+        for page in paginator.paginate(Bucket=args.bucket):
+            for obj in page.get("Contents", []) or []:
+                total_objects += 1
+                total_bytes += obj["Size"]
+                logger.info("%10d  %s  s3://%s/%s", obj["Size"], obj["LastModified"].isoformat(), args.bucket, obj["Key"])
+        logger.info("Total: %d object(s), %d bytes in s3://%s/", total_objects, total_bytes, args.bucket)
+        return 0
 
     src: Path = args.src.resolve()
     if not src.is_dir():

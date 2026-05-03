@@ -162,9 +162,10 @@ unearthed/
 ```sh
 make install          # backend (uv) + frontend (pnpm)
 cp .env.example .env  # fill in credentials (see below)
-make server           # backend on :8001
-make dev              # frontend on :5173 (proxies /api to backend)
+make dev              # backend on :8001 + frontend on :5173 (Vite proxies /api → :8001)
 ```
+
+Need just one side? `make dev-backend` and `make dev-frontend` run them individually.
 
 Open http://localhost:5173.
 

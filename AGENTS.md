@@ -35,7 +35,7 @@ Subregion IDs validated with `^[A-Za-z0-9]{2,10}$`. Unknown subregions return **
 - Chat UI for Cortex Analyst: Svelte component with chips and transcript.
 - Geolocation: Browser API with permission prompt. Point-in-polygon against bundled eGRID GeoJSON runs client-side.
 - Geolocation denial or outside-US location: inline error copy on the Hero. Google Places autocomplete (restricted to US + territories) covers the state-only case — typing a state name or two-letter abbreviation surfaces valid predictions, so a separate picker isn't needed.
-- Dev: `make dev` (frontend :5173) + `make server` (backend :8001). Vite proxies API calls.
+- Dev: `make dev` runs backend (:8001) and frontend (:5173) together; Ctrl-C kills both. `make dev-backend` and `make dev-frontend` run them individually. Vite proxies `/api/*` to the backend.
 
 ### Backend
 

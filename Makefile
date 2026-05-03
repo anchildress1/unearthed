@@ -1,4 +1,4 @@
-.PHONY: install install-dev dev server test test-ci test-cov test-frontend test-e2e lhci lint clean docker-build docker-run deploy fallbacks
+.PHONY: install install-dev dev dev-frontend dev-backend test test-ci test-cov test-frontend test-e2e lhci lint clean docker-build docker-run deploy fallbacks data-export data-upload data-cutover data-verify
 
 # Install runtime dependencies
 install:
@@ -10,12 +10,21 @@ install-dev:
 	uv sync
 	cd frontend && pnpm install
 
-# Run the SvelteKit frontend (proxies API to backend on 8001)
+# Run frontend (Vite :5173) and backend (FastAPI :8001) together. Ctrl-C
+# kills both. Vite proxies /api/* to the backend, so this is the canonical
+# local-dev entry point.
 dev:
+	@bash -c 'trap "kill 0" EXIT INT TERM; \
+		(uv run uvicorn app.main:app --reload --port 8001) & \
+		(cd frontend && pnpm dev) & \
+		wait'
+
+# Run only the SvelteKit frontend (proxies /api/* to :8001).
+dev-frontend:
 	cd frontend && pnpm dev
 
-# Run the FastAPI backend
-server:
+# Run only the FastAPI backend on :8001 (autoreload).
+dev-backend:
 	uv run uvicorn app.main:app --reload --port 8001
 
 # Run the full test suite: backend pytest + frontend unit/component + e2e + Lighthouse.
@@ -63,6 +72,24 @@ fmt:
 # Generate fallback JSON files from live Snowflake
 fallbacks:
 	uv run python -m scripts.generate_fallbacks
+
+# Export every Snowflake table named in the export manifest to local Parquet,
+# validating row counts. Writes under data/parquet/{layer}/.
+data-export:
+	uv run python -m scripts.export_snowflake_to_parquet
+
+# Upload data/parquet/ to R2 (idempotent; replaces whatever is there).
+data-upload:
+	uv run python -m scripts.upload_to_r2 --src data/parquet
+
+# One-shot live cutover: Snowflake -> local Parquet -> R2.
+# Run this when R2 is empty or stale. The two steps are sequential — the
+# upload only runs if the export succeeded (row-count mismatch fails loudly).
+data-cutover: data-export data-upload
+
+# Confirm what's actually in R2 right now (uses the same boto3 client as upload).
+data-verify:
+	uv run python -m scripts.upload_to_r2 --list
 
 # Build Docker image (reads VITE_GOOGLE_MAPS_KEY from frontend/.env)
 docker-build:

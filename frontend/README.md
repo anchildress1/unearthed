@@ -4,12 +4,14 @@ SvelteKit 2 + Svelte 5 runes, served as a static site via `adapter-static`. All 
 
 ## Dev
 
+From the repo root, `make dev` runs the backend (:8001) and this frontend (:5173) together. To work on the frontend in isolation while the backend is already running elsewhere:
+
 ```sh
 pnpm install
 pnpm dev          # :5173, proxies /api to :8001
 ```
 
-Backend must be running separately (`make server` from repo root).
+Or `make dev-frontend` from the repo root for the same thing. Run the backend with `make dev-backend` if you need it standalone.
 
 ## Build
 
