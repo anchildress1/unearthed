@@ -12,11 +12,9 @@
 		"test": "vitest run",
 		"test:watch": "vitest",
 		"test:coverage": "vitest run --coverage",
-		"test:e2e": "playwright test",
-		"lhci": "lhci autorun"
+		"test:e2e": "playwright test"
 	},
 	"devDependencies": {
-		"@lhci/cli": "^0.15.1",
 		"@playwright/test": "^1.59.1",
 		"@sveltejs/adapter-static": "^3.0.10",
 		"@sveltejs/kit": "^2.57.0",
