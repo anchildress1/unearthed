@@ -206,6 +206,30 @@ unearthed-data/
 
 This is the user's "I want the actual fatality reports, incidents, and how they classify the major shit" requirement. It expands the data corpus before Phase 3's tool catalog is finalized — adding tools after the agent is shipped is fine, but it's cheaper to do it once if we know the scope now.
 
+### Status — partially shipped
+
+**Shipped on `phase-3a-msha-data-expansion`:**
+
+- `scripts/msha_scrape_index.py` — paginates the MSHA fatality search filtered to coal (`field_mine_category_target_id=191`), one year at a time, writes `data/msha/manifest.csv`. Polite 1.0s throttle, identifying User-Agent.
+- `scripts/msha_scrape_interstitial.py` — for each manifest row with a final report, fetches the interstitial HTML and parses out structured metadata + section text + PDF citation URL.
+- `scripts/msha_build_fatality_parquet.py` — joins manifest + interstitial JSON into `mrt/fatality_narratives.parquet` (UPPERCASE column convention, one row per fatality).
+- `app/data_client.py::query_fatalities_for_mine`, `::query_recent_fatalities` — read-only DuckDB helpers the runtime agent will call.
+- `.github/workflows/refresh-msha-fatalities.yml` — annual cron + manual dispatch.
+
+**Deferred to a follow-up branch:**
+
+- **Tier 1 enforcement datasets** (Violations, 107(a) Orders, Assessed Violations, Contested Violations) — MSHA's bulk zip files at `arlweb.msha.gov/OpenGovernmentData/DataSets/*.zip` ship with malformed CDFH/LFH headers (Central Directory offset off by ~750 bytes, garbage compression method `0x808`, wrong filename length). Standard `zipfile`, `bsdtar`, `unzip`, `zipfile-deflate64`, and `zipfile-inflate64` all reject the archives. Working around requires either (a) a custom byte-level CD walker that ignores the EOCD record, or (b) finding a non-zip MSHA endpoint. Scoped out of Phase 3.A v1 so the fatality narratives could ship.
+
+### Two architectural shifts from the original spec
+
+**1. No build-time AI extraction.**
+
+The original Phase 3.A spec called for Claude to extract `fact_lines` and `cause_category` from PDF text at build time. The runtime-synthesis approach the user proposed wins: store raw extracted prose in the parquet, let the agent synthesize the answer at request time inside its existing `/ask` tool-call loop. Zero AI cost in the build path. Synthesis style adapts to the question ("give me a list" vs "what happened" vs "compare to other mines"). Re-extracts cost nothing on refresh.
+
+**2. No PDF parsing.**
+
+Late discovery during the build: every Final Report has a parallel HTML rendering at `/data-reports/fatality-reports/<year>/<slug>/final-report`. The page exposes a `.field--name-body` block whose content mirrors the source PDF exactly — same h2 sections, same paragraphs. That collapsed two planned pipeline steps (download PDF + extract text via PyMuPDF) into one HTML fetch and removed the AGPL viral-copyleft concern entirely. PDFs are still cited via URL in the parquet so the agent can surface a "[MSHA report ↗]" chip on every answer; the PDFs themselves never land in R2.
+
 ### What MSHA actually publishes
 
 Three tiers of relevant data, all public:
@@ -234,7 +258,12 @@ Structured rows with date, mine, location, accident type, mined material, victim
 
 The historical TICL archive holds ~24,000 investigation documents (~33,000 victims) going back to MSHA's predecessor agencies.
 
-### Recommended subset for Phase 3.A
+### Recommended subset for Phase 3.A — original plan, kept for the follow-up
+
+The four-part subset below was the original ingestion plan. Items 1-3 + 5 (the
+Tier 1 enforcement datasets) are the deferred work; item 4 (fatality narratives)
+shipped, with the runtime-synthesis architecture noted above replacing the
+build-time AI extraction the original draft called for.
 
 Pick a defensible scope and ship it; do not try to ingest everything:
 
@@ -319,13 +348,21 @@ Teach Claude:
 
 ### Acceptance for Phase 3.A
 
-- All four new Parquets in R2.
-- Three new tools wired into the agent.
-- `/ask "what happened at Upper Big Branch"` returns short declarative facts (no regulator prose, no editorial), with the MSHA report URL as a source chip.
-- `/ask "which mines have been shut down by 107(a) orders"` returns a list of mine IDs with order counts.
-- Spot-check 10 random extracted fatality rows: zero personal names, zero softening adverbs, zero amplifying adjectives, every row has a `report_pdf_url`, `report_source` and `report_status` populated, contest status correctly set per the source-priority rule.
-- Verify source-priority: pick 3 incidents where MSHA final exists → confirm `report_source=msha_final`. Pick 1 recent incident where MSHA final does not yet exist but a state report does → confirm `report_source=state_<abbr>`. Pick 1 very recent incident with only a preliminary → confirm `report_status=preliminary` and the frontend renders the label.
-- Frontend renders fatality cards in a dedicated section with the source chip on every card. Cost block remains untouched (still the author's voice).
+**Shipped (fatality narratives slice):**
+
+- `mrt/fatality_narratives.parquet` lives in R2, refreshed annually by `refresh-msha-fatalities.yml`.
+- `query_fatalities_for_mine(mine_id)` and `query_recent_fatalities(state)` available in `app/data_client.py` for the upcoming Phase 3 agent tool catalog.
+- Spot-check the captured Leer Mine fixture: victim name redacted to role descriptor in OVERVIEW + CONCLUSION; ROOT CAUSE ANALYSIS preserved verbatim with role-only references; ENFORCEMENT ACTIONS surfaces 103(k) order text and citation IDs; PDF URL captured for the source chip.
+- Source-priority rule still designed-for but only one tier (`msha_final`) implemented in v1 — state and preliminary reports stay out of the parquet for now (the search index does include them, so the manifest carries the flags; a future commit can extract preliminary section text from the same interstitial path).
+
+**Deferred (Tier 1 enforcement slice):**
+
+- 4 new tools (`safety_violations`, `withdrawal_orders`, `fatality_narrative` already shipped, plus contested + assessed wiring) — only `fatality_narrative` is live; the other three depend on the deferred bulk datasets.
+- `/ask "which mines have been shut down by 107(a) orders"` will not resolve until Tier 1 ships.
+
+**Frontend (Phase 4):**
+
+- Fatality cards rendering in a dedicated section with source chip on every card — designed but not yet built; lives in Phase 4 with the rest of the `/ask` rewrite.
 
 ---
 
