@@ -368,6 +368,15 @@ wheels = [
 ]
 
 [[package]]
+name = "cssselect"
+version = "1.4.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ec/2e/cdfd8b01c37cbf4f9482eefd455853a3cf9c995029a46acd31dfaa9c1dd6/cssselect-1.4.0.tar.gz", hash = "sha256:fdaf0a1425e17dfe8c5cf66191d211b357cf7872ae8afc4c6762ddd8ac47fc92", size = 40589, upload-time = "2026-01-29T07:00:26.701Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/20/0c/7bb51e3acfafd16c48875bf3db03607674df16f5b6ef8d056586af7e2b8b/cssselect-1.4.0-py3-none-any.whl", hash = "sha256:c0ec5c0191c8ee39fcc8afc1540331d8b55b0183478c50e9c8a79d44dbceb1d8", size = 18540, upload-time = "2026-01-29T07:00:24.994Z" },
+]
+
+[[package]]
 name = "duckdb"
 version = "1.5.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1251,6 +1260,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "boto3" },
+    { name = "cssselect" },
     { name = "httpx" },
     { name = "lxml" },
     { name = "pdfplumber" },
@@ -1277,6 +1287,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "boto3", specifier = ">=1.40,<2" },
+    { name = "cssselect", specifier = ">=1.3,<2" },
     { name = "httpx", specifier = ">=0.28,<1" },
     { name = "lxml", specifier = ">=6.0,<7" },
     { name = "pdfplumber", specifier = ">=0.11,<1" },

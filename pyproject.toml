@@ -29,6 +29,7 @@ dev = [
     # lxml is the parser for the search index and interstitial pages; pdfplumber
     # handles the Fatal Investigation Report PDFs (text + heading detection).
     "lxml>=6.0,<7",
+    "cssselect>=1.3,<2",
     "pdfplumber>=0.11,<1",
 ]
 
