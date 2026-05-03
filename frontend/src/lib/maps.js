@@ -247,7 +247,7 @@ function buildGlyph(shape) {
 		'display:inline-block',
 		'width:8px',
 		'height:8px',
-		'background:#be573b',
+		`background:${MAP_COLORS.rust}`,
 		'vertical-align:middle',
 		'margin-right:6px',
 		'flex-shrink:0',
@@ -287,7 +287,7 @@ export function createLabeledMarker(
 	typeRow.appendChild(buildGlyph(glyphShapeFor(type)));
 	const typeEl = document.createElement('span');
 	typeEl.style.cssText =
-		"font-family:'JetBrains Mono',monospace;font-size:9px;color:#be573b;text-transform:uppercase;letter-spacing:0.12em";
+		`font-family:'JetBrains Mono',monospace;font-size:9px;color:${MAP_COLORS.rust};text-transform:uppercase;letter-spacing:0.12em`;
 	typeEl.textContent = type;
 	typeRow.appendChild(typeEl);
 	card.appendChild(typeRow);
@@ -295,14 +295,14 @@ export function createLabeledMarker(
 	if (name) {
 		const nameEl = document.createElement('div');
 		nameEl.style.cssText =
-			"font-family:Newsreader,serif;font-size:12px;color:#e8dfcc;margin-top:1px";
+			`font-family:Newsreader,serif;font-size:12px;color:${MAP_COLORS.you};margin-top:1px`;
 		nameEl.textContent = name;
 		card.appendChild(nameEl);
 	}
 	if (subtitle) {
 		const subEl = document.createElement('div');
 		subEl.style.cssText =
-			"font-family:'JetBrains Mono',monospace;font-size:9px;color:#a89e92;margin-top:2px;letter-spacing:0.04em";
+			`font-family:'JetBrains Mono',monospace;font-size:9px;color:${MAP_COLORS.ash};margin-top:2px;letter-spacing:0.04em`;
 		subEl.textContent = subtitle;
 		card.appendChild(subEl);
 	}
