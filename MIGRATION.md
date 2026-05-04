@@ -218,7 +218,38 @@ This is the user's "I want the actual fatality reports, incidents, and how they 
 
 **Deferred to a follow-up branch:**
 
-- **Tier 1 enforcement datasets** (Violations, 107(a) Orders, Assessed Violations, Contested Violations) — MSHA's bulk zip files at `arlweb.msha.gov/OpenGovernmentData/DataSets/*.zip` ship with malformed CDFH/LFH headers (Central Directory offset off by ~750 bytes, garbage compression method `0x808`, wrong filename length). Standard `zipfile`, `bsdtar`, `unzip`, `zipfile-deflate64`, and `zipfile-inflate64` all reject the archives. Working around requires either (a) a custom byte-level CD walker that ignores the EOCD record, or (b) finding a non-zip MSHA endpoint. Scoped out of Phase 3.A v1 so the fatality narratives could ship.
+- **Tier 1 enforcement datasets** (Violations, 107(a) Orders, Assessed Violations, Contested Violations) — see "Bulk-zip forensics" below. The MSHA OGI portal's zip files are partially decodable but corrupt past the first ~1% of payload. Pivoting Tier 1 to scrape MSHA's MDRS MicroStrategy iframe via headless Playwright instead of decoding the zips.
+
+#### Bulk-zip forensics (kept so a future run doesn't relitigate)
+
+MSHA's bulk archive at `arlweb.msha.gov/OpenGovernmentData/DataSets/*.zip` is a non-standard PKZIP variant. We mapped the malformations precisely; even with full repair the deflate payload corrupts past ~3,500 uncompressed bytes (~1% of one file). Captured here in case anyone tries again.
+
+**Header malformations (every dataset checked: `OrdersIssued.zip`, `Violations.zip`):**
+
+- LFH carries a phantom `0x00` byte between `csize` and `usize` (header is 31 bytes, not the spec's 30). Reading `fnlen` / `exlen` at the spec offsets returns nonsense (5632 / 5120); shifting by one byte gives the correct 22 / 20.
+- CDFH carries its own phantom byte between `iattr`/`eattr` and `lhoffset`. Filename starts at CDFH+47, not CDFH+46.
+- LFH and CDFH `csize` / `usize` fields hold garbage; the real values live in a Zip64 extra field (`tag=0x0001`, size 16) attached to the LFH.
+- EOCD record's CD offset is wrong by ~750 bytes — points before the actual CDFH location (off-by-one in MSHA's writer, consistent across files).
+- Compression method declared as `0x0808` (= 2056) — not a registered PKZIP method. Behaves like raw deflate for the first ~3.5 KB then back-references stop resolving.
+
+**What every standard tool does with this:**
+
+- Python `zipfile` / Apache Commons `ZipFile` (CD-based): rejects EOCD, can't enumerate entries.
+- Apache Commons `ZipArchiveInputStream` (LFH-walking): sees `method=2056`, returns `canReadEntryData=false`.
+- macOS `unzip`: `start of central directory not found; zipfile corrupt`.
+- `bsdtar`, `jar xf`: silent zero-entry output or `invalid CEN header`.
+
+**With LFH/CDFH/EOCD rebuilt cleanly and `method=8` (deflate) forced:**
+
+- 7-Zip extracts a clean **3,491 bytes** of valid CSV (22 rows of 107(a) Orders data) then halts at "Data Error". Output begins `sep=|107(a) Order Issued Report\nData as of 01-MAY-26 ... Coal or Metal|Mine ID|Mine Name|...`. Schema matches MSHA's `107(a)_Orders_Issued_Definition_File.txt`.
+- Python `zlib` (more permissive) plows through to compressed offset ~88,064 producing 277 KB of mostly-garbage output (`\x00\x00\x00` mid-string, mangled fields).
+- Apache Commons `Deflate64CompressorInputStream` (after `method=9` patch) errors at byte 0 with `Attempt to read beyond memory: dist=28234` — same back-reference issue at a different alignment.
+
+**Concatenated-streams hypothesis (multi-deflate-block writer):** rejected. `zlib` consumes the whole 189,572-byte payload without leaving `unused_data`, so it's a single corrupted stream, not multiple valid streams glued together.
+
+**Non-zip MSHA endpoints:** verified absent. The OGI portal lists 25 datasets, every one published as `<name>.zip` plus a `<name>_Definition_File.txt` schema doc. Probing alternate extensions (`OrdersIssued.csv`, `.txt`, `.xml`, no-extension) returned 404 across the board. The portal page contains zero non-zip data download links. Data.gov entries for these datasets link straight back to the same broken zip URLs.
+
+**Decision: pivot Tier 1 to MDRS MicroStrategy scrape (headless Playwright).** MSHA's Mine Data Retrieval System (`microstrategy.msha.gov`) renders the same data as searchable dashboards keyed by `mineId`. Slower per-mine (~3–5 s/page) but yields full data; iterates the existing `MSHA_MINES` list. As a parallel track, contacting `mshadata@dol.gov` for either the zip codec spec or a flat CSV mirror is cheap and worth doing.
 
 ### Two architectural shifts from the original spec
 
