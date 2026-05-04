@@ -40,6 +40,18 @@ The scraper needs to simulate that interaction sequence. Sticking points:
 - The "Submit" button (anchor in the captured HTML) needs investigation — it may be an `<a onclick="...">` whose handler only fires on a real mouse event, not a synthetic click.
 - After Submit, we need to wait on `mstrApp.isReady()` (or equivalent) and re-frame the iframe before reading the new DOM.
 
+## API shortcuts that are NOT available (all locked, do not retry)
+
+We tested every reasonable URL-based shortcut before committing to DOM scraping. Recording the dead ends so a future run does not relitigate them.
+
+- **MSTR Library REST API** (`/MicroStrategyLibrary/api/...`) — every endpoint returns `500 Internal server error.`. Library is installed on the server (the dashboard reports Library content) but the public surface blocks the API.
+- **MSTR classic TaskProc API** (`/MicroStrategy/asp/TaskProc.aspx?taskId=...`) — connects (200) but every meaningful task (`login`, `getSessionState`, `getCurrentUserInfo`, `getServerStatus`, `createSession`, `browseFolder`, `getFolderContents`, `reportExecute`) returns 500 or empty body across `loginMode=1`, `loginMode=8` (guest), `loginMode=16`, GET and POST.
+- **MSTR `evt=3140` (export to Excel)** — returns 449 KB of HTML that renders the modern Library dashboard, then JS-errors with `Cannot read properties of undefined (reading 'getSelectedPanel')`. No actual file download is triggered.
+- **Other `evt=` codes tested**: `2048001` (open document, default — works but renders the full UI), `3046` (export, returns "Error" page), `3067` (export, returns "Error" page).
+- **URL-based prompt answers** (`valuePromptAnswers`, `elementsPromptAnswers`, `promptAnswerMode`) — accepted by the URL but the mineId is not honored; the document opens at its empty default state regardless of param.
+
+The conclusion is durable: the only public surface that returns mine-level data is the rendered HTML inside the iframe, after a real click sequence into a `mstrmojo-DocTextfield`.
+
 ## Alternative we should still pursue
 
 Email `mshadata@dol.gov` for either (a) the codec spec for the broken bulk zips, or (b) a flat-CSV mirror of the same data. Either solves Tier 1 ingestion in a more durable way than scraping a 20-year-old MicroStrategy app. See `MIGRATION.md` Phase 3.A for the larger context.
