@@ -238,6 +238,7 @@ E2E specs live in `frontend/e2e/`. Shared fixtures are in `e2e/fixtures.js`: `mo
 
 - **Python:** Python 3.12. Follow PEP 8 enforced by `ruff`. Type hints on all function signatures. Use `async def` only if genuinely async; sync is fine for Snowflake connector and Cortex Analyst REST calls.
 - **Dependencies:** `pyproject.toml` with `uv`. Dev deps in `[dependency-groups]`. Run `uv sync` to install, `make lint` / `make fmt` for ruff, `make test` for pytest.
+- **R2 data cutover:** `make data-cutover` runs the Snowflake → local Parquet → R2 pipeline (export validates row counts; upload only fires if export passes). `make data-verify` lists every R2 object via the same boto3 client the upload uses — no AWS CLI dep.
 - **JavaScript/Svelte:** SvelteKit with Vite. Svelte 5 runes mode. No TypeScript (speed over safety for a weekend build).
 - **SQL:** Uppercase keywords, lowercase only inside string literals. One statement per file when possible. Comment the "why," not the "what."
 - **Secrets:** Never committed. Use `.env` locally (gitignored), Secret Manager in Cloud Run.
@@ -272,3 +273,35 @@ The semantic model YAML must be checked into the repo and cover these supported 
 6. "Which mines supply plants in [subregion]?" (and the compound form, "Which mines in [state] supply plants in [subregion]?") — answered against `MRT.V_MINE_FOR_SUBREGION`.
 
 Any question outside these patterns should be gracefully rejected with chip suggestions. The YAML covers the 5 RAW tables that serve patterns 1–5 (MSHA_MINES, MSHA_QUARTERLY_PRODUCTION, MSHA_ACCIDENTS, EIA_923_FUEL_RECEIPTS, EIA_860_PLANTS, PLANT_SUBREGION_LOOKUP) plus one MRT rollup — `V_MINE_FOR_SUBREGION` — which is the authoritative answer for pattern 6. The rollup is exposed to Analyst because reconstructing mine-to-subregion through a 3-hop RAW join (receipts → plants → subregion lookup) was causing Analyst to bail on disambiguation instead of answering. `MINE_PLANT_FOR_SUBREGION` and the RAW-layer `V_MINE_FOR_PLANT` remain out of the semantic model — they serve the `/mine-for-me` endpoint via hand-written SQL. Keep the semantic model minimal — scope creep is the #1 timeline risk identified in the PRD.
+
+## 10. MSHA Data Ingestion
+
+Three sources, three pipelines. Bulk zips do not work; do not retry them.
+
+### Bulk-zip endpoints (do not use)
+
+`https://arlweb.msha.gov/OpenGovernmentData/DataSets/*.zip` are non-standard PKZIP. Headers are malformed (LFH/CDFH phantom bytes, EOCD off by ~750 bytes, method `0x0808`). With every header rebuilt and method forced to 8, 7-Zip extracts only the first ~3.5 KB of each file before the deflate stream corrupts. Python `zlib`, `inflate64`, Apache Commons Compress (CD + streaming + Deflate64 codec), `bsdtar`, `unzip`, and `jar xf` all fail. MSTR Library REST API and TaskProc are 500-locked. Full forensics in `MIGRATION.md` Phase 3.A; do not relitigate. Any new MSHA bulk dataset request must use one of the two live pipelines below.
+
+### Fatality narratives (annual)
+
+- Pipeline: `scripts/msha_scrape_index.py` → `scripts/msha_scrape_interstitial.py` → `scripts/msha_build_fatality_parquet.py`. Refresh: `.github/workflows/refresh-msha-fatalities.yml` (cron `0 6 1 1 *` + `workflow_dispatch`).
+- Workflow shape: `setup` job emits `years` JSON for the matrix; `scrape-year` matrix shards one year per shard with `strategy.fail-fast: false`; `finish` job runs only when scrape-year completed (success or failure of individual shards) and merges per-year manifests via `scripts.msha_merge_manifests` before interstitial scrape + parquet build + R2 upload.
+- `fetch_search_page` requires HTTP 200 AND non-empty body — MSHA has been observed returning 202 + empty body to GHA-runner IPs. `parse_search_page` returns `[]` on empty/whitespace content so legitimately empty years (e.g. 2007 has zero coal fatalities indexed) terminate pagination cleanly instead of raising.
+- User-controlled inputs (`workflow_dispatch.year`, matrix `year`) flow through `env:` vars (`REFRESH_YEAR`, `SHARD_YEAR`); never interpolate them directly into shell `run:` blocks. Year format validated `^[0-9]{4}$` upstream of any shell.
+- Per-mine ID format is 7-digit numeric. Hyphenated form `NN-NNNNN` is human-friendly and accepted by `validate_mine_id` (strips the hyphen).
+
+### Tier 1 enforcement (per-mine MDRS scrape)
+
+- Pipeline: `scripts/mdrs_scrape_enforcement.py` (Playwright headless Chromium against `https://www.msha.gov/data-and-reports/mine-data-retrieval-system`). Build-time only; FastAPI runtime never imports Playwright.
+- **Real Chrome UA is mandatory.** MSHA's MicroStrategy serves a `mstr-unsupported-browser` body class with degraded layout (no `mstrmojo-SimpleObjectInputBox` widgets) when the UA does not match a current desktop Chrome. The scraper pins a Chrome UA and moves the project identifier to a custom `X-Unearthed-Source` header so MSHA logs still see who we are.
+- **Selector discipline:** numeric `mstr<N>` IDs are session-volatile. Fingerprint widgets by class + content text:
+  - Mine ID search box: `.mstrmojo-SimpleObjectInputBox` whose subtree text contains `Mine ID` (and not `mine name`).
+  - Submit button: `mstrmojo-DocButton` with text exactly `Submit`. Pick the topmost (lowest `y`) when multiple are visible — that's the Mine ID Submit; the second is Mine Name.
+  - Autocomplete results: `.mstrmojo-Popup-content .item`. The literal text `No elements match your search` means the mine ID is not in MSHA's active database — raise `MineNotFound`.
+- **Submit click via `page.mouse.click(x, y)` at iframe-relative coords.** Playwright's `element.click()` does not always fire the mojo widget's own click handler. Compute the click point from `getBoundingClientRect()` via `frame.evaluate`, add the iframe handle's `bounding_box()` offset, dispatch a page-level mouse click.
+- **Timing:** load timeout 90 s, settle 20 s, widget poll 2.5 s × 12 attempts, post-submit settle 8 s, throttle 2 s/mine. Numbers live as module-level constants in the scraper; do not hardcode them inline.
+- **No URL-based shortcuts.** `?mineId=N` on the outer page is not propagated into the iframe. MSTR `evt=` codes (3046/3067/3140), `valuePromptAnswers`, `elementsPromptAnswers`, Library REST, and TaskProc login are all locked or broken. See `scripts/probes/mdrs/README.md`.
+
+### R2 data cutover
+
+`make data-cutover` runs `scripts.export_snowflake_to_parquet` (validates row counts; fails loud on mismatch) followed by `scripts.upload_to_r2 --src data/parquet`. `make data-verify` calls `scripts.upload_to_r2 --list` to enumerate R2 contents via the same boto3 client — never shell out to `aws` CLI; it is not a project dep.
