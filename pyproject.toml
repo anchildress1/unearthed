@@ -6,10 +6,10 @@ license = { file = "LICENSE" }
 dependencies = [
     "fastapi>=0.115,<1",
     "uvicorn[standard]>=0.34,<1",
-    "snowflake-connector-python>=4.4,<5",
+    "snowflake-connector-python>=4.7.3,<5",
     "pydantic>=2,<3",
-    "pydantic-settings>=2,<3",
-    "cryptography>=46.0.6,<47",
+    "pydantic-settings>=2.14.2,<3",
+    "cryptography>=50.0.0,<51",
     "requests>=2.31,<3",
     "duckdb>=1.5,<2",
     "h3>=4.1,<5",
